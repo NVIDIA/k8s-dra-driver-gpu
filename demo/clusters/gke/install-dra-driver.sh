@@ -39,4 +39,7 @@ helm upgrade -i --create-namespace --namespace nvidia nvidia-dra-driver ${PROJEC
   --set nvidiaDriverRoot="/opt/nvidia" \
   --set kubeletPlugin.tolerations[0].key=nvidia.com/gpu \
   --set kubeletPlugin.tolerations[0].operator=Exists \
-  --set kubeletPlugin.tolerations[0].effect=NoSchedule
+  --set kubeletPlugin.tolerations[0].effect=NoSchedule \
+  --set kubeletPlugin.tolerations[1].key=cloud.google.com/compute-class \
+  --set kubeletPlugin.tolerations[1].operator=Exists \
+  --set kubeletPlugin.tolerations[1].effect=NoSchedule
