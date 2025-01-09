@@ -23,7 +23,6 @@ import (
 	"k8s.io/utils/ptr"
 )
 
-// +genclient
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 
 // GpuConfig holds the set of parameters for configuring a GPU.
