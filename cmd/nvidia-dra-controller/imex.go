@@ -64,7 +64,7 @@ type ImexManager struct {
 	driverResources               *resourceslice.DriverResources
 }
 
-func StartIMEXManager(ctx context.Context, config *Config) (*ImexManager, error) {
+func StartImexManager(ctx context.Context, config *Config) (*ImexManager, error) {
 	// Create a new set of DriverResources
 	driverResources := &resourceslice.DriverResources{
 		Pools: make(map[string]resourceslice.Pool),
