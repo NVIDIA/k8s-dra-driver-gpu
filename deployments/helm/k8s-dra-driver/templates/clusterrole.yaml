@@ -5,9 +5,12 @@ metadata:
   name: {{ include "k8s-dra-driver.fullname" . }}-cluster-role
   namespace: {{ include "k8s-dra-driver.namespace" . }}
 rules:
+- apiGroups: ["gpu.nvidia.com"]
+  resources: ["multinodeenvironments"]
+  verbs: ["get", "list", "watch"]
 - apiGroups: ["resource.k8s.io"]
   resources: ["resourceclaims"]
-  verbs: ["get"]
+  verbs: ["get", "list", "watch", "create", "update", "delete"]
 - apiGroups: ["resource.k8s.io"]
   resources: ["resourceclaims/status"]
   verbs: ["update"]

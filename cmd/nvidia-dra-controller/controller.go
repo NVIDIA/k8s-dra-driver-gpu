@@ -22,7 +22,8 @@ import (
 )
 
 type Controller struct {
-	ImexManager *ImexManager
+	ImexManager                 *ImexManager
+	MultiNodeEnvironmentManager *MultiNodeEnvironmentManager
 }
 
 // StartController starts a Controller.
@@ -36,8 +37,14 @@ func StartController(ctx context.Context, config *Config) (*Controller, error) {
 		return nil, fmt.Errorf("error starting IMEX manager: %w", err)
 	}
 
+	mneManager, err := StartMultiNodeEnvironmentManager(ctx, config)
+	if err != nil {
+		return nil, fmt.Errorf("error starting MultiNodeEnvironment manager: %w", err)
+	}
+
 	m := &Controller{
-		ImexManager: imexManager,
+		ImexManager:                 imexManager,
+		MultiNodeEnvironmentManager: mneManager,
 	}
 
 	return m, nil
@@ -48,5 +55,10 @@ func (m *Controller) Stop() error {
 	if m == nil {
 		return nil
 	}
-	return m.ImexManager.Stop()
+	imErr := m.ImexManager.Stop()
+	mnErr := m.MultiNodeEnvironmentManager.Stop()
+	if imErr != nil || mnErr != nil {
+		return fmt.Errorf("IMEX manager error: %w, MultiNodeEnvironment manager error: %w", imErr, mnErr)
+	}
+	return nil
 }
