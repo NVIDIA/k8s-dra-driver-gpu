@@ -30,11 +30,12 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/selection"
 	"k8s.io/client-go/informers"
-	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/dynamic-resource-allocation/resourceslice"
 	"k8s.io/klog/v2"
 	"k8s.io/utils/ptr"
+
+	"github.com/NVIDIA/k8s-dra-driver/pkg/flags"
 )
 
 const (
@@ -58,24 +59,12 @@ type ImexManager struct {
 	driverImexChannelLimit        int
 	retryTimeout                  time.Duration
 	waitGroup                     sync.WaitGroup
-	clientset                     kubernetes.Interface
+	clientsets                    flags.ClientSets
 	imexDomainOffsets             imexDomainOffsets
 	driverResources               *resourceslice.DriverResources
 }
 
 func StartIMEXManager(ctx context.Context, config *Config) (*ImexManager, error) {
-	// Build a client set config
-	csconfig, err := config.flags.kubeClientConfig.NewClientSetConfig()
-	if err != nil {
-		return nil, fmt.Errorf("error creating client set config: %w", err)
-	}
-
-	// Create a new clientset
-	clientset, err := kubernetes.NewForConfig(csconfig)
-	if err != nil {
-		return nil, fmt.Errorf("error creating dynamic client: %w", err)
-	}
-
 	// Create a new set of DriverResources
 	driverResources := &resourceslice.DriverResources{
 		Pools: make(map[string]resourceslice.Pool),
@@ -87,13 +76,13 @@ func StartIMEXManager(ctx context.Context, config *Config) (*ImexManager, error)
 		resourceSliceImexChannelLimit: ResourceSliceImexChannelLimit,
 		driverImexChannelLimit:        DriverImexChannelLimit,
 		retryTimeout:                  RetryTimeout,
-		clientset:                     clientset,
+		clientsets:                    config.clientsets,
 		driverResources:               driverResources,
 		imexDomainOffsets:             make(imexDomainOffsets),
 	}
 
 	// Add/Remove resource slices from IMEX domains as they come and go
-	err = m.manageResourceSlices(ctx)
+	err := m.manageResourceSlices(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("error managing resource slices: %w", err)
 	}
@@ -111,7 +100,7 @@ func (m *ImexManager) manageResourceSlices(ctx context.Context) error {
 
 	options := resourceslice.Options{
 		DriverName: m.driverName,
-		KubeClient: m.clientset,
+		KubeClient: m.clientsets.Core,
 		Resources:  m.driverResources,
 	}
 
@@ -221,7 +210,7 @@ func (m *ImexManager) streamImexDomains(ctx context.Context) (chan string, chan 
 
 	// Create a shared informer factory for nodes
 	informerFactory := informers.NewSharedInformerFactoryWithOptions(
-		m.clientset,
+		m.clientsets.Core,
 		time.Minute*10, // Resync period
 		informers.WithTweakListOptions(func(options *metav1.ListOptions) {
 			options.LabelSelector = labelSelector
@@ -300,13 +289,13 @@ func (m *ImexManager) cleanupResourceSlices() error {
 	ops := metav1.ListOptions{
 		FieldSelector: fmt.Sprintf("%s=%s", resourceapi.ResourceSliceSelectorDriver, DriverName),
 	}
-	l, err := m.clientset.ResourceV1beta1().ResourceSlices().List(context.Background(), ops)
+	l, err := m.clientsets.Core.ResourceV1beta1().ResourceSlices().List(context.Background(), ops)
 	if err != nil {
 		return fmt.Errorf("error listing resource slices: %w", err)
 	}
 
 	for _, rs := range l.Items {
-		err := m.clientset.ResourceV1beta1().ResourceSlices().Delete(context.Background(), rs.Name, metav1.DeleteOptions{})
+		err := m.clientsets.Core.ResourceV1beta1().ResourceSlices().Delete(context.Background(), rs.Name, metav1.DeleteOptions{})
 		if err != nil {
 			return fmt.Errorf("error deleting resource slice %s: %w", rs.Name, err)
 		}

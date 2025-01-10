@@ -59,7 +59,7 @@ type Flags struct {
 
 type Config struct {
 	flags      *Flags
-	clientSets flags.ClientSets
+	clientsets flags.ClientSets
 	mux        *http.ServeMux
 }
 
@@ -138,7 +138,7 @@ func newApp() *cli.App {
 			mux := http.NewServeMux()
 			flags.deviceClasses = sets.New[string](c.StringSlice("device-classes")...)
 
-			clientSets, err := flags.kubeClientConfig.NewClientSets()
+			clientsets, err := flags.kubeClientConfig.NewClientSets()
 			if err != nil {
 				return fmt.Errorf("create client: %w", err)
 			}
@@ -146,7 +146,7 @@ func newApp() *cli.App {
 			config := &Config{
 				mux:        mux,
 				flags:      flags,
-				clientSets: clientSets,
+				clientsets: clientsets,
 			}
 
 			if flags.httpEndpoint != "" {
