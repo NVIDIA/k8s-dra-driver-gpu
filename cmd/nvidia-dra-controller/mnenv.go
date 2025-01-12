@@ -167,13 +167,15 @@ func (m *MultiNodeEnvironmentManager) onMultiNodeEnvironmentAdd(obj any) error {
 		Controller: ptr.To(true),
 	}
 
-	dc, err := m.createDeviceClass("", ownerReference)
+	dc, err := m.createDeviceClass(mne.Spec.DeviceClassName, ownerReference)
 	if err != nil {
 		return fmt.Errorf("error creating DeviceClass '%s': %w", "<generated-name>", err)
 	}
 
-	if _, err := m.createResourceClaim(mne.Namespace, mne.Spec.ResourceClaimName, dc.Name, ownerReference); err != nil {
-		return fmt.Errorf("error creating ResourceClaim '%s/%s': %w", mne.Namespace, mne.Spec.ResourceClaimName, err)
+	if mne.Spec.ResourceClaimName != "" {
+		if _, err := m.createResourceClaim(mne.Namespace, mne.Spec.ResourceClaimName, dc.Name, ownerReference); err != nil {
+			return fmt.Errorf("error creating ResourceClaim '%s/%s': %w", mne.Namespace, mne.Spec.ResourceClaimName, err)
+		}
 	}
 
 	return nil

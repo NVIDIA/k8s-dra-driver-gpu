@@ -40,14 +40,19 @@ spec:
           spec:
             description: MultiNodeEnvironmentSpec provides the spec for a MultiNodeEnvironment.
             properties:
+              deviceClassName:
+                type: string
               numNodes:
                 type: integer
               resourceClaimName:
                 type: string
             required:
             - numNodes
-            - resourceClaimName
             type: object
+            x-kubernetes-validations:
+            - message: Exactly one of 'resourceClaimName' or 'deviceClassName' must
+                be set.
+              rule: '(has(self.resourceClaimName) ? !has(self.deviceClassName) : has(self.deviceClassName))'
         type: object
     served: true
     storage: true

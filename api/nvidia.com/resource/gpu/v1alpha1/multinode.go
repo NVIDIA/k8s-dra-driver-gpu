@@ -43,8 +43,11 @@ type MultiNodeEnvironmentList struct {
 	Items []MultiNodeEnvironment `json:"items"`
 }
 
+// +kubebuilder:validation:XValidation:rule="(has(self.resourceClaimName) ? !has(self.deviceClassName) : has(self.deviceClassName))",message="Exactly one of 'resourceClaimName' or 'deviceClassName' must be set."
+
 // MultiNodeEnvironmentSpec provides the spec for a MultiNodeEnvironment.
 type MultiNodeEnvironmentSpec struct {
 	NumNodes          int    `json:"numNodes"`
-	ResourceClaimName string `json:"resourceClaimName"`
+	ResourceClaimName string `json:"resourceClaimName,omitempty"`
+	DeviceClassName   string `json:"deviceClassName,omitempty"`
 }
