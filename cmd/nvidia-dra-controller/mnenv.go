@@ -40,7 +40,6 @@ import (
 
 const (
 	multiNodeEnvironmentFinalizer = "gpu.nvidia.com/finalizer.multiNodeEnvironment"
-	imexDeviceClass               = "imex.nvidia.com"
 )
 
 type MultiNodeEnvironmentManager struct {
@@ -50,6 +49,7 @@ type MultiNodeEnvironmentManager struct {
 	multiNodeEnvironmentInformer cache.SharedIndexInformer
 	multiNodeEnvironmentLister   nvlisters.MultiNodeEnvironmentLister
 	resourceClaimLister          resourcelisters.ResourceClaimLister
+	deviceClassLister            resourcelisters.DeviceClassLister
 }
 
 // StartManager starts a MultiNodeEnvironmentManager.
@@ -65,11 +65,15 @@ func StartMultiNodeEnvironmentManager(ctx context.Context, config *Config) (*Mul
 	rcInformer := coreInformerFactory.Resource().V1beta1().ResourceClaims().Informer()
 	rcLister := resourcelisters.NewResourceClaimLister(rcInformer.GetIndexer())
 
+	dcInformer := coreInformerFactory.Resource().V1beta1().DeviceClasses().Informer()
+	dcLister := resourcelisters.NewDeviceClassLister(dcInformer.GetIndexer())
+
 	m := &MultiNodeEnvironmentManager{
 		clientsets:                   config.clientsets,
 		multiNodeEnvironmentInformer: mneInformer,
 		multiNodeEnvironmentLister:   mneLister,
 		resourceClaimLister:          rcLister,
+		deviceClassLister:            dcLister,
 	}
 
 	var err error
@@ -101,6 +105,14 @@ func StartMultiNodeEnvironmentManager(ctx context.Context, config *Config) (*Mul
 		return nil, fmt.Errorf("error adding event handlers for ResourceClaim informer: %w", err)
 	}
 
+	_, err = dcInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc:    func(obj any) { queue.Enqueue(obj, m.onDeviceClassAddOrUpdate) },
+		UpdateFunc: func(objOld, objNew any) { queue.Enqueue(objNew, m.onDeviceClassAddOrUpdate) },
+	})
+	if err != nil {
+		return nil, fmt.Errorf("error adding event handlers for DeviceClass informer: %w", err)
+	}
+
 	m.waitGroup.Add(3)
 	go func() {
 		defer m.waitGroup.Done()
@@ -115,10 +127,10 @@ func StartMultiNodeEnvironmentManager(ctx context.Context, config *Config) (*Mul
 		queue.Run(ctx.Done())
 	}()
 
-	if !cache.WaitForCacheSync(ctx.Done(), mneInformer.HasSynced, rcInformer.HasSynced) {
+	if !cache.WaitForCacheSync(ctx.Done(), mneInformer.HasSynced, rcInformer.HasSynced, dcInformer.HasSynced) {
 		klog.Warning("Cache sync failed; retrying in 5 seconds")
 		time.Sleep(5 * time.Second)
-		if !cache.WaitForCacheSync(ctx.Done(), mneInformer.HasSynced, rcInformer.HasSynced) {
+		if !cache.WaitForCacheSync(ctx.Done(), mneInformer.HasSynced, rcInformer.HasSynced, dcInformer.HasSynced) {
 			return nil, fmt.Errorf("informer cache sync failed twice")
 		}
 	}
@@ -155,8 +167,52 @@ func (m *MultiNodeEnvironmentManager) onMultiNodeEnvironmentAdd(obj any) error {
 		Controller: ptr.To(true),
 	}
 
-	if _, err := m.createResourceClaim(mne.Namespace, mne.Spec.ResourceClaimName, ownerReference); err != nil {
+	dc, err := m.createDeviceClass("", ownerReference)
+	if err != nil {
+		return fmt.Errorf("error creating DeviceClass '%s': %w", "<generated-name>", err)
+	}
+
+	if _, err := m.createResourceClaim(mne.Namespace, mne.Spec.ResourceClaimName, dc.Name, ownerReference); err != nil {
 		return fmt.Errorf("error creating ResourceClaim '%s/%s': %w", mne.Namespace, mne.Spec.ResourceClaimName, err)
+	}
+
+	return nil
+}
+
+func (m *MultiNodeEnvironmentManager) onDeviceClassAddOrUpdate(obj any) error {
+	dc, ok := obj.(*resourceapi.DeviceClass)
+	if !ok {
+		return fmt.Errorf("failed to cast to DeviceClass")
+	}
+
+	klog.Infof("Processing added or updated DeviceClass: %s", dc.Name)
+
+	if len(dc.OwnerReferences) != 1 {
+		return nil
+	}
+
+	if dc.OwnerReferences[0].Kind != nvapi.MultiNodeEnvironmentKind {
+		return nil
+	}
+
+	if !cache.WaitForCacheSync(context.Background().Done(), m.multiNodeEnvironmentInformer.HasSynced) {
+		return fmt.Errorf("cache sync failed for MultiNodeEnvironment")
+	}
+
+	mnes, err := m.multiNodeEnvironmentInformer.GetIndexer().ByIndex("uid", string(dc.OwnerReferences[0].UID))
+	if err != nil {
+		return fmt.Errorf("error retrieving MultiNodeInformer OwnerReference by UID from indexer: %w", err)
+	}
+	if len(mnes) != 0 {
+		return nil
+	}
+
+	if err := m.removeDeviceClassFinalizer(dc.Name); err != nil {
+		return fmt.Errorf("error removing finalizer on DeviceClass '%s': %w", dc.Name, err)
+	}
+
+	if err := m.deleteDeviceClass(dc.Name); err != nil {
+		return fmt.Errorf("error deleting DeviceClass '%s': %w", dc.Name, err)
 	}
 
 	return nil
@@ -201,7 +257,51 @@ func (m *MultiNodeEnvironmentManager) onResourceClaimAddOrUpdate(obj any) error 
 	return nil
 }
 
-func (m *MultiNodeEnvironmentManager) createResourceClaim(namespace, name string, ownerReference metav1.OwnerReference) (*resourceapi.ResourceClaim, error) {
+func (m *MultiNodeEnvironmentManager) createDeviceClass(name string, ownerReference metav1.OwnerReference) (*resourceapi.DeviceClass, error) {
+	if name != "" {
+		dc, err := m.deviceClassLister.Get(name)
+		if err == nil {
+			if len(dc.OwnerReferences) != 1 && dc.OwnerReferences[0] != ownerReference {
+				return nil, fmt.Errorf("DeviceClass '%s' exists without expected OwnerReference: %v", name, ownerReference)
+			}
+			return dc, nil
+		}
+		if !errors.IsNotFound(err) {
+			return nil, fmt.Errorf("error retrieving DeviceClass: %w", err)
+		}
+	}
+
+	deviceClass := &resourceapi.DeviceClass{
+		ObjectMeta: metav1.ObjectMeta{
+			OwnerReferences: []metav1.OwnerReference{ownerReference},
+			Finalizers:      []string{multiNodeEnvironmentFinalizer},
+		},
+		Spec: resourceapi.DeviceClassSpec{
+			Selectors: []resourceapi.DeviceSelector{
+				{
+					CEL: &resourceapi.CELDeviceSelector{
+						Expression: "device.driver == 'gpu.nvidia.com' && device.attributes['gpu.nvidia.com'].type == 'imex-channel'",
+					},
+				},
+			},
+		},
+	}
+
+	if name == "" {
+		deviceClass.GenerateName = ownerReference.Name
+	} else {
+		deviceClass.Name = name
+	}
+
+	dc, err := m.clientsets.Core.ResourceV1beta1().DeviceClasses().Create(context.Background(), deviceClass, metav1.CreateOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("error creating DeviceClass: %w", err)
+	}
+
+	return dc, nil
+}
+
+func (m *MultiNodeEnvironmentManager) createResourceClaim(namespace, name, deviceClassName string, ownerReference metav1.OwnerReference) (*resourceapi.ResourceClaim, error) {
 	rc, err := m.resourceClaimLister.ResourceClaims(namespace).Get(name)
 	if err == nil {
 		if len(rc.OwnerReferences) != 1 && rc.OwnerReferences[0] != ownerReference {
@@ -223,7 +323,7 @@ func (m *MultiNodeEnvironmentManager) createResourceClaim(namespace, name string
 		Spec: resourceapi.ResourceClaimSpec{
 			Devices: resourceapi.DeviceClaim{
 				Requests: []resourceapi.DeviceRequest{{
-					Name: "imex", DeviceClassName: imexDeviceClass,
+					Name: "device", DeviceClassName: deviceClassName,
 				}},
 			},
 		},
@@ -235,6 +335,32 @@ func (m *MultiNodeEnvironmentManager) createResourceClaim(namespace, name string
 	}
 
 	return rc, nil
+}
+
+func (m *MultiNodeEnvironmentManager) removeDeviceClassFinalizer(name string) error {
+	dc, err := m.deviceClassLister.Get(name)
+	if err != nil && errors.IsNotFound(err) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("error retrieving DeviceClass: %w", err)
+	}
+
+	newDC := dc.DeepCopy()
+
+	newDC.Finalizers = []string{}
+	for _, f := range dc.Finalizers {
+		if f != multiNodeEnvironmentFinalizer {
+			newDC.Finalizers = append(newDC.Finalizers, f)
+		}
+	}
+
+	_, err = m.clientsets.Core.ResourceV1beta1().DeviceClasses().Update(context.Background(), newDC, metav1.UpdateOptions{})
+	if err != nil {
+		return fmt.Errorf("error updating DeviceClass: %w", err)
+	}
+
+	return nil
 }
 
 func (m *MultiNodeEnvironmentManager) removeResourceClaimFinalizer(namespace, name string) error {
@@ -260,6 +386,14 @@ func (m *MultiNodeEnvironmentManager) removeResourceClaimFinalizer(namespace, na
 		return fmt.Errorf("error updating ResourceClaim: %w", err)
 	}
 
+	return nil
+}
+
+func (m *MultiNodeEnvironmentManager) deleteDeviceClass(name string) error {
+	err := m.clientsets.Core.ResourceV1beta1().DeviceClasses().Delete(context.Background(), name, metav1.DeleteOptions{})
+	if err != nil && !errors.IsNotFound(err) {
+		return fmt.Errorf("erroring deleting DeviceClass: %w", err)
+	}
 	return nil
 }
 
