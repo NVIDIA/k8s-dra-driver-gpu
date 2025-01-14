@@ -17,6 +17,7 @@
 package workqueue
 
 import (
+	"context"
 	"fmt"
 
 	"k8s.io/apimachinery/pkg/runtime"
@@ -30,7 +31,7 @@ type WorkQueue struct {
 
 type WorkItem struct {
 	Object   any
-	Callback func(obj any) error
+	Callback func(ctx context.Context, obj any) error
 }
 
 func DefaultControllerRateLimiter() workqueue.TypedRateLimiter[any] {
@@ -39,25 +40,25 @@ func DefaultControllerRateLimiter() workqueue.TypedRateLimiter[any] {
 
 func New(r workqueue.TypedRateLimiter[any]) *WorkQueue {
 	queue := workqueue.NewTypedRateLimitingQueue(r)
-	return &WorkQueue{queue}
+	return &WorkQueue{queue: queue}
 }
 
-func (q *WorkQueue) Run(done <-chan struct{}) {
+func (q *WorkQueue) Run(ctx context.Context) {
 	go func() {
-		<-done
+		<-ctx.Done()
 		q.queue.ShutDown()
 	}()
 	for {
 		select {
-		case <-done:
+		case <-ctx.Done():
 			return
 		default:
-			q.processNextWorkItem()
+			q.processNextWorkItem(ctx)
 		}
 	}
 }
 
-func (q *WorkQueue) Enqueue(obj any, callback func(obj any) error) {
+func (q *WorkQueue) Enqueue(obj any, callback func(ctx context.Context, obj any) error) {
 	runtimeObj, ok := obj.(runtime.Object)
 	if !ok {
 		klog.Warningf("unexpected object type %T: runtime.Object required", obj)
@@ -72,7 +73,7 @@ func (q *WorkQueue) Enqueue(obj any, callback func(obj any) error) {
 	q.queue.AddRateLimited(workItem)
 }
 
-func (q *WorkQueue) processNextWorkItem() {
+func (q *WorkQueue) processNextWorkItem(ctx context.Context) {
 	item, shutdown := q.queue.Get()
 	if shutdown {
 		return
@@ -85,18 +86,18 @@ func (q *WorkQueue) processNextWorkItem() {
 		return
 	}
 
-	err := q.reconcile(workItem)
+	err := q.reconcile(ctx, workItem)
 	if err != nil {
-		klog.Errorf("Failed to reconcile work item %v: %v", workItem.Object, err)
+		klog.Errorf("Failed to reconcile work item: %v", err)
 		q.queue.AddRateLimited(workItem)
 	} else {
 		q.queue.Forget(workItem)
 	}
 }
 
-func (q *WorkQueue) reconcile(workItem *WorkItem) error {
+func (q *WorkQueue) reconcile(ctx context.Context, workItem *WorkItem) error {
 	if workItem.Callback == nil {
 		return fmt.Errorf("no callback to process work item: %+v", workItem)
 	}
-	return workItem.Callback(workItem.Object)
+	return workItem.Callback(ctx, workItem.Object)
 }

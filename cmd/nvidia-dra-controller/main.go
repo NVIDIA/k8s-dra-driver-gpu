@@ -43,6 +43,10 @@ import (
 	"github.com/NVIDIA/k8s-dra-driver/pkg/flags"
 )
 
+const (
+	DriverName = "gpu.nvidia.com"
+)
+
 type Flags struct {
 	kubeClientConfig flags.KubeClientConfig
 	loggingConfig    *flags.LoggingConfig
@@ -58,6 +62,7 @@ type Flags struct {
 }
 
 type Config struct {
+	driverName string
 	flags      *Flags
 	clientsets flags.ClientSets
 	mux        *http.ServeMux
@@ -147,6 +152,7 @@ func newApp() *cli.App {
 				mux:        mux,
 				flags:      flags,
 				clientsets: clientsets,
+				driverName: DriverName,
 			}
 
 			if flags.httpEndpoint != "" {
@@ -159,21 +165,25 @@ func newApp() *cli.App {
 			sigs := make(chan os.Signal, 1)
 			signal.Notify(sigs, syscall.SIGTERM, syscall.SIGINT)
 
-			var controller *Controller
-			ctx, cancel := context.WithCancel(c.Context)
-			defer func() {
-				cancel()
-				if err := controller.Stop(); err != nil {
-					klog.Errorf("Error stopping controller: %v", err)
-				}
-			}()
-
-			controller, err = StartController(ctx, config)
-			if err != nil {
-				return fmt.Errorf("start controller: %w", err)
+			if !config.flags.deviceClasses.Has(ImexChannelType) {
+				klog.InfoS("Not configured for IMEX support, blocking indefinitely")
+				<-sigs
+				return nil
 			}
 
+			errChan := make(chan error, 1)
+			controller := NewController(config)
+			ctx, cancel := context.WithCancel(c.Context)
+			go func() {
+				errChan <- controller.Run(ctx)
+			}()
+
 			<-sigs
+			cancel()
+
+			if err := <-errChan; err != nil {
+				return fmt.Errorf("run controller: %w", err)
+			}
 
 			return nil
 		},

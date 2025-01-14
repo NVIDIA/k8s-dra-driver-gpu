@@ -14,51 +14,69 @@
  * limitations under the License.
  */
 
+// Package main implements a Kubernetes Device Resource Allocation (DRA) driver controller
 package main
 
 import (
 	"context"
 	"fmt"
+
+	"github.com/NVIDIA/k8s-dra-driver/pkg/flags"
+	"github.com/NVIDIA/k8s-dra-driver/pkg/workqueue"
 )
 
+// ManagerConfig defines the common configuration options shared across all managers.
+// It contains essential fields for driver identification, Kubernetes client access,
+// and work queue management.
+type ManagerConfig struct {
+	// driverName is the unique identifier for this DRA driver
+	driverName string
+
+	// driverNamespace is the Kubernetes namespace where the driver operates
+	driverNamespace string
+
+	// clientsets provides access to various Kubernetes API client interfaces
+	clientsets flags.ClientSets
+
+	// workQueue manages the asynchronous processing of tasks
+	workQueue *workqueue.WorkQueue
+}
+
+// Controller manages the lifecycle of the DRA driver and its components.
 type Controller struct {
-	ImexManager                 *ImexManager
-	MultiNodeEnvironmentManager *MultiNodeEnvironmentManager
+	// config holds the controller's configuration settings
+	config *Config
 }
 
-// StartController starts a Controller.
-func StartController(ctx context.Context, config *Config) (*Controller, error) {
-	if !config.flags.deviceClasses.Has(ImexChannelType) {
-		return nil, nil
-	}
-
-	imexManager, err := StartImexManager(ctx, config)
-	if err != nil {
-		return nil, fmt.Errorf("error starting IMEX manager: %w", err)
-	}
-
-	mneManager, err := StartMultiNodeEnvironmentManager(ctx, config)
-	if err != nil {
-		return nil, fmt.Errorf("error starting MultiNodeEnvironment manager: %w", err)
-	}
-
-	m := &Controller{
-		ImexManager:                 imexManager,
-		MultiNodeEnvironmentManager: mneManager,
-	}
-
-	return m, nil
+// NewController creates and initializes a new Controller instance with the provided configuration.
+func NewController(config *Config) *Controller {
+	return &Controller{config: config}
 }
 
-// Stop stops a running Controller.
-func (m *Controller) Stop() error {
-	if m == nil {
-		return nil
+// Run starts the controller's main loop and manages the lifecycle of its components.
+// It initializes the work queue, starts the MultiNodeEnvironment manager, and handles
+// graceful shutdown when the context is cancelled.
+func (c *Controller) Run(ctx context.Context) error {
+	workQueue := workqueue.New(workqueue.DefaultControllerRateLimiter())
+
+	managerConfig := &ManagerConfig{
+		driverName:      c.config.driverName,
+		driverNamespace: c.config.flags.namespace,
+		clientsets:      c.config.clientsets,
+		workQueue:       workQueue,
 	}
-	imErr := m.ImexManager.Stop()
-	mnErr := m.MultiNodeEnvironmentManager.Stop()
-	if imErr != nil || mnErr != nil {
-		return fmt.Errorf("IMEX manager error: %w, MultiNodeEnvironment manager error: %w", imErr, mnErr)
+
+	mneManager := NewMultiNodeEnvironmentManager(managerConfig)
+
+	if err := mneManager.Start(ctx); err != nil {
+		return fmt.Errorf("error starting MultiNodeEnvironment manager: %w", err)
 	}
+
+	workQueue.Run(ctx)
+
+	if err := mneManager.Stop(); err != nil {
+		return fmt.Errorf("error stopping MultiNodeEnvironment manager: %w", err)
+	}
+
 	return nil
 }
