@@ -107,8 +107,15 @@ generate-crds: generate-deepcopy
 	for dir in $(CLIENT_SOURCES); do \
 		controller-gen crd:crdVersions=v1 \
 			paths=$(CURDIR)/$${dir} \
-			output:crd:dir=$(CURDIR)/deployments/helm/$(DRIVER_NAME)/crds; \
+			output:crd:dir=$(CURDIR)/deployments/helm/tmp_crds; \
 	done
+	mkdir -p $(CURDIR)/deployments/helm/$(GPU_DRIVER_NAME)/crds
+	cp -R $(CURDIR)/deployments/helm/tmp_crds/* \
+		$(CURDIR)/deployments/helm/$(GPU_DRIVER_NAME)/crds
+	mkdir -p $(CURDIR)/deployments/helm/$(IMEX_DRIVER_NAME)/crds
+	cp -R $(CURDIR)/deployments/helm/tmp_crds/* \
+		$(CURDIR)/deployments/helm/$(IMEX_DRIVER_NAME)/crds
+	rm -rf $(CURDIR)/deployments/helm/tmp_crds
 
 
 generate-deepcopy: generate-informers

@@ -76,9 +76,8 @@ This should show two pods running in the `nvidia` namespace:
 kubectl get pods -n nvidia
 ```
 ```
-NAME                                                          READY   STATUS    RESTARTS   AGE
-nvidia-dra-driver-k8s-dra-driver-controller-844fcb94b-ktbkc   1/1     Running   0          69s
-nvidia-dra-driver-k8s-dra-driver-kubelet-plugin-5vfp9         1/1     Running   0          69s
+NAME                                                              READY   STATUS    RESTARTS   AGE
+nvidia-dra-driver-k8s-dra-driver-gpu-kubelet-plugin-5vfp9         1/1     Running   0          69s
 ```
 
 ### Run the examples by following the steps in the demo script

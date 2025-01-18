@@ -29,13 +29,13 @@ DRIVER_NAME=$(from_versions_mk "DRIVER_NAME")
 : ${IMAGE_NAME:=${DRIVER_NAME}}
 : ${IMAGE_TAG:=6c34f5fb-ubi8}
 
-helm upgrade -i --create-namespace --namespace nvidia nvidia-dra-driver ${PROJECT_DIR}/deployments/helm/k8s-dra-driver \
+helm upgrade -i --create-namespace --namespace nvidia nvidia-dra-imex-driver ${PROJECT_DIR}/deployments/helm/k8s-dra-imex-driver \
   --set image.repository=${IMAGE_REGISTRY}/${IMAGE_NAME} \
   --set image.tag=${IMAGE_TAG} \
   --set image.pullPolicy=Always \
   --set controller.priorityClassName="" \
   --set kubeletPlugin.priorityClassName="" \
-  --set deviceClasses="{gpu,mig}" \
+  --set deviceClasses="{imex}" \
   --set nvidiaDriverRoot="/opt/nvidia" \
   --set kubeletPlugin.tolerations[0].key=nvidia.com/gpu \
   --set kubeletPlugin.tolerations[0].operator=Exists \

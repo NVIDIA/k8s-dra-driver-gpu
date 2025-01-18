@@ -1,5 +1,5 @@
 apiVersion: v2
-name: k8s-dra-driver
+name: k8s-dra-imex-driver
 description: A Helm chart for Kubernetes
 
 # A chart can be either an 'application' or a 'library' chart.

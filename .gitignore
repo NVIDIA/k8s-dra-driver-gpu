@@ -1,7 +1,8 @@
 .cache/
 .bash_history
-/nvidia-dra-controller
-/nvidia-dra-plugin
+/nvidia-dra-imex-controller
+/nvidia-dra-imex-plugin
+/nvidia-dra-gpu-plugin
 .idea
 [._]*.sw[a-p]
 coverage.out

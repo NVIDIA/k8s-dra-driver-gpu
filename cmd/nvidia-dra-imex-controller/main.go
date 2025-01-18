@@ -128,8 +128,8 @@ func newApp() *cli.App {
 	cliFlags = append(cliFlags, flags.loggingConfig.Flags()...)
 
 	app := &cli.App{
-		Name:            "nvidia-dra-controller",
-		Usage:           "nvidia-dra-controller implements a DRA driver controller for NVIDIA GPUs.",
+		Name:            "nvidia-dra-imex-controller",
+		Usage:           "nvidia-dra-imex-controller implements a DRA driver controller for NVIDIA IMEX domains.",
 		ArgsUsage:       " ",
 		HideHelpCommand: true,
 		Flags:           cliFlags,

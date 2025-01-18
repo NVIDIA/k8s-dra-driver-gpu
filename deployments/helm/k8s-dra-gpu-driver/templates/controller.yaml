@@ -18,7 +18,7 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "k8s-dra-driver.fullname" . }}-controller
+  name: {{ include "k8s-dra-driver.fullname" . }}-imex-controller
   namespace: {{ include "k8s-dra-driver.namespace" . }}
   labels:
     {{- include "k8s-dra-driver.labels" . | nindent 4 }}
@@ -52,7 +52,7 @@ spec:
           {{- toYaml .Values.controller.containers.controller.securityContext | nindent 10 }}
         image: {{ include "k8s-dra-driver.fullimage" . }}
         imagePullPolicy: {{ .Values.image.pullPolicy }}
-        command: ["nvidia-dra-controller", "-v", "6"]
+        command: ["nvidia-dra-imex-controller", "-v", "6"]
         resources:
           {{- toYaml .Values.controller.containers.controller.resources | nindent 10 }}
         env:

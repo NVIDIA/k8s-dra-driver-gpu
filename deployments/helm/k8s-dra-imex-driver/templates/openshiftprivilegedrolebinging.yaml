@@ -1,0 +1,17 @@
+# Apply only when running on OpenShift to let the kublet plugin run privileged
+{{- if .Capabilities.APIVersions.Has "security.openshift.io/v1/SecurityContextConstraints" -}}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "k8s-dra-driver.fullname" . }}-openshift-privileged-role-binding
+  namespace: {{ include "k8s-dra-driver.namespace" . }}
+subjects:
+- kind: ServiceAccount
+  name: {{ include "k8s-dra-driver.serviceAccountName" . }}
+  namespace: {{ include "k8s-dra-driver.namespace" . }}
+roleRef:
+  kind: ClusterRole
+  name: system:openshift:scc:privileged
+  apiGroup: rbac.authorization.k8s.io
+{{- end }}

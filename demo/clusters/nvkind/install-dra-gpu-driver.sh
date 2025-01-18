@@ -19,4 +19,4 @@ CURRENT_DIR="$(cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd)"
 
 : ${MASK_NVIDIA_DRIVER_PARAMS:="true"}
 export MASK_NVIDIA_DRIVER_PARAMS
-exec ${CURRENT_DIR}/../kind/install-dra-driver.sh
+exec ${CURRENT_DIR}/../kind/install-dra-gpu-driver.sh

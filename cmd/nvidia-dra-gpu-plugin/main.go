@@ -125,8 +125,8 @@ func newApp() *cli.App {
 	cliFlags = append(cliFlags, flags.loggingConfig.Flags()...)
 
 	app := &cli.App{
-		Name:            "nvidia-dra-plugin",
-		Usage:           "nvidia-dra-plugin implements a DRA driver plugin for NVIDIA GPUs.",
+		Name:            "nvidia-dra-gpu-plugin",
+		Usage:           "nvidia-dra-gpu-plugin implements a DRA driver plugin for NVIDIA GPUs.",
 		ArgsUsage:       " ",
 		HideHelpCommand: true,
 		Flags:           cliFlags,
