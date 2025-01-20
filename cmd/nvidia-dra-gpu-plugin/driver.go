@@ -62,19 +62,9 @@ func NewDriver(ctx context.Context, config *Config) (*driver, error) {
 	}
 	driver.plugin = plugin
 
-	// If not responsible for advertising GPUs or MIG devices, we are done
-	if !(config.flags.deviceClasses.Has(GpuDeviceType) || config.flags.deviceClasses.Has(MigDeviceType)) {
-		return driver, nil
-	}
-
-	// Otherwise, enumerate the set of GPU and MIG devices and publish them
+	// Enumerate the set of GPU and MIG devices and publish them
 	var resources kubeletplugin.Resources
 	for _, device := range state.allocatable {
-		// Explicitly exclude IMEX channels from being advertised here. They
-		// are instead advertised in as a network resource from the control plane.
-		if device.Type() == ImexChannelType {
-			continue
-		}
 		resources.Devices = append(resources.Devices, device.GetDevice())
 	}
 

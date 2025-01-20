@@ -17,24 +17,16 @@
 package main
 
 import (
-	"bufio"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strconv"
 	"strings"
 
-	"golang.org/x/sys/unix"
 	"k8s.io/klog/v2"
 
 	nvdev "github.com/NVIDIA/go-nvlib/pkg/nvlib/device"
 	"github.com/NVIDIA/go-nvml/pkg/nvml"
-)
-
-const (
-	procDevicesPath                  = "/proc/devices"
-	nvidiaCapsImexChannelsDeviceName = "nvidia-caps-imex-channels"
 )
 
 type deviceLib struct {
@@ -110,26 +102,13 @@ func (l deviceLib) alwaysShutdown() {
 
 func (l deviceLib) enumerateAllPossibleDevices(config *Config) (AllocatableDevices, error) {
 	alldevices := make(AllocatableDevices)
-	deviceClasses := config.flags.deviceClasses
 
-	if deviceClasses.Has(GpuDeviceType) || deviceClasses.Has(MigDeviceType) {
-		gms, err := l.enumerateGpusAndMigDevices(config)
-		if err != nil {
-			return nil, fmt.Errorf("error enumerating GPUs and MIG devices: %w", err)
-		}
-		for k, v := range gms {
-			alldevices[k] = v
-		}
+	gms, err := l.enumerateGpusAndMigDevices(config)
+	if err != nil {
+		return nil, fmt.Errorf("error enumerating GPUs and MIG devices: %w", err)
 	}
-
-	if deviceClasses.Has(ImexChannelType) {
-		imex, err := l.enumerateImexChannels(config)
-		if err != nil {
-			return nil, fmt.Errorf("error enumerating IMEX devices: %w", err)
-		}
-		for k, v := range imex {
-			alldevices[k] = v
-		}
+	for k, v := range gms {
+		alldevices[k] = v
 	}
 
 	return alldevices, nil
@@ -142,58 +121,33 @@ func (l deviceLib) enumerateGpusAndMigDevices(config *Config) (AllocatableDevice
 	defer l.alwaysShutdown()
 
 	devices := make(AllocatableDevices)
-	deviceClasses := config.flags.deviceClasses
 	err := l.VisitDevices(func(i int, d nvdev.Device) error {
 		gpuInfo, err := l.getGpuInfo(i, d)
 		if err != nil {
 			return fmt.Errorf("error getting info for GPU %d: %w", i, err)
 		}
 
-		if deviceClasses.Has(GpuDeviceType) && !gpuInfo.migEnabled {
-			deviceInfo := &AllocatableDevice{
-				Gpu: gpuInfo,
-			}
-			devices[gpuInfo.CanonicalName()] = deviceInfo
+		deviceInfo := &AllocatableDevice{
+			Gpu: gpuInfo,
+		}
+		devices[gpuInfo.CanonicalName()] = deviceInfo
+
+		migs, err := l.getMigDevices(gpuInfo)
+		if err != nil {
+			return fmt.Errorf("error getting MIG devices for GPU %d: %w", i, err)
 		}
 
-		if deviceClasses.Has(MigDeviceType) {
-			migs, err := l.getMigDevices(gpuInfo)
-			if err != nil {
-				return fmt.Errorf("error getting MIG devices for GPU %d: %w", i, err)
+		for _, migDeviceInfo := range migs {
+			deviceInfo := &AllocatableDevice{
+				Mig: migDeviceInfo,
 			}
-
-			for _, migDeviceInfo := range migs {
-				deviceInfo := &AllocatableDevice{
-					Mig: migDeviceInfo,
-				}
-				devices[migDeviceInfo.CanonicalName()] = deviceInfo
-			}
+			devices[migDeviceInfo.CanonicalName()] = deviceInfo
 		}
 
 		return nil
 	})
 	if err != nil {
 		return nil, fmt.Errorf("error visiting devices: %w", err)
-	}
-
-	return devices, nil
-}
-
-func (l deviceLib) enumerateImexChannels(config *Config) (AllocatableDevices, error) {
-	devices := make(AllocatableDevices)
-
-	imexChannelCount, err := l.getImexChannelCount()
-	if err != nil {
-		return nil, fmt.Errorf("error getting IMEX channel count: %w", err)
-	}
-	for i := 0; i < imexChannelCount; i++ {
-		imexChannelInfo := &ImexChannelInfo{
-			Channel: i,
-		}
-		deviceInfo := &AllocatableDevice{
-			ImexChannel: imexChannelInfo,
-		}
-		devices[imexChannelInfo.CanonicalName()] = deviceInfo
 	}
 
 	return devices, nil
@@ -435,86 +389,6 @@ func walkMigDevices(d nvml.Device, f func(i int, d nvml.Device) error) error {
 			return err
 		}
 	}
-	return nil
-}
-
-func (l deviceLib) getImexChannelCount() (int, error) {
-	// TODO: Pull this value from /proc/driver/nvidia/params
-	return 2048, nil
-}
-
-func (l deviceLib) getImexChannelMajor() (int, error) {
-	file, err := os.Open(procDevicesPath)
-	if err != nil {
-		return -1, err
-	}
-	defer file.Close()
-
-	scanner := bufio.NewScanner(file)
-	foundCharDevices := false
-
-	for scanner.Scan() {
-		line := scanner.Text()
-
-		// Ignore empty lines
-		if line == "" {
-			continue
-		}
-
-		// Check for any line with text followed by a colon (header)
-		if strings.Contains(line, ":") {
-			// Stop if we've already found the character devices section and reached another section
-			if foundCharDevices {
-				break
-			}
-			// Check if we entered the character devices section
-			if strings.HasSuffix(line, ":") && strings.HasPrefix(line, "Character") {
-				foundCharDevices = true
-			}
-			// Continue to the next line, regardless
-			continue
-		}
-
-		// If we've passed the character devices section, check for nvidiaCapsImexChannelsDeviceName
-		if foundCharDevices {
-			parts := strings.Fields(line)
-			if len(parts) == 2 && parts[1] == nvidiaCapsImexChannelsDeviceName {
-				return strconv.Atoi(parts[0])
-			}
-		}
-	}
-
-	return -1, scanner.Err()
-}
-
-func (l deviceLib) createImexChannelDevice(channel int) error {
-	// Construct the properties of the device node to create.
-	path := fmt.Sprintf("/dev/nvidia-caps-imex-channels/channel%d", channel)
-	path = filepath.Join(l.devRoot, path)
-	mode := uint32(unix.S_IFCHR | 0666)
-
-	// Get the IMEX channel major and build a /dev device from it
-	major, err := l.getImexChannelMajor()
-	if err != nil {
-		return fmt.Errorf("error getting IMEX channel major: %w", err)
-	}
-	dev := unix.Mkdev(uint32(major), uint32(channel))
-
-	// Recursively create any parent directories of the channel.
-	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
-		return fmt.Errorf("error creating directory for IMEX channel device nodes: %w", err)
-	}
-
-	// Remove the channel if it already exists.
-	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
-		return fmt.Errorf("error removing existing IMEX channel device node: %w", err)
-	}
-
-	// Create the device node using syscall.Mknod
-	if err := unix.Mknod(path, mode, int(dev)); err != nil {
-		return fmt.Errorf("mknod of IMEX channel failed: %w", err)
-	}
-
 	return nil
 }
 

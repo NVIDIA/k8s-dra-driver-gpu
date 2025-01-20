@@ -62,26 +62,6 @@ func NewDriver(ctx context.Context, config *Config) (*driver, error) {
 	}
 	driver.plugin = plugin
 
-	// If not responsible for advertising GPUs or MIG devices, we are done
-	if !(config.flags.deviceClasses.Has(GpuDeviceType) || config.flags.deviceClasses.Has(MigDeviceType)) {
-		return driver, nil
-	}
-
-	// Otherwise, enumerate the set of GPU and MIG devices and publish them
-	var resources kubeletplugin.Resources
-	for _, device := range state.allocatable {
-		// Explicitly exclude IMEX channels from being advertised here. They
-		// are instead advertised in as a network resource from the control plane.
-		if device.Type() == ImexChannelType {
-			continue
-		}
-		resources.Devices = append(resources.Devices, device.GetDevice())
-	}
-
-	if err := plugin.PublishResources(ctx, resources); err != nil {
-		return nil, err
-	}
-
 	return driver, nil
 }
 
@@ -156,13 +136,6 @@ func (d *driver) nodeUnprepareResource(ctx context.Context, claim *drapbv1.Claim
 // TODO: implement loop to remove CDI files from the CDI path for claimUIDs
 //       that have been removed from the AllocatedClaims map.
 // func (d *driver) cleanupCDIFiles(wg *sync.WaitGroup) chan error {
-// 	errors := make(chan error)
-// 	return errors
-// }
-//
-// TODO: implement loop to remove mpsControlDaemon folders from the mps
-//       path for claimUIDs that have been removed from the AllocatedClaims map.
-// func (d *driver) cleanupMpsControlDaemonArtifacts(wg *sync.WaitGroup) chan error {
 // 	errors := make(chan error)
 // 	return errors
 // }

@@ -19,7 +19,6 @@ package main
 import (
 	"fmt"
 	"io"
-	"path/filepath"
 
 	"github.com/sirupsen/logrus"
 
@@ -140,21 +139,6 @@ func NewCDIHandler(opts ...cdiOption) (*CDIHandler, error) {
 	return h, nil
 }
 
-func (cdi *CDIHandler) GetImexChannelContainerEdits(info *ImexChannelInfo) *cdiapi.ContainerEdits {
-	channelPath := fmt.Sprintf("/dev/nvidia-caps-imex-channels/channel%d", info.Channel)
-
-	return &cdiapi.ContainerEdits{
-		ContainerEdits: &cdispec.ContainerEdits{
-			DeviceNodes: []*cdispec.DeviceNode{
-				{
-					Path:     channelPath,
-					HostPath: filepath.Join(cdi.devRoot, channelPath),
-				},
-			},
-		},
-	}
-}
-
 func (cdi *CDIHandler) CreateStandardDeviceSpecFile(allocatable AllocatableDevices) error {
 	// Initialize NVML in order to get the device edits.
 	if r := cdi.nvml.Init(); r != nvml.SUCCESS {
@@ -182,9 +166,6 @@ func (cdi *CDIHandler) CreateStandardDeviceSpecFile(allocatable AllocatableDevic
 	// Generate device specs for all full GPUs and MIG devices.
 	var deviceSpecs []cdispec.Device
 	for _, device := range allocatable {
-		if device.Type() == ImexChannelType {
-			continue
-		}
 		dspecs, err := cdi.nvcdiDevice.GetDeviceSpecsByID(device.CanonicalIndex())
 		if err != nil {
 			return fmt.Errorf("unable to get device spec for %s: %w", device.CanonicalName(), err)
@@ -284,9 +265,6 @@ func (cdi *CDIHandler) DeleteClaimSpecFile(claimUID string) error {
 }
 
 func (cdi *CDIHandler) GetStandardDevice(device *AllocatableDevice) string {
-	if device.Type() == ImexChannelType {
-		return ""
-	}
 	return cdiparser.QualifiedName(cdiVendor, cdiDeviceClass, device.CanonicalName())
 }
 

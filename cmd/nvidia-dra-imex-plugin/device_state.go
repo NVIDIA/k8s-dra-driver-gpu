@@ -38,15 +38,12 @@ type OpaqueDeviceConfig struct {
 }
 
 type DeviceConfigState struct {
-	MpsControlDaemonID string `json:"mpsControlDaemonID"`
-	containerEdits     *cdiapi.ContainerEdits
+	containerEdits *cdiapi.ContainerEdits
 }
 
 type DeviceState struct {
 	sync.Mutex
 	cdi         *CDIHandler
-	tsManager   *TimeSlicingManager
-	mpsManager  *MpsManager
 	allocatable AllocatableDevices
 	config      *Config
 
@@ -71,24 +68,14 @@ func NewDeviceState(ctx context.Context, config *Config) (*DeviceState, error) {
 
 	hostDriverRoot := config.flags.hostDriverRoot
 	cdi, err := NewCDIHandler(
-		WithNvml(nvdevlib.nvmllib),
-		WithDeviceLib(nvdevlib),
 		WithDriverRoot(string(containerDriverRoot)),
 		WithDevRoot(devRoot),
 		WithTargetDriverRoot(hostDriverRoot),
-		WithNvidiaCTKPath(config.flags.nvidiaCTKPath),
 		WithCDIRoot(config.flags.cdiRoot),
 		WithVendor(cdiVendor),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("unable to create CDI handler: %w", err)
-	}
-
-	tsManager := NewTimeSlicingManager(nvdevlib)
-	mpsManager := NewMpsManager(config, nvdevlib, MpsRoot, hostDriverRoot, MpsControlDaemonTemplatePath)
-
-	if err := cdi.CreateStandardDeviceSpecFile(allocatable); err != nil {
-		return nil, fmt.Errorf("unable to create base CDI spec file: %v", err)
 	}
 
 	checkpointManager, err := checkpointmanager.NewCheckpointManager(DriverPluginPath)
@@ -98,8 +85,6 @@ func NewDeviceState(ctx context.Context, config *Config) (*DeviceState, error) {
 
 	state := &DeviceState{
 		cdi:               cdi,
-		tsManager:         tsManager,
-		mpsManager:        mpsManager,
 		allocatable:       allocatable,
 		config:            config,
 		nvdevlib:          nvdevlib,
@@ -204,17 +189,9 @@ func (s *DeviceState) prepareDevices(ctx context.Context, claim *resourceapi.Res
 		return nil, fmt.Errorf("error getting opaque device configs: %v", err)
 	}
 
-	// Add the default GPU and MIG device Configs to the front of the config
-	// list with the lowest precedence. This guarantees there will be at least
-	// one of each config in the list with len(Requests) == 0 for the lookup below.
-	configs = slices.Insert(configs, 0, &OpaqueDeviceConfig{
-		Requests: []string{},
-		Config:   configapi.DefaultGpuConfig(),
-	})
-	configs = slices.Insert(configs, 0, &OpaqueDeviceConfig{
-		Requests: []string{},
-		Config:   configapi.DefaultMigDeviceConfig(),
-	})
+	// Add the default IMEX Config to the front of the config list with the
+	// lowest precedence. This guarantees there will be at least one of each
+	// config in the list with len(Requests) == 0 for the lookup below.
 	configs = slices.Insert(configs, 0, &OpaqueDeviceConfig{
 		Requests: []string{},
 		Config:   configapi.DefaultImexChannelConfig(),
@@ -230,12 +207,6 @@ func (s *DeviceState) prepareDevices(ctx context.Context, claim *resourceapi.Res
 		}
 		for _, c := range slices.Backward(configs) {
 			if slices.Contains(c.Requests, result.Request) {
-				if _, ok := c.Config.(*configapi.GpuConfig); ok && device.Type() != GpuDeviceType {
-					return nil, fmt.Errorf("cannot apply GPU config to request: %v", result.Request)
-				}
-				if _, ok := c.Config.(*configapi.MigDeviceConfig); ok && device.Type() != MigDeviceType {
-					return nil, fmt.Errorf("cannot apply MIG device config to request: %v", result.Request)
-				}
 				if _, ok := c.Config.(*configapi.ImexChannelConfig); ok && device.Type() != ImexChannelType {
 					return nil, fmt.Errorf("cannot apply Imex Channel config to request: %v", result.Request)
 				}
@@ -243,12 +214,6 @@ func (s *DeviceState) prepareDevices(ctx context.Context, claim *resourceapi.Res
 				break
 			}
 			if len(c.Requests) == 0 {
-				if _, ok := c.Config.(*configapi.GpuConfig); ok && device.Type() != GpuDeviceType {
-					continue
-				}
-				if _, ok := c.Config.(*configapi.MigDeviceConfig); ok && device.Type() != MigDeviceType {
-					continue
-				}
 				if _, ok := c.Config.(*configapi.ImexChannelConfig); ok && device.Type() != ImexChannelType {
 					continue
 				}
@@ -266,10 +231,6 @@ func (s *DeviceState) prepareDevices(ctx context.Context, claim *resourceapi.Res
 		// Cast the opaque config to a configapi.Interface type
 		var config configapi.Interface
 		switch castConfig := c.(type) {
-		case *configapi.GpuConfig:
-			config = castConfig
-		case *configapi.MigDeviceConfig:
-			config = castConfig
 		case *configapi.ImexChannelConfig:
 			config = castConfig
 		default:
@@ -278,18 +239,18 @@ func (s *DeviceState) prepareDevices(ctx context.Context, claim *resourceapi.Res
 
 		// Normalize the config to set any implied defaults.
 		if err := config.Normalize(); err != nil {
-			return nil, fmt.Errorf("error normalizing GPU config: %w", err)
+			return nil, fmt.Errorf("error normalizing config: %w", err)
 		}
 
 		// Validate the config to ensure its integrity.
 		if err := config.Validate(); err != nil {
-			return nil, fmt.Errorf("error validating GPU config: %w", err)
+			return nil, fmt.Errorf("error validating config: %w", err)
 		}
 
 		// Apply the config to the list of results associated with it.
 		configState, err := s.applyConfig(ctx, config, claim, results)
 		if err != nil {
-			return nil, fmt.Errorf("error applying GPU config: %w", err)
+			return nil, fmt.Errorf("error applying config: %w", err)
 		}
 
 		// Capture the prepared device group config in the map.
@@ -306,9 +267,6 @@ func (s *DeviceState) prepareDevices(ctx context.Context, claim *resourceapi.Res
 
 		for _, result := range results {
 			cdiDevices := []string{}
-			if d := s.cdi.GetStandardDevice(s.allocatable[result.Device]); d != "" {
-				cdiDevices = append(cdiDevices, d)
-			}
 			if d := s.cdi.GetClaimDevice(string(claim.UID), s.allocatable[result.Device], preparedDeviceGroupConfigState[c].containerEdits); d != "" {
 				cdiDevices = append(cdiDevices, d)
 			}
@@ -322,16 +280,6 @@ func (s *DeviceState) prepareDevices(ctx context.Context, claim *resourceapi.Res
 
 			var preparedDevice PreparedDevice
 			switch s.allocatable[result.Device].Type() {
-			case GpuDeviceType:
-				preparedDevice.Gpu = &PreparedGpu{
-					Info:   s.allocatable[result.Device].Gpu,
-					Device: device,
-				}
-			case MigDeviceType:
-				preparedDevice.Mig = &PreparedMigDevice{
-					Info:   s.allocatable[result.Device].Mig,
-					Device: device,
-				}
 			case ImexChannelType:
 				preparedDevice.ImexChannel = &PreparedImexChannel{
 					Info:   s.allocatable[result.Device].ImexChannel,
@@ -348,85 +296,17 @@ func (s *DeviceState) prepareDevices(ctx context.Context, claim *resourceapi.Res
 }
 
 func (s *DeviceState) unprepareDevices(ctx context.Context, claimUID string, devices PreparedDevices) error {
-	for _, group := range devices {
-		// Stop any MPS control daemons started for each group of prepared devices.
-		mpsControlDaemon := s.mpsManager.NewMpsControlDaemon(claimUID, group)
-		if err := mpsControlDaemon.Stop(ctx); err != nil {
-			return fmt.Errorf("error stopping MPS control daemon: %w", err)
-		}
-
-		// Go back to default time-slicing for all full GPUs.
-		tsc := configapi.DefaultGpuConfig().Sharing.TimeSlicingConfig
-		if err := s.tsManager.SetTimeSlice(group.Devices.Gpus(), tsc); err != nil {
-			return fmt.Errorf("error setting timeslice for devices: %w", err)
-		}
-	}
 	return nil
 }
 
 func (s *DeviceState) applyConfig(ctx context.Context, config configapi.Interface, claim *resourceapi.ResourceClaim, results []*resourceapi.DeviceRequestAllocationResult) (*DeviceConfigState, error) {
 	switch castConfig := config.(type) {
-	case *configapi.GpuConfig:
-		return s.applySharingConfig(ctx, castConfig.Sharing, claim, results)
-	case *configapi.MigDeviceConfig:
-		return s.applySharingConfig(ctx, castConfig.Sharing, claim, results)
 	case *configapi.ImexChannelConfig:
 		return s.applyImexChannelConfig(ctx, castConfig, claim, results)
 	default:
 		return nil, fmt.Errorf("unknown config type: %T", castConfig)
 	}
 }
-
-func (s *DeviceState) applySharingConfig(ctx context.Context, config configapi.Sharing, claim *resourceapi.ResourceClaim, results []*resourceapi.DeviceRequestAllocationResult) (*DeviceConfigState, error) {
-	// Get the list of claim requests this config is being applied over.
-	var requests []string
-	for _, r := range results {
-		requests = append(requests, r.Request)
-	}
-
-	// Get the list of allocatable devices this config is being applied over.
-	allocatableDevices := make(AllocatableDevices)
-	for _, r := range results {
-		allocatableDevices[r.Device] = s.allocatable[r.Device]
-	}
-
-	// Declare a device group state object to populate.
-	var configState DeviceConfigState
-
-	// Apply time-slicing settings (if available).
-	if config.IsTimeSlicing() {
-		tsc, err := config.GetTimeSlicingConfig()
-		if err != nil {
-			return nil, fmt.Errorf("error getting timeslice config for requests '%v' in claim '%v': %w", requests, claim.UID, err)
-		}
-		if tsc != nil {
-			err = s.tsManager.SetTimeSlice(allocatableDevices, tsc)
-			if err != nil {
-				return nil, fmt.Errorf("error setting timeslice config for requests '%v' in claim '%v': %w", requests, claim.UID, err)
-			}
-		}
-	}
-
-	// Apply MPS settings.
-	if config.IsMps() {
-		mpsc, err := config.GetMpsConfig()
-		if err != nil {
-			return nil, fmt.Errorf("error getting MPS configuration: %w", err)
-		}
-		mpsControlDaemon := s.mpsManager.NewMpsControlDaemon(string(claim.UID), allocatableDevices)
-		if err := mpsControlDaemon.Start(ctx, mpsc); err != nil {
-			return nil, fmt.Errorf("error starting MPS control daemon: %w", err)
-		}
-		if err := mpsControlDaemon.AssertReady(ctx); err != nil {
-			return nil, fmt.Errorf("MPS control daemon is not yet ready: %w", err)
-		}
-		configState.MpsControlDaemonID = mpsControlDaemon.GetID()
-		configState.containerEdits = mpsControlDaemon.GetCDIContainerEdits()
-	}
-
-	return &configState, nil
-}
-
 func (s *DeviceState) applyImexChannelConfig(ctx context.Context, config *configapi.ImexChannelConfig, claim *resourceapi.ResourceClaim, results []*resourceapi.DeviceRequestAllocationResult) (*DeviceConfigState, error) {
 	// Declare a device group state object to populate.
 	var configState DeviceConfigState
@@ -508,51 +388,3 @@ func GetOpaqueDeviceConfigs(
 
 	return resultConfigs, nil
 }
-
-// TODO: Dynamic MIG is not yet supported with structured parameters.
-// Refactor this to allow for the allocation of statically partitioned MIG
-// devices.
-//
-// func (s *DeviceState) prepareMigDevices(claimUID string, allocated *nascrd.AllocatedMigDevices) (*PreparedMigDevices, error) {
-// 	prepared := &PreparedMigDevices{}
-//
-// 	for _, device := range allocated.Devices {
-// 		if _, exists := s.allocatable[device.ParentUUID]; !exists {
-// 			return nil, fmt.Errorf("allocated GPU does not exist: %v", device.ParentUUID)
-// 		}
-//
-// 		parent := s.allocatable[device.ParentUUID]
-//
-// 		if !parent.migEnabled {
-// 			return nil, fmt.Errorf("cannot prepare a GPU with MIG mode disabled: %v", device.ParentUUID)
-// 		}
-//
-// 		if _, exists := parent.migProfiles[device.Profile]; !exists {
-// 			return nil, fmt.Errorf("MIG profile %v does not exist on GPU: %v", device.Profile, device.ParentUUID)
-// 		}
-//
-// 		placement := nvml.GpuInstancePlacement{
-// 			Start: uint32(device.Placement.Start),
-// 			Size:  uint32(device.Placement.Size),
-// 		}
-//
-// 		migInfo, err := s.nvdevlib.createMigDevice(parent.GpuInfo, parent.migProfiles[device.Profile].profile, &placement)
-// 		if err != nil {
-// 			return nil, fmt.Errorf("error creating MIG device: %w", err)
-// 		}
-//
-// 		prepared.Devices = append(prepared.Devices, migInfo)
-// 	}
-//
-// 	return prepared, nil
-// }
-//
-// func (s *DeviceState) unprepareMigDevices(claimUID string, devices *PreparedDevices) error {
-// 	for _, device := range devices.Mig.Devices {
-// 		err := s.nvdevlib.deleteMigDevice(device)
-// 		if err != nil {
-// 			return fmt.Errorf("error deleting MIG device for %v: %w", device.uuid, err)
-// 		}
-// 	}
-// 	return nil
-//}

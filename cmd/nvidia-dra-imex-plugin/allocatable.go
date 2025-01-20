@@ -17,26 +17,16 @@
 package main
 
 import (
-	"slices"
-
 	resourceapi "k8s.io/api/resource/v1beta1"
 )
 
 type AllocatableDevices map[string]*AllocatableDevice
 
 type AllocatableDevice struct {
-	Gpu         *GpuInfo
-	Mig         *MigDeviceInfo
 	ImexChannel *ImexChannelInfo
 }
 
 func (d AllocatableDevice) Type() string {
-	if d.Gpu != nil {
-		return GpuDeviceType
-	}
-	if d.Mig != nil {
-		return MigDeviceType
-	}
 	if d.ImexChannel != nil {
 		return ImexChannelType
 	}
@@ -45,10 +35,6 @@ func (d AllocatableDevice) Type() string {
 
 func (d *AllocatableDevice) CanonicalName() string {
 	switch d.Type() {
-	case GpuDeviceType:
-		return d.Gpu.CanonicalName()
-	case MigDeviceType:
-		return d.Mig.CanonicalName()
 	case ImexChannelType:
 		return d.ImexChannel.CanonicalName()
 	}
@@ -57,10 +43,6 @@ func (d *AllocatableDevice) CanonicalName() string {
 
 func (d *AllocatableDevice) CanonicalIndex() string {
 	switch d.Type() {
-	case GpuDeviceType:
-		return d.Gpu.CanonicalIndex()
-	case MigDeviceType:
-		return d.Mig.CanonicalIndex()
 	case ImexChannelType:
 		return d.ImexChannel.CanonicalIndex()
 	}
@@ -69,40 +51,8 @@ func (d *AllocatableDevice) CanonicalIndex() string {
 
 func (d *AllocatableDevice) GetDevice() resourceapi.Device {
 	switch d.Type() {
-	case GpuDeviceType:
-		return d.Gpu.GetDevice()
-	case MigDeviceType:
-		return d.Mig.GetDevice()
 	case ImexChannelType:
 		return d.ImexChannel.GetDevice()
 	}
 	panic("unexpected type for AllocatableDevice")
-}
-
-func (d AllocatableDevices) GpuUUIDs() []string {
-	var uuids []string
-	for _, device := range d {
-		if device.Type() == GpuDeviceType {
-			uuids = append(uuids, device.Gpu.UUID)
-		}
-	}
-	slices.Sort(uuids)
-	return uuids
-}
-
-func (d AllocatableDevices) MigDeviceUUIDs() []string {
-	var uuids []string
-	for _, device := range d {
-		if device.Type() == MigDeviceType {
-			uuids = append(uuids, device.Mig.UUID)
-		}
-	}
-	slices.Sort(uuids)
-	return uuids
-}
-
-func (d AllocatableDevices) UUIDs() []string {
-	uuids := append(d.GpuUUIDs(), d.MigDeviceUUIDs()...)
-	slices.Sort(uuids)
-	return uuids
 }

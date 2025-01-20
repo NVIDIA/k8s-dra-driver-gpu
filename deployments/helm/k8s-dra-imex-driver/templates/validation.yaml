@@ -12,38 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-{{- $validDeviceClasses := list "gpu" "mig" "imex" }}
-
-{{- if not (kindIs "slice" .Values.deviceClasses) }}
-{{- $error := "" }}
-{{- $error = printf "%s\nValue 'deviceClasses' must be a list: %v" $error .Values.deviceClasses }}
-{{- $error = printf "%s\nValid device classes are: %v" $error $validDeviceClasses }}
-{{- fail $error }}
-{{- end }}
-
-{{- if eq (len .Values.deviceClasses) 0 }}
-{{- $error := "" }}
-{{- $error = printf "%s\nAt least one 'deviceClass' must be specified." $error }}
-{{- $error = printf "%s\nValid device classes are: %v" $error $validDeviceClasses }}
-{{- fail $error }}
-{{- end }}
-
-{{- range .Values.deviceClasses }}
-  {{- $deviceClass := . }}
-  {{- $found := false }}
-  {{- range $validDeviceClasses }}
-    {{- if eq . $deviceClass }}
-      {{- $found = true }}
-    {{- end }}
-  {{- end }}
-  {{- if not $found }}
-    {{- $error := "" }}
-    {{- $error = printf "%s\nInvalid value in 'deviceClasses': %s" $error $deviceClass }}
-    {{- $error = printf "%s\nValid device classes are: %v" $error $validDeviceClasses }}
-    {{- fail $error }}
-  {{- end }}
-{{- end }}
-
 {{- if .Values.namespace }}
 {{- $error := "" }}
 {{- $error = printf "%s\nValue 'namespace' set to %s" $error .Values.namespace }}

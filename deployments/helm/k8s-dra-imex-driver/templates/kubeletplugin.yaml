@@ -53,36 +53,13 @@ spec:
           {{- toYaml .Values.kubeletPlugin.containers.plugin.securityContext | nindent 10 }}
         image: {{ include "k8s-dra-driver.fullimage" . }}
         imagePullPolicy: {{ .Values.image.pullPolicy }}
-        command: ["bash", "-c"]
-        args:
-        - |-
-          # Conditionally mask the params file to prevent this container from
-          # recreating any missing GPU device nodes. This is necessary, for
-          # example, when running under nvkind to limit the set GPUs governed
-          # by the plugin even though it has cgroup access to all of them.
-          if [ "${MASK_NVIDIA_DRIVER_PARAMS}" = "true" ]; then
-            cp /proc/driver/nvidia/params root/gpu-params
-            sed -i 's/^ModifyDeviceFiles: 1$/ModifyDeviceFiles: 0/' root/gpu-params
-            mount --bind root/gpu-params /proc/driver/nvidia/params
-          fi
-          nvidia-dra-imex-plugin
+        command:
+        - nvidia-dra-imex-plugin
         resources:
           {{- toYaml .Values.kubeletPlugin.containers.plugin.resources | nindent 10 }}
         env:
-        - name: MASK_NVIDIA_DRIVER_PARAMS
-          value: "{{ .Values.maskNvidiaDriverParams }}"
-        - name: NVIDIA_CTK_PATH
-          value: "{{ .Values.nvidiaCtkPath }}"
-        - name: NVIDIA_DRIVER_ROOT
-          value: "{{ .Values.nvidiaDriverRoot }}"
-        - name: NVIDIA_VISIBLE_DEVICES
-          value: void
         - name: CDI_ROOT
           value: /var/run/cdi
-        - name: NVIDIA_MIG_CONFIG_DEVICES
-          value: all
-        - name: DEVICE_CLASSES
-          value: {{ .Values.deviceClasses | join "," }}
         - name: NODE_NAME
           valueFrom:
             fieldRef:

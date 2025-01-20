@@ -81,8 +81,6 @@ spec:
           value: /var/run/cdi
         - name: NVIDIA_MIG_CONFIG_DEVICES
           value: all
-        - name: DEVICE_CLASSES
-          value: {{ .Values.deviceClasses | join "," }}
         - name: NODE_NAME
           valueFrom:
             fieldRef:

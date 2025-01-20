@@ -34,8 +34,6 @@ selectorLabelsOverride: {}
 
 allowDefaultNamespace: false
 
-deviceClasses: ["gpu", "mig", "imex"]
-
 # Masking of the params file is typically done to allow nvkind to
 # selectively exclude certain GPUs from being visible to the
 # underlying GPU driver. Unfortunately, kind doesn't let you choose
@@ -62,24 +60,6 @@ serviceAccount:
   # The name of the service account to use.
   # If not set and create is true, a name is generated using the fullname template
   name: ""
-
-controller:
-  priorityClassName: "system-node-critical"
-  podAnnotations: {}
-  podSecurityContext: {}
-  nodeSelector: {}
-  tolerations:
-  - key: node-role.kubernetes.io/master
-    operator: Exists
-    effect: NoSchedule
-  - key: node-role.kubernetes.io/control-plane
-    operator: Exists
-    effect: NoSchedule
-  affinity: {}
-  containers:
-    controller:
-      securityContext: {}
-      resources: {}
 
 kubeletPlugin:
   priorityClassName: "system-node-critical"

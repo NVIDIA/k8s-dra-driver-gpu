@@ -35,7 +35,6 @@ helm upgrade -i --create-namespace --namespace nvidia nvidia-dra-imex-driver ${P
   --set image.pullPolicy=Always \
   --set controller.priorityClassName="" \
   --set kubeletPlugin.priorityClassName="" \
-  --set deviceClasses="{imex}" \
   --set nvidiaDriverRoot="/opt/nvidia" \
   --set kubeletPlugin.tolerations[0].key=nvidia.com/gpu \
   --set kubeletPlugin.tolerations[0].operator=Exists \

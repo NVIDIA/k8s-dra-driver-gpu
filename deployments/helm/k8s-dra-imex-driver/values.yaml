@@ -34,19 +34,6 @@ selectorLabelsOverride: {}
 
 allowDefaultNamespace: false
 
-deviceClasses: ["gpu", "mig", "imex"]
-
-# Masking of the params file is typically done to allow nvkind to
-# selectively exclude certain GPUs from being visible to the
-# underlying GPU driver. Unfortunately, kind doesn't let you choose
-# which device nodes to inject into each worker node (they all come in
-# via the --priviliged flag passed to docker/podman). Because of
-# this, all workers see all GPUs by default. By masking the params
-# file we can prevent a container from recreating any missing GPU
-# device nodes and limit its view to only those device nodes that
-# nvkind decided to allow in.
-maskNvidiaDriverParams: false
-
 imagePullSecrets: []
 image:
   repository: nvcr.io/nvidia/cloud-native/k8s-dra-driver
@@ -69,17 +56,20 @@ controller:
   podSecurityContext: {}
   nodeSelector: {}
   tolerations:
-  - key: node-role.kubernetes.io/master
-    operator: Exists
-    effect: NoSchedule
   - key: node-role.kubernetes.io/control-plane
     operator: Exists
     effect: NoSchedule
-  affinity: {}
   containers:
     controller:
       securityContext: {}
       resources: {}
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+        - matchExpressions:
+          - key: "node-role.kubernetes.io/control-plane"
+            operator: "Exists"
 
 kubeletPlugin:
   priorityClassName: "system-node-critical"

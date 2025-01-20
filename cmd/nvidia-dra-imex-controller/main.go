@@ -31,7 +31,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/urfave/cli/v2"
 
-	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/component-base/metrics/legacyregistry"
 	"k8s.io/klog/v2"
 
@@ -44,7 +43,7 @@ import (
 )
 
 const (
-	DriverName = "gpu.nvidia.com"
+	DriverName = "imex.nvidia.com"
 )
 
 type Flags struct {
@@ -57,8 +56,6 @@ type Flags struct {
 	httpEndpoint string
 	metricsPath  string
 	profilePath  string
-
-	deviceClasses sets.Set[string]
 }
 
 type Config struct {
@@ -116,12 +113,6 @@ func newApp() *cli.App {
 			Destination: &flags.profilePath,
 			EnvVars:     []string{"PPROF_PATH"},
 		},
-		&cli.StringSliceFlag{
-			Name:    "device-classes",
-			Usage:   "The supported set of DRA device classes",
-			Value:   cli.NewStringSlice(GpuDeviceType, MigDeviceType, ImexChannelType),
-			EnvVars: []string{"DEVICE_CLASSES"},
-		},
 	}
 
 	cliFlags = append(cliFlags, flags.kubeClientConfig.Flags()...)
@@ -141,7 +132,6 @@ func newApp() *cli.App {
 		},
 		Action: func(c *cli.Context) error {
 			mux := http.NewServeMux()
-			flags.deviceClasses = sets.New[string](c.StringSlice("device-classes")...)
 
 			clientsets, err := flags.kubeClientConfig.NewClientSets()
 			if err != nil {
@@ -164,12 +154,6 @@ func newApp() *cli.App {
 
 			sigs := make(chan os.Signal, 1)
 			signal.Notify(sigs, syscall.SIGTERM, syscall.SIGINT)
-
-			if !config.flags.deviceClasses.Has(ImexChannelType) {
-				klog.InfoS("Not configured for IMEX support, blocking indefinitely")
-				<-sigs
-				return nil
-			}
 
 			errChan := make(chan error, 1)
 			controller := NewController(config)

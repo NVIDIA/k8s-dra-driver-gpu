@@ -24,9 +24,7 @@ source "${CURRENT_DIR}/scripts/common.sh"
 
 kubectl label node -l node-role.x-k8s.io/worker --overwrite nvidia.com/gpu.present=true
 
-deviceClasses=${1:-"gpu,mig"}
 helm upgrade -i --create-namespace --namespace nvidia nvidia-dra-gpu-driver ${PROJECT_DIR}/deployments/helm/k8s-dra-gpu-driver \
-    --set deviceClasses="{${deviceClasses}}" \
     ${NVIDIA_CTK_PATH:+--set nvidiaCtkPath=${NVIDIA_CTK_PATH}} \
     ${NVIDIA_DRIVER_ROOT:+--set nvidiaDriverRoot=${NVIDIA_DRIVER_ROOT}} \
     ${MASK_NVIDIA_DRIVER_PARAMS:+--set maskNvidiaDriverParams=${MASK_NVIDIA_DRIVER_PARAMS}} \

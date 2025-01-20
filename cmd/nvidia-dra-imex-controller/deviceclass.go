@@ -142,17 +142,17 @@ func (m *DeviceClassManager) Create(ctx context.Context, name string, mne *nvapi
 			Selectors: []resourceapi.DeviceSelector{
 				{
 					CEL: &resourceapi.CELDeviceSelector{
-						Expression: "device.driver == 'gpu.nvidia.com'",
+						Expression: fmt.Sprintf("device.driver == '%s'", DriverName),
 					},
 				},
 				{
 					CEL: &resourceapi.CELDeviceSelector{
-						Expression: "device.attributes['gpu.nvidia.com'].type == 'imex-channel'",
+						Expression: fmt.Sprintf("device.attributes['%s'].type == 'imex-channel'", DriverName),
 					},
 				},
 				{
 					CEL: &resourceapi.CELDeviceSelector{
-						Expression: fmt.Sprintf("device.attributes['gpu.nvidia.com'].domain == '%v'", mne.UID),
+						Expression: fmt.Sprintf("device.attributes['%s'].domain == '%v'", DriverName, mne.UID),
 					},
 				},
 			},

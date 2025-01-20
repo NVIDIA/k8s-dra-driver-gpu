@@ -1,4 +1,3 @@
-{{- if include "k8s-dra-driver.listHas" (list $.Values.deviceClasses "mig") }}
 ---
 apiVersion: resource.k8s.io/v1beta1
 kind: DeviceClass
@@ -8,4 +7,3 @@ spec:
   selectors:
   - cel:
       expression: "device.driver == 'gpu.nvidia.com' && device.attributes['gpu.nvidia.com'].type == 'mig'"
-{{- end }}
