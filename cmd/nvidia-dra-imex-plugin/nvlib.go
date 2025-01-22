@@ -25,6 +25,9 @@ import (
 	"strings"
 
 	"golang.org/x/sys/unix"
+
+	nvdev "github.com/NVIDIA/go-nvlib/pkg/nvlib/device"
+	"github.com/NVIDIA/go-nvml/pkg/nvml"
 )
 
 const (
@@ -33,12 +36,35 @@ const (
 )
 
 type deviceLib struct {
-	devRoot string
+	nvdev.Interface
+	nvmllib           nvml.Interface
+	driverLibraryPath string
+	devRoot           string
+	nvidiaSMIPath     string
 }
 
 func newDeviceLib(driverRoot root) (*deviceLib, error) {
+	driverLibraryPath, err := driverRoot.getDriverLibraryPath()
+	if err != nil {
+		return nil, fmt.Errorf("failed to locate driver libraries: %w", err)
+	}
+
+	nvidiaSMIPath, err := driverRoot.getNvidiaSMIPath()
+	if err != nil {
+		return nil, fmt.Errorf("failed to locate nvidia-smi: %w", err)
+	}
+
+	// We construct an NVML library specifying the path to libnvidia-ml.so.1
+	// explicitly so that we don't have to rely on the library path.
+	nvmllib := nvml.New(
+		nvml.WithLibraryPath(driverLibraryPath),
+	)
 	d := deviceLib{
-		devRoot: driverRoot.getDevRoot(),
+		Interface:         nvdev.New(nvmllib),
+		nvmllib:           nvmllib,
+		driverLibraryPath: driverLibraryPath,
+		devRoot:           driverRoot.getDevRoot(),
+		nvidiaSMIPath:     nvidiaSMIPath,
 	}
 	return &d, nil
 }
@@ -46,11 +72,19 @@ func newDeviceLib(driverRoot root) (*deviceLib, error) {
 func (l deviceLib) enumerateAllPossibleDevices(config *Config) (AllocatableDevices, error) {
 	alldevices := make(AllocatableDevices)
 
-	imex, err := l.enumerateImexChannels(config)
+	imexChannels, err := l.enumerateImexChannels(config)
 	if err != nil {
-		return nil, fmt.Errorf("error enumerating IMEX devices: %w", err)
+		return nil, fmt.Errorf("error enumerating IMEX channel devices: %w", err)
 	}
-	for k, v := range imex {
+	for k, v := range imexChannels {
+		alldevices[k] = v
+	}
+
+	imexDaemons, err := l.enumerateImexDaemons(config)
+	if err != nil {
+		return nil, fmt.Errorf("error enumerating IMEX daemon devices: %w", err)
+	}
+	for k, v := range imexDaemons {
 		alldevices[k] = v
 	}
 
@@ -74,6 +108,18 @@ func (l deviceLib) enumerateImexChannels(config *Config) (AllocatableDevices, er
 		devices[imexChannelInfo.CanonicalName()] = deviceInfo
 	}
 
+	return devices, nil
+}
+
+func (l deviceLib) enumerateImexDaemons(config *Config) (AllocatableDevices, error) {
+	devices := make(AllocatableDevices)
+	imexDaemonInfo := &ImexDaemonInfo{
+		ID: 0,
+	}
+	deviceInfo := &AllocatableDevice{
+		ImexDaemon: imexDaemonInfo,
+	}
+	devices[imexDaemonInfo.CanonicalName()] = deviceInfo
 	return devices, nil
 }
 

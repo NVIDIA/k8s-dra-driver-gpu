@@ -26,11 +26,17 @@ type PreparedClaims map[string]PreparedDevices
 
 type PreparedDevice struct {
 	ImexChannel *PreparedImexChannel `json:"imexChannel"`
+	ImexDaemon  *PreparedImexDaemon  `json:"imexDaemon"`
 }
 
 type PreparedImexChannel struct {
 	Info   *ImexChannelInfo `json:"info"`
 	Device *drapbv1.Device  `json:"device"`
+}
+
+type PreparedImexDaemon struct {
+	Info   *ImexDaemonInfo `json:"info"`
+	Device *drapbv1.Device `json:"device"`
 }
 
 type PreparedDeviceGroup struct {
@@ -42,6 +48,9 @@ func (d PreparedDevice) Type() string {
 	if d.ImexChannel != nil {
 		return ImexChannelType
 	}
+	if d.ImexDaemon != nil {
+		return ImexDaemonType
+	}
 	return UnknownDeviceType
 }
 
@@ -49,6 +58,8 @@ func (d *PreparedDevice) CanonicalName() string {
 	switch d.Type() {
 	case ImexChannelType:
 		return d.ImexChannel.Info.CanonicalName()
+	case ImexDaemonType:
+		return d.ImexDaemon.Info.CanonicalName()
 	}
 	panic("unexpected type for AllocatableDevice")
 }
@@ -57,6 +68,8 @@ func (d *PreparedDevice) CanonicalIndex() string {
 	switch d.Type() {
 	case ImexChannelType:
 		return d.ImexChannel.Info.CanonicalIndex()
+	case ImexDaemonType:
+		return d.ImexDaemon.Info.CanonicalIndex()
 	}
 	panic("unexpected type for AllocatableDevice")
 }
@@ -65,6 +78,16 @@ func (l PreparedDeviceList) ImexChannels() PreparedDeviceList {
 	var devices PreparedDeviceList
 	for _, device := range l {
 		if device.Type() == ImexChannelType {
+			devices = append(devices, device)
+		}
+	}
+	return devices
+}
+
+func (l PreparedDeviceList) ImexDaemons() PreparedDeviceList {
+	var devices PreparedDeviceList
+	for _, device := range l {
+		if device.Type() == ImexDaemonType {
 			devices = append(devices, device)
 		}
 	}
@@ -85,6 +108,8 @@ func (g *PreparedDeviceGroup) GetDevices() []*drapbv1.Device {
 		switch device.Type() {
 		case ImexChannelType:
 			devices = append(devices, device.ImexChannel.Device)
+		case ImexDaemonType:
+			devices = append(devices, device.ImexDaemon.Device)
 		}
 	}
 	return devices

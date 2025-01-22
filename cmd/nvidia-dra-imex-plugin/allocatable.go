@@ -24,11 +24,15 @@ type AllocatableDevices map[string]*AllocatableDevice
 
 type AllocatableDevice struct {
 	ImexChannel *ImexChannelInfo
+	ImexDaemon  *ImexDaemonInfo
 }
 
 func (d AllocatableDevice) Type() string {
 	if d.ImexChannel != nil {
 		return ImexChannelType
+	}
+	if d.ImexDaemon != nil {
+		return ImexDaemonType
 	}
 	return UnknownDeviceType
 }
@@ -37,6 +41,8 @@ func (d *AllocatableDevice) CanonicalName() string {
 	switch d.Type() {
 	case ImexChannelType:
 		return d.ImexChannel.CanonicalName()
+	case ImexDaemonType:
+		return d.ImexDaemon.CanonicalName()
 	}
 	panic("unexpected type for AllocatableDevice")
 }
@@ -45,6 +51,8 @@ func (d *AllocatableDevice) CanonicalIndex() string {
 	switch d.Type() {
 	case ImexChannelType:
 		return d.ImexChannel.CanonicalIndex()
+	case ImexDaemonType:
+		return d.ImexDaemon.CanonicalIndex()
 	}
 	panic("unexpected type for AllocatableDevice")
 }
@@ -53,6 +61,8 @@ func (d *AllocatableDevice) GetDevice() resourceapi.Device {
 	switch d.Type() {
 	case ImexChannelType:
 		return d.ImexChannel.GetDevice()
+	case ImexDaemonType:
+		return d.ImexDaemon.GetDevice()
 	}
 	panic("unexpected type for AllocatableDevice")
 }

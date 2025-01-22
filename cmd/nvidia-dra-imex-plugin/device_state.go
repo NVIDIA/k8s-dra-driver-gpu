@@ -38,14 +38,16 @@ type OpaqueDeviceConfig struct {
 }
 
 type DeviceConfigState struct {
+	ImexDomain     string
 	containerEdits *cdiapi.ContainerEdits
 }
 
 type DeviceState struct {
 	sync.Mutex
-	cdi         *CDIHandler
-	allocatable AllocatableDevices
-	config      *Config
+	cdi                       *CDIHandler
+	imexDaemonSettingsManager *ImexDaemonSettingsManager
+	allocatable               AllocatableDevices
+	config                    *Config
 
 	nvdevlib          *deviceLib
 	checkpointManager checkpointmanager.CheckpointManager
@@ -68,14 +70,23 @@ func NewDeviceState(ctx context.Context, config *Config) (*DeviceState, error) {
 
 	hostDriverRoot := config.flags.hostDriverRoot
 	cdi, err := NewCDIHandler(
+		WithNvml(nvdevlib.nvmllib),
+		WithDeviceLib(nvdevlib),
 		WithDriverRoot(string(containerDriverRoot)),
 		WithDevRoot(devRoot),
 		WithTargetDriverRoot(hostDriverRoot),
+		WithNvidiaCTKPath(config.flags.nvidiaCTKPath),
 		WithCDIRoot(config.flags.cdiRoot),
 		WithVendor(cdiVendor),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("unable to create CDI handler: %w", err)
+	}
+
+	imexDaemonSettingsManager := NewImexDaemonSettingsManager(config, ImexDaemonSettingsRoot)
+
+	if err := cdi.CreateStandardDeviceSpecFile(allocatable); err != nil {
+		return nil, fmt.Errorf("unable to create base CDI spec file: %v", err)
 	}
 
 	checkpointManager, err := checkpointmanager.NewCheckpointManager(DriverPluginPath)
@@ -84,11 +95,12 @@ func NewDeviceState(ctx context.Context, config *Config) (*DeviceState, error) {
 	}
 
 	state := &DeviceState{
-		cdi:               cdi,
-		allocatable:       allocatable,
-		config:            config,
-		nvdevlib:          nvdevlib,
-		checkpointManager: checkpointManager,
+		cdi:                       cdi,
+		imexDaemonSettingsManager: imexDaemonSettingsManager,
+		allocatable:               allocatable,
+		config:                    config,
+		nvdevlib:                  nvdevlib,
+		checkpointManager:         checkpointManager,
 	}
 
 	checkpoints, err := state.checkpointManager.ListCheckpoints()
@@ -196,6 +208,10 @@ func (s *DeviceState) prepareDevices(ctx context.Context, claim *resourceapi.Res
 		Requests: []string{},
 		Config:   configapi.DefaultImexChannelConfig(),
 	})
+	configs = slices.Insert(configs, 0, &OpaqueDeviceConfig{
+		Requests: []string{},
+		Config:   configapi.DefaultImexDaemonConfig(),
+	})
 
 	// Look through the configs and figure out which one will be applied to
 	// each device allocation result based on their order of precedence and type.
@@ -210,11 +226,17 @@ func (s *DeviceState) prepareDevices(ctx context.Context, claim *resourceapi.Res
 				if _, ok := c.Config.(*configapi.ImexChannelConfig); ok && device.Type() != ImexChannelType {
 					return nil, fmt.Errorf("cannot apply Imex Channel config to request: %v", result.Request)
 				}
+				if _, ok := c.Config.(*configapi.ImexDaemonConfig); ok && device.Type() != ImexDaemonType {
+					return nil, fmt.Errorf("cannot apply Imex Daemon config to request: %v", result.Request)
+				}
 				configResultsMap[c.Config] = append(configResultsMap[c.Config], &result)
 				break
 			}
 			if len(c.Requests) == 0 {
 				if _, ok := c.Config.(*configapi.ImexChannelConfig); ok && device.Type() != ImexChannelType {
+					continue
+				}
+				if _, ok := c.Config.(*configapi.ImexDaemonConfig); ok && device.Type() != ImexDaemonType {
 					continue
 				}
 				configResultsMap[c.Config] = append(configResultsMap[c.Config], &result)
@@ -232,6 +254,8 @@ func (s *DeviceState) prepareDevices(ctx context.Context, claim *resourceapi.Res
 		var config configapi.Interface
 		switch castConfig := c.(type) {
 		case *configapi.ImexChannelConfig:
+			config = castConfig
+		case *configapi.ImexDaemonConfig:
 			config = castConfig
 		default:
 			return nil, fmt.Errorf("runtime object is not a recognized configuration")
@@ -267,6 +291,9 @@ func (s *DeviceState) prepareDevices(ctx context.Context, claim *resourceapi.Res
 
 		for _, result := range results {
 			cdiDevices := []string{}
+			if d := s.cdi.GetStandardDevice(s.allocatable[result.Device]); d != "" {
+				cdiDevices = append(cdiDevices, d)
+			}
 			if d := s.cdi.GetClaimDevice(string(claim.UID), s.allocatable[result.Device], preparedDeviceGroupConfigState[c].containerEdits); d != "" {
 				cdiDevices = append(cdiDevices, d)
 			}
@@ -285,6 +312,11 @@ func (s *DeviceState) prepareDevices(ctx context.Context, claim *resourceapi.Res
 					Info:   s.allocatable[result.Device].ImexChannel,
 					Device: device,
 				}
+			case ImexDaemonType:
+				preparedDevice.ImexDaemon = &PreparedImexDaemon{
+					Info:   s.allocatable[result.Device].ImexDaemon,
+					Device: device,
+				}
 			}
 
 			preparedDeviceGroup.Devices = append(preparedDeviceGroup.Devices, preparedDevice)
@@ -296,6 +328,21 @@ func (s *DeviceState) prepareDevices(ctx context.Context, claim *resourceapi.Res
 }
 
 func (s *DeviceState) unprepareDevices(ctx context.Context, claimUID string, devices PreparedDevices) error {
+	// Unprepare any IMEX daemons prepared for each group of prepared devices.
+	for _, group := range devices {
+		// Skip if no ImexDaemon configured for this device.
+		if group.ConfigState.ImexDomain == "" {
+			continue
+		}
+
+		// Create new IMEX daemon settings from the IMEX daemon manager.
+		imexDaemonSettings := s.imexDaemonSettingsManager.NewSettings(group.ConfigState.ImexDomain)
+
+		// Unprepare the new IMEX Daemon.
+		if err := imexDaemonSettings.Unprepare(ctx); err != nil {
+			return fmt.Errorf("error unpreparing IMEX daemon settings: %w", err)
+		}
+	}
 	return nil
 }
 
@@ -303,10 +350,13 @@ func (s *DeviceState) applyConfig(ctx context.Context, config configapi.Interfac
 	switch castConfig := config.(type) {
 	case *configapi.ImexChannelConfig:
 		return s.applyImexChannelConfig(ctx, castConfig, claim, results)
+	case *configapi.ImexDaemonConfig:
+		return s.applyImexDaemonConfig(ctx, castConfig, claim, results)
 	default:
 		return nil, fmt.Errorf("unknown config type: %T", castConfig)
 	}
 }
+
 func (s *DeviceState) applyImexChannelConfig(ctx context.Context, config *configapi.ImexChannelConfig, claim *resourceapi.ResourceClaim, results []*resourceapi.DeviceRequestAllocationResult) (*DeviceConfigState, error) {
 	// Declare a device group state object to populate.
 	var configState DeviceConfigState
@@ -319,6 +369,41 @@ func (s *DeviceState) applyImexChannelConfig(ctx context.Context, config *config
 		}
 		configState.containerEdits = configState.containerEdits.Append(s.cdi.GetImexChannelContainerEdits(imexChannel))
 	}
+
+	return &configState, nil
+}
+
+func (s *DeviceState) applyImexDaemonConfig(ctx context.Context, config *configapi.ImexDaemonConfig, claim *resourceapi.ResourceClaim, results []*resourceapi.DeviceRequestAllocationResult) (*DeviceConfigState, error) {
+	// Get the list of claim requests this config is being applied over.
+	var requests []string
+	for _, r := range results {
+		requests = append(requests, r.Request)
+	}
+
+	// Get the list of allocatable devices this config is being applied over.
+	allocatableDevices := make(AllocatableDevices)
+	for _, r := range results {
+		allocatableDevices[r.Device] = s.allocatable[r.Device]
+	}
+
+	if len(allocatableDevices) != 1 {
+		return nil, fmt.Errorf("only expected 1 device for requests '%v' in claim '%v'", requests, claim.UID)
+	}
+
+	// Declare a device group state object to populate.
+	var configState DeviceConfigState
+
+	// Create new IMEX daemon settings from the IMEX daemon manager.
+	imexDaemonSettings := s.imexDaemonSettingsManager.NewSettings(config.DomainID)
+
+	// Prepare the new IMEX Daemon.
+	if err := imexDaemonSettings.Prepare(ctx); err != nil {
+		return nil, fmt.Errorf("error preparing IMEX daemon settings for requests '%v' in claim '%v': %w", requests, claim.UID, err)
+	}
+
+	// Store information about the IMEX Daemon in the configState.
+	configState.ImexDomain = imexDaemonSettings.GetDomain()
+	configState.containerEdits = imexDaemonSettings.GetCDIContainerEdits()
 
 	return &configState, nil
 }

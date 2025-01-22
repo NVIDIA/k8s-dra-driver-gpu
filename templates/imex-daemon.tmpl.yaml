@@ -22,26 +22,35 @@ spec:
       containers:
       - name: imex-daemon
         image: ubuntu:22.04
-        command: [chroot, /driver-root, sh, -c]
+        command: [sh, -c]
         args:
         - |-
-          set -e
-          rm -f /var/log/nvidia-imex.log
-          /usr/bin/nvidia-imex -c /etc/nvidia-imex/config.cfg
           trap 'exit 0' TERM
+          set -e
+          if nvidia-smi -q | grep -E "ClusterUUID|CliqueId" | grep -q "N/A"; then
+            echo "ClusterUUID and CliqueId are NOT set for GPUs on this node."
+            echo "The IMEX daemon will not be started."
+            echo "Sleeping forever..."
+            touch /etc/nvidia-imex/null
+            tail -f /dev/null & wait
+          fi
+          /usr/bin/nvidia-imex -c /etc/nvidia-imex/config.cfg
           tail -n +1 -f /var/log/nvidia-imex.log & wait
+        resources:
+          claims:
+          - name: imex-daemon
         startupProbe:
           exec:
             command:
-            - cat
-            - /driver-root/var/log/nvidia-imex.log
+            - "sh"
+            - "-c"
+            - |-
+              if [ -f /etc/nvidia-imex/null ]; then
+                exit 0
+              fi
+              test "$(nvidia-imex-ctl -q)" = "READY"
           initialDelaySeconds: 1
           periodSeconds: 1
-        volumeMounts:
-        - name: driver-root
-          mountPath: /driver-root
-        securityContext:
-          privileged: true
       affinity:
         podAffinity:
           preferredDuringSchedulingIgnoredDuringExecution:
@@ -54,16 +63,6 @@ spec:
                   values:
                   - {{ .MultiNodeEnvironmentLabelValue }}
               topologyKey: "nvidia.com/gpu.clique"
-        podAntiAffinity:
-          requiredDuringSchedulingIgnoredDuringExecution:
-          - labelSelector:
-              matchExpressions:
-                - key: {{ .MultiNodeEnvironmentLabelKey }}
-                  operator: In
-                  values:
-                  - {{ .MultiNodeEnvironmentLabelValue }}
-            topologyKey: "kubernetes.io/hostname"
-      volumes:
-      - name: driver-root
-        hostPath:
-          path: {{ .NvidiaDriverRoot }}
+      resourceClaims:
+      - name: imex-daemon
+        resourceClaimTemplateName: {{ .ResourceClaimTemplateName }}

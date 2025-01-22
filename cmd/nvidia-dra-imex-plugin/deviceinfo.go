@@ -27,12 +27,24 @@ type ImexChannelInfo struct {
 	Channel int `json:"channel"`
 }
 
+type ImexDaemonInfo struct {
+	ID int `json:"domain"`
+}
+
 func (d *ImexChannelInfo) CanonicalName() string {
 	return fmt.Sprintf("imex-channel-%d", d.Channel)
 }
 
+func (d *ImexDaemonInfo) CanonicalName() string {
+	return fmt.Sprintf("imex-daemon-%d", d.ID)
+}
+
 func (d *ImexChannelInfo) CanonicalIndex() string {
 	return fmt.Sprintf("%d", d.Channel)
+}
+
+func (d *ImexDaemonInfo) CanonicalIndex() string {
+	return fmt.Sprintf("%d", d.ID)
 }
 
 func (d *ImexChannelInfo) GetDevice() resourceapi.Device {
@@ -43,11 +55,25 @@ func (d *ImexChannelInfo) GetDevice() resourceapi.Device {
 				"type": {
 					StringValue: ptr.To(ImexChannelType),
 				},
-				//"domain": {
-				//	StringValue: ptr.To(ImexChannelType),
-				//},
 				"channel": {
 					IntValue: ptr.To(int64(d.Channel)),
+				},
+			},
+		},
+	}
+	return device
+}
+
+func (d *ImexDaemonInfo) GetDevice() resourceapi.Device {
+	device := resourceapi.Device{
+		Name: d.CanonicalName(),
+		Basic: &resourceapi.BasicDevice{
+			Attributes: map[resourceapi.QualifiedName]resourceapi.DeviceAttribute{
+				"type": {
+					StringValue: ptr.To(ImexDaemonType),
+				},
+				"id": {
+					IntValue: ptr.To(int64(d.ID)),
 				},
 			},
 		},

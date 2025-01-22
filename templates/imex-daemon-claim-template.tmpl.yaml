@@ -1,0 +1,25 @@
+---
+apiVersion: resource.k8s.io/v1beta1
+kind: ResourceClaimTemplate
+metadata:
+  namespace: {{ .Namespace }}
+  generateName: {{ .GenerateName }}
+  finalizers:
+    - {{ .Finalizer }}
+  labels:
+    {{ .MultiNodeEnvironmentLabelKey }}: {{ .MultiNodeEnvironmentLabelValue }}
+spec:
+  spec:
+    devices:
+      requests:
+      - name: imex-daemon
+        deviceClassName: {{ .DeviceClassName }}
+      config:
+      - requests: ["imex-daemon"]
+        opaque:
+          driver: {{ .DriverName }}
+          parameters:
+            apiVersion: {{ .ImexDaemonConfig.APIVersion }}
+            kind: {{ .ImexDaemonConfig.Kind }}
+            numNodes: {{ .ImexDaemonConfig.NumNodes }}
+            domainID: {{ .ImexDaemonConfig.DomainID }}

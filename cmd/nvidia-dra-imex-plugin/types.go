@@ -17,6 +17,7 @@
 package main
 
 const (
-	ImexChannelType   = "imex"
+	ImexChannelType   = "imex-channel"
+	ImexDaemonType    = "imex-daemon"
 	UnknownDeviceType = "unknown"
 )

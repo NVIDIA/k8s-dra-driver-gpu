@@ -18,10 +18,17 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"path/filepath"
 
+	"github.com/sirupsen/logrus"
+
+	nvdevice "github.com/NVIDIA/go-nvlib/pkg/nvlib/device"
+	"github.com/NVIDIA/go-nvml/pkg/nvml"
+	"github.com/NVIDIA/nvidia-container-toolkit/pkg/nvcdi"
 	"github.com/NVIDIA/nvidia-container-toolkit/pkg/nvcdi/spec"
 	transformroot "github.com/NVIDIA/nvidia-container-toolkit/pkg/nvcdi/transform/root"
+	"k8s.io/klog/v2"
 	cdiapi "tags.cncf.io/container-device-interface/pkg/cdi"
 	cdiparser "tags.cncf.io/container-device-interface/pkg/parser"
 	cdispec "tags.cncf.io/container-device-interface/specs-go"
@@ -30,21 +37,32 @@ import (
 const (
 	cdiVendor = "k8s." + DriverName
 
-	cdiClaimClass = "claim"
-	cdiClaimKind  = cdiVendor + "/" + cdiClaimClass
+	cdiDeviceClass = "device"
+	cdiDeviceKind  = cdiVendor + "/" + cdiDeviceClass
+	cdiClaimClass  = "claim"
+	cdiClaimKind   = cdiVendor + "/" + cdiClaimClass
+
+	cdiBaseSpecIdentifier = "base"
 
 	defaultCDIRoot = "/var/run/cdi"
 )
 
 type CDIHandler struct {
+	logger           *logrus.Logger
+	nvml             nvml.Interface
+	nvdevice         nvdevice.Interface
+	nvcdiDevice      nvcdi.Interface
+	nvcdiClaim       nvcdi.Interface
 	cache            *cdiapi.Cache
 	driverRoot       string
 	devRoot          string
 	targetDriverRoot string
+	nvidiaCTKPath    string
 
-	cdiRoot    string
-	vendor     string
-	claimClass string
+	cdiRoot     string
+	vendor      string
+	deviceClass string
+	claimClass  string
 }
 
 func NewCDIHandler(opts ...cdiOption) (*CDIHandler, error) {
@@ -53,14 +71,61 @@ func NewCDIHandler(opts ...cdiOption) (*CDIHandler, error) {
 		opt(h)
 	}
 
+	if h.logger == nil {
+		h.logger = logrus.New()
+		h.logger.SetOutput(io.Discard)
+	}
+	if h.nvml == nil {
+		h.nvml = nvml.New()
+	}
 	if h.cdiRoot == "" {
 		h.cdiRoot = defaultCDIRoot
+	}
+	if h.nvdevice == nil {
+		h.nvdevice = nvdevice.New(h.nvml)
 	}
 	if h.vendor == "" {
 		h.vendor = cdiVendor
 	}
+	if h.deviceClass == "" {
+		h.deviceClass = cdiDeviceClass
+	}
 	if h.claimClass == "" {
 		h.claimClass = cdiClaimClass
+	}
+	if h.nvcdiDevice == nil {
+		nvcdilib, err := nvcdi.New(
+			nvcdi.WithDeviceLib(h.nvdevice),
+			nvcdi.WithDriverRoot(h.driverRoot),
+			nvcdi.WithDevRoot(h.devRoot),
+			nvcdi.WithLogger(h.logger),
+			nvcdi.WithNvmlLib(h.nvml),
+			nvcdi.WithMode("management"),
+			nvcdi.WithVendor(h.vendor),
+			nvcdi.WithClass(h.deviceClass),
+			nvcdi.WithNVIDIACDIHookPath(h.nvidiaCTKPath),
+		)
+		if err != nil {
+			return nil, fmt.Errorf("unable to create CDI library for devices: %w", err)
+		}
+		h.nvcdiDevice = nvcdilib
+	}
+	if h.nvcdiClaim == nil {
+		nvcdilib, err := nvcdi.New(
+			nvcdi.WithDeviceLib(h.nvdevice),
+			nvcdi.WithDriverRoot(h.driverRoot),
+			nvcdi.WithDevRoot(h.devRoot),
+			nvcdi.WithLogger(h.logger),
+			nvcdi.WithNvmlLib(h.nvml),
+			nvcdi.WithMode("nvml"),
+			nvcdi.WithVendor(h.vendor),
+			nvcdi.WithClass(h.claimClass),
+			nvcdi.WithNVIDIACDIHookPath(h.nvidiaCTKPath),
+		)
+		if err != nil {
+			return nil, fmt.Errorf("unable to create CDI library for claims: %w", err)
+		}
+		h.nvcdiClaim = nvcdilib
 	}
 	if h.cache == nil {
 		cache, err := cdiapi.NewCache(
@@ -73,6 +138,86 @@ func NewCDIHandler(opts ...cdiOption) (*CDIHandler, error) {
 	}
 
 	return h, nil
+}
+
+func (cdi *CDIHandler) CreateStandardDeviceSpecFile(allocatable AllocatableDevices) error {
+	// Initialize NVML in order to get the device edits.
+	if r := cdi.nvml.Init(); r != nvml.SUCCESS {
+		return fmt.Errorf("failed to initialize NVML: %v", r)
+	}
+	defer func() {
+		if r := cdi.nvml.Shutdown(); r != nvml.SUCCESS {
+			klog.Warningf("failed to shutdown NVML: %v", r)
+		}
+	}()
+
+	// Generate the set of common edits.
+	commonEdits, err := cdi.nvcdiDevice.GetCommonEdits()
+	if err != nil {
+		return fmt.Errorf("failed to get common CDI spec edits: %w", err)
+	}
+
+	// Add the nvidia-imex binary as an extra container edit.
+	// TODO: Build a more robust way of doing this.
+	extraContainerEdits := &cdiapi.ContainerEdits{
+		ContainerEdits: &cdispec.ContainerEdits{
+			Mounts: []*cdispec.Mount{
+				{
+					ContainerPath: "/usr/bin/nvidia-imex",
+					HostPath:      filepath.Join(cdi.driverRoot, "/usr/bin/nvidia-imex"),
+					Options:       []string{"rw", "nosuid", "nodev", "bind"},
+				},
+			},
+		},
+	}
+
+	// Add the extra container edits into the set of common edits.
+	commonEdits.Append(extraContainerEdits)
+
+	// Make sure that NVIDIA_VISIBLE_DEVICES is set to void to avoid the
+	// nvidia-container-runtime honoring it in addition to the underlying
+	// runtime honoring CDI.
+	commonEdits.ContainerEdits.Env = append(
+		commonEdits.ContainerEdits.Env,
+		"NVIDIA_VISIBLE_DEVICES=void")
+
+	// Generate device specs for all devices.
+	deviceSpecs, err := cdi.nvcdiDevice.GetAllDeviceSpecs()
+	if err != nil {
+		return fmt.Errorf("unable to get all GPU device specs: %w", err)
+	}
+
+	// Generate base spec from commonEdits and deviceEdits.
+	spec, err := spec.New(
+		spec.WithVendor(cdiVendor),
+		spec.WithClass(cdiDeviceClass),
+		spec.WithDeviceSpecs(deviceSpecs),
+		spec.WithEdits(*commonEdits.ContainerEdits),
+	)
+	if err != nil {
+		return fmt.Errorf("failed to creat CDI spec: %w", err)
+	}
+
+	// Transform the spec to make it aware that it is running inside a container.
+	err = transformroot.New(
+		transformroot.WithRoot(cdi.driverRoot),
+		transformroot.WithTargetRoot(cdi.targetDriverRoot),
+		transformroot.WithRelativeTo("host"),
+	).Transform(spec.Raw())
+	if err != nil {
+		return fmt.Errorf("failed to transform driver root in CDI spec: %w", err)
+	}
+
+	// Update the spec to include only the minimum version necessary.
+	minVersion, err := cdiapi.MinimumRequiredVersion(spec.Raw())
+	if err != nil {
+		return fmt.Errorf("failed to get minimum required CDI spec version: %v", err)
+	}
+	spec.Raw().Version = minVersion
+
+	// Write the spec out to disk.
+	specName := cdiapi.GenerateTransientSpecName(cdiVendor, cdiDeviceClass, cdiBaseSpecIdentifier)
+	return cdi.cache.WriteSpec(spec.Raw(), specName)
 }
 
 func (cdi *CDIHandler) GetImexChannelContainerEdits(info *ImexChannelInfo) *cdiapi.ContainerEdits {
@@ -145,6 +290,13 @@ func (cdi *CDIHandler) CreateClaimSpecFile(claimUID string, preparedDevices Prep
 func (cdi *CDIHandler) DeleteClaimSpecFile(claimUID string) error {
 	specName := cdiapi.GenerateTransientSpecName(cdi.vendor, cdi.claimClass, claimUID)
 	return cdi.cache.RemoveSpec(specName)
+}
+
+func (cdi *CDIHandler) GetStandardDevice(device *AllocatableDevice) string {
+	if device.Type() == ImexChannelType {
+		return ""
+	}
+	return cdiparser.QualifiedName(cdiVendor, cdiDeviceClass, "all")
 }
 
 func (cdi *CDIHandler) GetClaimDevice(claimUID string, device *AllocatableDevice, containerEdits *cdiapi.ContainerEdits) string {

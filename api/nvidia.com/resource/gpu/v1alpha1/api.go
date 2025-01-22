@@ -30,6 +30,7 @@ const (
 	GpuConfigKind            = "GpuConfig"
 	MigDeviceConfigKind      = "MigDeviceConfig"
 	ImexChannelConfigKind    = "ImexChannelConfig"
+	ImexDaemonConfigKind     = "ImexDaemonConfig"
 	MultiNodeEnvironmentKind = "MultiNodeEnvironment"
 )
 
@@ -57,6 +58,7 @@ func init() {
 		&GpuConfig{},
 		&MigDeviceConfig{},
 		&ImexChannelConfig{},
+		&ImexDaemonConfig{},
 		&MultiNodeEnvironment{},
 	)
 	metav1.AddToGroupVersion(scheme, schemeGroupVersion)

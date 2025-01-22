@@ -35,8 +35,6 @@ import (
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
 
-	"github.com/google/uuid"
-
 	nvapi "github.com/NVIDIA/k8s-dra-driver/api/nvidia.com/resource/gpu/v1alpha1"
 )
 
@@ -47,12 +45,11 @@ const (
 type DeploymentTemplateData struct {
 	Namespace                      string
 	GenerateName                   string
-	AppLabel                       string
 	Finalizer                      string
 	MultiNodeEnvironmentLabelKey   string
 	MultiNodeEnvironmentLabelValue types.UID
 	Replicas                       int
-	NvidiaDriverRoot               string
+	ResourceClaimTemplateName      string
 }
 
 type DeploymentManager struct {
@@ -67,8 +64,9 @@ type DeploymentManager struct {
 	informer cache.SharedIndexInformer
 	lister   appsv1listers.DeploymentLister
 
-	imexChannelManager *ImexChannelManager
-	podManagers        map[string]*DeploymentPodManager
+	resourceClaimTemplateManager *ResourceClaimTemplateManager
+	imexChannelManager           *ImexChannelManager
+	podManagers                  map[string]*DeploymentPodManager
 }
 
 func NewDeploymentManager(config *ManagerConfig, mneExists MultiNodeEnvironmentExistsFunc) *DeploymentManager {
@@ -99,9 +97,10 @@ func NewDeploymentManager(config *ManagerConfig, mneExists MultiNodeEnvironmentE
 		factory:                    factory,
 		informer:                   informer,
 		lister:                     lister,
-		imexChannelManager:         NewImexChannelManager(config),
 		podManagers:                make(map[string]*DeploymentPodManager),
 	}
+	m.imexChannelManager = NewImexChannelManager(config)
+	m.resourceClaimTemplateManager = NewResourceClaimTemplateManager(config, mneExists)
 
 	return m
 }
@@ -144,6 +143,10 @@ func (m *DeploymentManager) Start(ctx context.Context) (rerr error) {
 		return fmt.Errorf("informer cache sync for Deployment failed")
 	}
 
+	if err := m.resourceClaimTemplateManager.Start(ctx); err != nil {
+		return fmt.Errorf("error starting ResourceClaimTemplate manager: %w", err)
+	}
+
 	if err := m.imexChannelManager.Start(ctx); err != nil {
 		return fmt.Errorf("error starting IMEX channel manager: %w", err)
 	}
@@ -172,15 +175,19 @@ func (m *DeploymentManager) Create(ctx context.Context, namespace string, replic
 		return d, nil
 	}
 
+	rct, err := m.resourceClaimTemplateManager.Create(ctx, namespace, mne)
+	if err != nil {
+		return nil, fmt.Errorf("error creating ResourceClaimTemplate: %w", err)
+	}
+
 	templateData := DeploymentTemplateData{
 		Namespace:                      m.config.driverNamespace,
 		GenerateName:                   fmt.Sprintf("%s-", mne.Name),
-		AppLabel:                       uuid.New().String(),
 		Finalizer:                      multiNodeEnvironmentFinalizer,
 		MultiNodeEnvironmentLabelKey:   multiNodeEnvironmentLabelKey,
 		MultiNodeEnvironmentLabelValue: mne.UID,
 		Replicas:                       replicas,
-		NvidiaDriverRoot:               "/",
+		ResourceClaimTemplateName:      rct.Name,
 	}
 
 	tmpl, err := template.ParseFiles(DeploymentTemplatePath)
@@ -229,6 +236,10 @@ func (m *DeploymentManager) Delete(ctx context.Context, mneUID string) error {
 	err = m.config.clientsets.Core.AppsV1().Deployments(d.Namespace).Delete(ctx, d.Name, metav1.DeleteOptions{})
 	if err != nil && !errors.IsNotFound(err) {
 		return fmt.Errorf("erroring deleting Deployment: %w", err)
+	}
+
+	if err := m.resourceClaimTemplateManager.Delete(ctx, mneUID); err != nil {
+		return fmt.Errorf("error deleting ResourceClaimTemplate: %w", err)
 	}
 
 	key := d.Spec.Selector.MatchLabels[multiNodeEnvironmentLabelKey]

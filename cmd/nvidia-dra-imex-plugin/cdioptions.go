@@ -16,6 +16,11 @@
 
 package main
 
+import (
+	nvdevice "github.com/NVIDIA/go-nvlib/pkg/nvlib/device"
+	"github.com/NVIDIA/go-nvml/pkg/nvml"
+)
+
 // cdiOption represents a functional option for constructing a CDI handler.
 type cdiOption func(*CDIHandler)
 
@@ -44,6 +49,27 @@ func WithTargetDriverRoot(root string) cdiOption {
 func WithCDIRoot(cdiRoot string) cdiOption {
 	return func(c *CDIHandler) {
 		c.cdiRoot = cdiRoot
+	}
+}
+
+// WithNvidiaCTKPath provides an cdiOption to set the nvidia-ctk path used by the 'cdi' interface.
+func WithNvidiaCTKPath(path string) cdiOption {
+	return func(c *CDIHandler) {
+		c.nvidiaCTKPath = path
+	}
+}
+
+// WithNvml provides an cdiOption to set the NVML library used by the 'cdi' interface.
+func WithNvml(nvml nvml.Interface) cdiOption {
+	return func(c *CDIHandler) {
+		c.nvml = nvml
+	}
+}
+
+// WithDeviceLib provides and Optin to set the device enumeration and query library.
+func WithDeviceLib(nvdevice nvdevice.Interface) cdiOption {
+	return func(c *CDIHandler) {
+		c.nvdevice = nvdevice
 	}
 }
 
