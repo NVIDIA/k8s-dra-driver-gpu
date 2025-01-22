@@ -79,7 +79,7 @@ goimports:
 	find . -name \*.go \
 			-not -name "zz_generated.deepcopy.go" \
 			-not -path "./vendor/*" \
-			-not -path "./pkg/nvidia.com/resource/clientset/versioned/*" \
+			-not -path "./$(PKG_BASE)/clientset/versioned/*" \
 		-exec goimports -local $(MODULE) -w {} \;
 
 golangci-lint:
@@ -101,9 +101,9 @@ coverage: test
 	cat $(COVERAGE_FILE) | grep -v "_mock.go" > $(COVERAGE_FILE).no-mocks
 	go tool cover -func=$(COVERAGE_FILE).no-mocks
 
-generate: generate-crds fmt
+generate: generate-crds generate-informers fmt
 
-generate-crds: generate-deepcopy
+generate-crds: generate-deepcopy .remove-crds
 	for dir in $(CLIENT_SOURCES); do \
 		controller-gen crd:crdVersions=v1 \
 			paths=$(CURDIR)/$${dir} \
@@ -118,7 +118,7 @@ generate-crds: generate-deepcopy
 	rm -rf $(CURDIR)/deployments/helm/tmp_crds
 
 
-generate-deepcopy: generate-informers
+generate-deepcopy: .remove-deepcopy
 	for dir in $(DEEPCOPY_SOURCES); do \
 		controller-gen \
 			object:headerFile=$(CURDIR)/hack/boilerplate.go.txt,year=$(shell date +"%Y") \
@@ -126,7 +126,7 @@ generate-deepcopy: generate-informers
 			output:object:dir=$(CURDIR)/$${dir}; \
 	done
 
-generate-informers: generate-listers
+generate-informers: .remove-informers generate-listers
 	informer-gen \
 		--go-header-file=$(CURDIR)/hack/boilerplate.go.txt \
 		--output-package "$(MODULE)/$(PKG_BASE)/informers" \
@@ -139,7 +139,7 @@ generate-informers: generate-listers
 	   $(CURDIR)/$(PKG_BASE)/informers
 	rm -rf $(CURDIR)/pkg/tmp_informers
 
-generate-listers: generate-clientset
+generate-listers: .remove-listers generate-clientset
 	lister-gen \
 		--go-header-file=$(CURDIR)/hack/boilerplate.go.txt \
 		--output-package "$(MODULE)/$(PKG_BASE)/listers" \
@@ -150,7 +150,7 @@ generate-listers: generate-clientset
 	   $(CURDIR)/$(PKG_BASE)/listers
 	rm -rf $(CURDIR)/pkg/tmp_listers
 
-generate-clientset: .remove-informers .remove-listers .remove-clientset .remove-deepcopy .remove-crds
+generate-clientset: .remove-clientset
 	client-gen \
 		--go-header-file=$(CURDIR)/hack/boilerplate.go.txt \
 		--clientset-name "versioned" \

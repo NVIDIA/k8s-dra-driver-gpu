@@ -25,9 +25,9 @@ import (
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
 
-	nvapi "github.com/NVIDIA/k8s-dra-driver/api/nvidia.com/resource/gpu/v1alpha1"
-	nvinformers "github.com/NVIDIA/k8s-dra-driver/pkg/nvidia.com/resource/informers/externalversions"
-	nvlisters "github.com/NVIDIA/k8s-dra-driver/pkg/nvidia.com/resource/listers/gpu/v1alpha1"
+	nvapi "github.com/NVIDIA/k8s-dra-driver/api/nvidia.com/resource/v1beta1"
+	nvinformers "github.com/NVIDIA/k8s-dra-driver/pkg/nvidia.com/informers/externalversions"
+	nvlisters "github.com/NVIDIA/k8s-dra-driver/pkg/nvidia.com/listers/resource/v1beta1"
 )
 
 type ComputeDomainExistsFunc func(uid string) (bool, error)
@@ -35,7 +35,7 @@ type ComputeDomainExistsFunc func(uid string) (bool, error)
 const (
 	informerResyncPeriod = 10 * time.Minute
 
-	computeDomainLabelKey  = "gpu.nvidia.com/computeDomain"
+	computeDomainLabelKey  = "resource.nvidia.com/computeDomain"
 	computeDomainFinalizer = computeDomainLabelKey
 )
 
@@ -56,7 +56,7 @@ type ComputeDomainManager struct {
 // NewComputeDomainManager creates a new ComputeDomainManager.
 func NewComputeDomainManager(config *ManagerConfig) *ComputeDomainManager {
 	factory := nvinformers.NewSharedInformerFactory(config.clientsets.Nvidia, informerResyncPeriod)
-	informer := factory.Gpu().V1alpha1().ComputeDomains().Informer()
+	informer := factory.Resource().V1beta1().ComputeDomains().Informer()
 	lister := nvlisters.NewComputeDomainLister(informer.GetIndexer())
 
 	m := &ComputeDomainManager{

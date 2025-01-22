@@ -34,7 +34,7 @@ spec:
         opaque:
           driver: gpu.nvidia.com
           parameters:
-            apiVersion: gpu.nvidia.com/v1alpha1
+            apiVersion: resource.nvidia.com/v1beta1
             kind: GpuConfig
             sharing:
               strategy: TimeSlicing

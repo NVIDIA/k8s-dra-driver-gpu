@@ -5,7 +5,7 @@ metadata:
   name: {{ include "k8s-dra-driver.fullname" . }}-role
   namespace: {{ include "k8s-dra-driver.namespace" . }}
 rules:
-- apiGroups: ["gpu.nvidia.com"]
+- apiGroups: ["resource.nvidia.com"]
   resources: ["computedomains"]
   verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
 - apiGroups: ["resource.k8s.io"]

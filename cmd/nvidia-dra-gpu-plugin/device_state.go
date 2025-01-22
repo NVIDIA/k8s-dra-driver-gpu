@@ -29,7 +29,7 @@ import (
 	"k8s.io/kubernetes/pkg/kubelet/checkpointmanager"
 	cdiapi "tags.cncf.io/container-device-interface/pkg/cdi"
 
-	configapi "github.com/NVIDIA/k8s-dra-driver/api/nvidia.com/resource/gpu/v1alpha1"
+	configapi "github.com/NVIDIA/k8s-dra-driver/api/nvidia.com/resource/v1beta1"
 )
 
 type OpaqueDeviceConfig struct {
