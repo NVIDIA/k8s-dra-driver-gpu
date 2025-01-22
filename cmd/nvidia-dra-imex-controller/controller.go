@@ -54,7 +54,7 @@ func NewController(config *Config) *Controller {
 }
 
 // Run starts the controller's main loop and manages the lifecycle of its components.
-// It initializes the work queue, starts the MultiNodeEnvironment manager, and handles
+// It initializes the work queue, starts the ComputeDomain manager, and handles
 // graceful shutdown when the context is cancelled.
 func (c *Controller) Run(ctx context.Context) error {
 	workQueue := workqueue.New(workqueue.DefaultControllerRateLimiter())
@@ -66,16 +66,16 @@ func (c *Controller) Run(ctx context.Context) error {
 		workQueue:       workQueue,
 	}
 
-	mneManager := NewMultiNodeEnvironmentManager(managerConfig)
+	cdManager := NewComputeDomainManager(managerConfig)
 
-	if err := mneManager.Start(ctx); err != nil {
-		return fmt.Errorf("error starting MultiNodeEnvironment manager: %w", err)
+	if err := cdManager.Start(ctx); err != nil {
+		return fmt.Errorf("error starting ComputeDomain manager: %w", err)
 	}
 
 	workQueue.Run(ctx)
 
-	if err := mneManager.Stop(); err != nil {
-		return fmt.Errorf("error stopping MultiNodeEnvironment manager: %w", err)
+	if err := cdManager.Stop(); err != nil {
+		return fmt.Errorf("error stopping ComputeDomain manager: %w", err)
 	}
 
 	return nil

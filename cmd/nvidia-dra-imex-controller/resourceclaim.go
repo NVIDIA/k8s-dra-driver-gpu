@@ -33,21 +33,21 @@ import (
 )
 
 type ResourceClaimManager struct {
-	config                     *ManagerConfig
-	waitGroup                  sync.WaitGroup
-	cancelContext              context.CancelFunc
-	multiNodeEnvironmentExists MultiNodeEnvironmentExistsFunc
+	config              *ManagerConfig
+	waitGroup           sync.WaitGroup
+	cancelContext       context.CancelFunc
+	computeDomainExists ComputeDomainExistsFunc
 
 	factory  informers.SharedInformerFactory
 	informer cache.SharedIndexInformer
 	lister   resourcelisters.ResourceClaimLister
 }
 
-func NewResourceClaimManager(config *ManagerConfig, mneExists MultiNodeEnvironmentExistsFunc) *ResourceClaimManager {
+func NewResourceClaimManager(config *ManagerConfig, cdExists ComputeDomainExistsFunc) *ResourceClaimManager {
 	labelSelector := &metav1.LabelSelector{
 		MatchExpressions: []metav1.LabelSelectorRequirement{
 			{
-				Key:      multiNodeEnvironmentLabelKey,
+				Key:      computeDomainLabelKey,
 				Operator: metav1.LabelSelectorOpExists,
 			},
 		},
@@ -65,11 +65,11 @@ func NewResourceClaimManager(config *ManagerConfig, mneExists MultiNodeEnvironme
 	lister := factory.Resource().V1beta1().ResourceClaims().Lister()
 
 	m := &ResourceClaimManager{
-		config:                     config,
-		multiNodeEnvironmentExists: mneExists,
-		factory:                    factory,
-		informer:                   informer,
-		lister:                     lister,
+		config:              config,
+		computeDomainExists: cdExists,
+		factory:             factory,
+		informer:            informer,
+		lister:              lister,
 	}
 
 	return m
@@ -87,7 +87,7 @@ func (m *ResourceClaimManager) Start(ctx context.Context) (rerr error) {
 		}
 	}()
 
-	if err := addMultiNodeEnvironmentLabelIndexer[*resourceapi.ResourceClaim](m.informer); err != nil {
+	if err := addComputeDomainLabelIndexer[*resourceapi.ResourceClaim](m.informer); err != nil {
 		return fmt.Errorf("error adding indexer for MulitNodeEnvironment label: %w", err)
 	}
 
@@ -122,8 +122,8 @@ func (m *ResourceClaimManager) Stop() error {
 	return nil
 }
 
-func (m *ResourceClaimManager) Create(ctx context.Context, namespace, name, deviceClassName string, mne *nvapi.MultiNodeEnvironment) (*resourceapi.ResourceClaim, error) {
-	rc, err := getByMultiNodeEnvironmentUID[*resourceapi.ResourceClaim](ctx, m.informer, string(mne.UID))
+func (m *ResourceClaimManager) Create(ctx context.Context, namespace, name, deviceClassName string, cd *nvapi.ComputeDomain) (*resourceapi.ResourceClaim, error) {
+	rc, err := getByComputeDomainUID[*resourceapi.ResourceClaim](ctx, m.informer, string(cd.UID))
 	if err != nil {
 		return nil, fmt.Errorf("error retrieving ResourceClaim: %w", err)
 	}
@@ -135,9 +135,9 @@ func (m *ResourceClaimManager) Create(ctx context.Context, namespace, name, devi
 		ObjectMeta: metav1.ObjectMeta{
 			Name:       name,
 			Namespace:  namespace,
-			Finalizers: []string{multiNodeEnvironmentFinalizer},
+			Finalizers: []string{computeDomainFinalizer},
 			Labels: map[string]string{
-				multiNodeEnvironmentLabelKey: string(mne.UID),
+				computeDomainLabelKey: string(cd.UID),
 			},
 		},
 		Spec: resourceapi.ResourceClaimSpec{
@@ -157,8 +157,8 @@ func (m *ResourceClaimManager) Create(ctx context.Context, namespace, name, devi
 	return rc, nil
 }
 
-func (m *ResourceClaimManager) Delete(ctx context.Context, mneUID string) error {
-	rc, err := getByMultiNodeEnvironmentUID[*resourceapi.ResourceClaim](ctx, m.informer, mneUID)
+func (m *ResourceClaimManager) Delete(ctx context.Context, cdUID string) error {
+	rc, err := getByComputeDomainUID[*resourceapi.ResourceClaim](ctx, m.informer, cdUID)
 	if err != nil {
 		return fmt.Errorf("error retrieving ResourceClaim: %w", err)
 	}
@@ -191,7 +191,7 @@ func (m *ResourceClaimManager) RemoveFinalizer(ctx context.Context, namespace, n
 
 	newRC.Finalizers = []string{}
 	for _, f := range rc.Finalizers {
-		if f != multiNodeEnvironmentFinalizer {
+		if f != computeDomainFinalizer {
 			newRC.Finalizers = append(newRC.Finalizers, f)
 		}
 	}
@@ -220,12 +220,12 @@ func (m *ResourceClaimManager) onAddOrUpdate(ctx context.Context, obj any) error
 
 	klog.Infof("Processing added or updated ResourceClaim: %s/%s", rc.Namespace, rc.Name)
 
-	exists, err := m.multiNodeEnvironmentExists(rc.Labels[multiNodeEnvironmentLabelKey])
+	exists, err := m.computeDomainExists(rc.Labels[computeDomainLabelKey])
 	if err != nil {
 		return fmt.Errorf("error checking if owner exists: %w", err)
 	}
 	if !exists {
-		if err := m.Delete(ctx, rc.Labels[multiNodeEnvironmentLabelKey]); err != nil {
+		if err := m.Delete(ctx, rc.Labels[computeDomainLabelKey]); err != nil {
 			return fmt.Errorf("error deleting ResourceClaim '%s/%s': %w", rc.Namespace, rc.Name, err)
 		}
 		return nil

@@ -24,8 +24,8 @@ import (
 
 // Interface provides access to all the informers in this group version.
 type Interface interface {
-	// MultiNodeEnvironments returns a MultiNodeEnvironmentInformer.
-	MultiNodeEnvironments() MultiNodeEnvironmentInformer
+	// ComputeDomains returns a ComputeDomainInformer.
+	ComputeDomains() ComputeDomainInformer
 }
 
 type version struct {
@@ -39,7 +39,7 @@ func New(f internalinterfaces.SharedInformerFactory, namespace string, tweakList
 	return &version{factory: f, namespace: namespace, tweakListOptions: tweakListOptions}
 }
 
-// MultiNodeEnvironments returns a MultiNodeEnvironmentInformer.
-func (v *version) MultiNodeEnvironments() MultiNodeEnvironmentInformer {
-	return &multiNodeEnvironmentInformer{factory: v.factory, namespace: v.namespace, tweakListOptions: v.tweakListOptions}
+// ComputeDomains returns a ComputeDomainInformer.
+func (v *version) ComputeDomains() ComputeDomainInformer {
+	return &computeDomainInformer{factory: v.factory, namespace: v.namespace, tweakListOptions: v.tweakListOptions}
 }

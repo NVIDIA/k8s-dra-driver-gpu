@@ -7,16 +7,16 @@ metadata:
   finalizers:
     - {{ .Finalizer }}
   labels:
-    {{ .MultiNodeEnvironmentLabelKey }}: {{ .MultiNodeEnvironmentLabelValue }}
+    {{ .ComputeDomainLabelKey }}: {{ .ComputeDomainLabelValue }}
 spec:
   replicas: {{ .Replicas }}
   selector:
     matchLabels:
-      {{ .MultiNodeEnvironmentLabelKey }}: {{ .MultiNodeEnvironmentLabelValue }}
+      {{ .ComputeDomainLabelKey }}: {{ .ComputeDomainLabelValue }}
   template:
     metadata:
       labels:
-        {{ .MultiNodeEnvironmentLabelKey }}: {{ .MultiNodeEnvironmentLabelValue }}
+        {{ .ComputeDomainLabelKey }}: {{ .ComputeDomainLabelValue }}
     spec:
       hostNetwork: true
       containers:
@@ -58,10 +58,10 @@ spec:
             podAffinityTerm:
               labelSelector:
                 matchExpressions:
-                - key: {{ .MultiNodeEnvironmentLabelKey }}
+                - key: {{ .ComputeDomainLabelKey }}
                   operator: In
                   values:
-                  - {{ .MultiNodeEnvironmentLabelValue }}
+                  - {{ .ComputeDomainLabelValue }}
               topologyKey: "nvidia.com/gpu.clique"
       resourceClaims:
       - name: imex-daemon

@@ -28,7 +28,7 @@ import (
 
 type GpuV1alpha1Interface interface {
 	RESTClient() rest.Interface
-	MultiNodeEnvironmentsGetter
+	ComputeDomainsGetter
 }
 
 // GpuV1alpha1Client is used to interact with features provided by the gpu.nvidia.com group.
@@ -36,8 +36,8 @@ type GpuV1alpha1Client struct {
 	restClient rest.Interface
 }
 
-func (c *GpuV1alpha1Client) MultiNodeEnvironments(namespace string) MultiNodeEnvironmentInterface {
-	return newMultiNodeEnvironments(c, namespace)
+func (c *GpuV1alpha1Client) ComputeDomains(namespace string) ComputeDomainInterface {
+	return newComputeDomains(c, namespace)
 }
 
 // NewForConfig creates a new GpuV1alpha1Client for the given config.

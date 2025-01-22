@@ -18,10 +18,10 @@
 
 package v1alpha1
 
-// MultiNodeEnvironmentListerExpansion allows custom methods to be added to
-// MultiNodeEnvironmentLister.
-type MultiNodeEnvironmentListerExpansion interface{}
+// ComputeDomainListerExpansion allows custom methods to be added to
+// ComputeDomainLister.
+type ComputeDomainListerExpansion interface{}
 
-// MultiNodeEnvironmentNamespaceListerExpansion allows custom methods to be added to
-// MultiNodeEnvironmentNamespaceLister.
-type MultiNodeEnvironmentNamespaceListerExpansion interface{}
+// ComputeDomainNamespaceListerExpansion allows custom methods to be added to
+// ComputeDomainNamespaceLister.
+type ComputeDomainNamespaceListerExpansion interface{}

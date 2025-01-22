@@ -33,21 +33,21 @@ import (
 )
 
 type DeviceClassManager struct {
-	config                     *ManagerConfig
-	waitGroup                  sync.WaitGroup
-	cancelContext              context.CancelFunc
-	multiNodeEnvironmentExists MultiNodeEnvironmentExistsFunc
+	config              *ManagerConfig
+	waitGroup           sync.WaitGroup
+	cancelContext       context.CancelFunc
+	computeDomainExists ComputeDomainExistsFunc
 
 	factory  informers.SharedInformerFactory
 	informer cache.SharedIndexInformer
 	lister   resourcelisters.DeviceClassLister
 }
 
-func NewDeviceClassManager(config *ManagerConfig, mneExists MultiNodeEnvironmentExistsFunc) *DeviceClassManager {
+func NewDeviceClassManager(config *ManagerConfig, cdExists ComputeDomainExistsFunc) *DeviceClassManager {
 	labelSelector := &metav1.LabelSelector{
 		MatchExpressions: []metav1.LabelSelectorRequirement{
 			{
-				Key:      multiNodeEnvironmentLabelKey,
+				Key:      computeDomainLabelKey,
 				Operator: metav1.LabelSelectorOpExists,
 			},
 		},
@@ -65,11 +65,11 @@ func NewDeviceClassManager(config *ManagerConfig, mneExists MultiNodeEnvironment
 	lister := factory.Resource().V1beta1().DeviceClasses().Lister()
 
 	m := &DeviceClassManager{
-		config:                     config,
-		multiNodeEnvironmentExists: mneExists,
-		factory:                    factory,
-		informer:                   informer,
-		lister:                     lister,
+		config:              config,
+		computeDomainExists: cdExists,
+		factory:             factory,
+		informer:            informer,
+		lister:              lister,
 	}
 
 	return m
@@ -87,7 +87,7 @@ func (m *DeviceClassManager) Start(ctx context.Context) (rerr error) {
 		}
 	}()
 
-	if err := addMultiNodeEnvironmentLabelIndexer[*resourceapi.DeviceClass](m.informer); err != nil {
+	if err := addComputeDomainLabelIndexer[*resourceapi.DeviceClass](m.informer); err != nil {
 		return fmt.Errorf("error adding indexer for MulitNodeEnvironment label: %w", err)
 	}
 
@@ -122,8 +122,8 @@ func (m *DeviceClassManager) Stop() error {
 	return nil
 }
 
-func (m *DeviceClassManager) Create(ctx context.Context, name string, mne *nvapi.MultiNodeEnvironment) (*resourceapi.DeviceClass, error) {
-	dc, err := getByMultiNodeEnvironmentUID[*resourceapi.DeviceClass](ctx, m.informer, string(mne.UID))
+func (m *DeviceClassManager) Create(ctx context.Context, name string, cd *nvapi.ComputeDomain) (*resourceapi.DeviceClass, error) {
+	dc, err := getByComputeDomainUID[*resourceapi.DeviceClass](ctx, m.informer, string(cd.UID))
 	if err != nil {
 		return nil, fmt.Errorf("error retrieving DeviceClass: %w", err)
 	}
@@ -133,9 +133,9 @@ func (m *DeviceClassManager) Create(ctx context.Context, name string, mne *nvapi
 
 	deviceClass := &resourceapi.DeviceClass{
 		ObjectMeta: metav1.ObjectMeta{
-			Finalizers: []string{multiNodeEnvironmentFinalizer},
+			Finalizers: []string{computeDomainFinalizer},
 			Labels: map[string]string{
-				multiNodeEnvironmentLabelKey: string(mne.UID),
+				computeDomainLabelKey: string(cd.UID),
 			},
 		},
 		Spec: resourceapi.DeviceClassSpec{
@@ -152,7 +152,7 @@ func (m *DeviceClassManager) Create(ctx context.Context, name string, mne *nvapi
 				},
 				{
 					CEL: &resourceapi.CELDeviceSelector{
-						Expression: fmt.Sprintf("device.attributes['%s'].domain == '%v'", DriverName, mne.UID),
+						Expression: fmt.Sprintf("device.attributes['%s'].domain == '%v'", DriverName, cd.UID),
 					},
 				},
 			},
@@ -160,7 +160,7 @@ func (m *DeviceClassManager) Create(ctx context.Context, name string, mne *nvapi
 	}
 
 	if name == "" {
-		deviceClass.GenerateName = mne.Name
+		deviceClass.GenerateName = cd.Name
 	} else {
 		deviceClass.Name = name
 	}
@@ -173,8 +173,8 @@ func (m *DeviceClassManager) Create(ctx context.Context, name string, mne *nvapi
 	return dc, nil
 }
 
-func (m *DeviceClassManager) Delete(ctx context.Context, mneUID string) error {
-	dc, err := getByMultiNodeEnvironmentUID[*resourceapi.DeviceClass](ctx, m.informer, mneUID)
+func (m *DeviceClassManager) Delete(ctx context.Context, cdUID string) error {
+	dc, err := getByComputeDomainUID[*resourceapi.DeviceClass](ctx, m.informer, cdUID)
 	if err != nil {
 		return fmt.Errorf("error retrieving DeviceClass: %w", err)
 	}
@@ -207,7 +207,7 @@ func (m *DeviceClassManager) RemoveFinalizer(ctx context.Context, name string) e
 
 	newDC.Finalizers = []string{}
 	for _, f := range dc.Finalizers {
-		if f != multiNodeEnvironmentFinalizer {
+		if f != computeDomainFinalizer {
 			newDC.Finalizers = append(newDC.Finalizers, f)
 		}
 	}
@@ -236,12 +236,12 @@ func (m *DeviceClassManager) onAddOrUpdate(ctx context.Context, obj any) error {
 
 	klog.Infof("Processing added or updated DeviceClass: %s", dc.Name)
 
-	exists, err := m.multiNodeEnvironmentExists(dc.Labels[multiNodeEnvironmentLabelKey])
+	exists, err := m.computeDomainExists(dc.Labels[computeDomainLabelKey])
 	if err != nil {
 		return fmt.Errorf("error checking if owner exists: %w", err)
 	}
 	if !exists {
-		if err := m.Delete(ctx, dc.Labels[multiNodeEnvironmentLabelKey]); err != nil {
+		if err := m.Delete(ctx, dc.Labels[computeDomainLabelKey]); err != nil {
 			return fmt.Errorf("error deleting DeviceClass '%s': %w", dc.Name, err)
 		}
 		return nil

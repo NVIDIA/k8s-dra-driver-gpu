@@ -4,21 +4,21 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.14.0
-  name: multinodeenvironments.gpu.nvidia.com
+  name: computedomains.gpu.nvidia.com
 spec:
   group: gpu.nvidia.com
   names:
-    kind: MultiNodeEnvironment
-    listKind: MultiNodeEnvironmentList
-    plural: multinodeenvironments
-    singular: multinodeenvironment
+    kind: ComputeDomain
+    listKind: ComputeDomainList
+    plural: computedomains
+    singular: computedomain
   scope: Namespaced
   versions:
   - name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: MultiNodeEnvironment prepares a set of nodes to run a multi-node
-          workload in.
+        description: ComputeDomain prepares a set of nodes to run a multi-node workload
+          in.
         properties:
           apiVersion:
             description: |-
@@ -38,7 +38,7 @@ spec:
           metadata:
             type: object
           spec:
-            description: MultiNodeEnvironmentSpec provides the spec for a MultiNodeEnvironment.
+            description: ComputeDomainSpec provides the spec for a ComputeDomain.
             properties:
               deviceClassName:
                 type: string

@@ -40,9 +40,9 @@ type DeploymentPodManager struct {
 	informer cache.SharedInformer
 	lister   corev1listers.PodLister
 
-	nodeSelector              corev1.NodeSelector
-	multiNodeEnvironmentLabel string
-	numPods                   int
+	nodeSelector       corev1.NodeSelector
+	computeDomainLabel string
+	numPods            int
 
 	imexChannelManager *ImexChannelManager
 }
@@ -75,14 +75,14 @@ func NewDeploymentPodManager(config *ManagerConfig, imexChannelManager *ImexChan
 	}
 
 	m := &DeploymentPodManager{
-		config:                    config,
-		factory:                   factory,
-		informer:                  informer,
-		lister:                    lister,
-		nodeSelector:              nodeSelector,
-		multiNodeEnvironmentLabel: labelSelector.MatchLabels[multiNodeEnvironmentLabelKey],
-		numPods:                   numPods,
-		imexChannelManager:        imexChannelManager,
+		config:             config,
+		factory:            factory,
+		informer:           informer,
+		lister:             lister,
+		nodeSelector:       nodeSelector,
+		computeDomainLabel: labelSelector.MatchLabels[computeDomainLabelKey],
+		numPods:            numPods,
+		imexChannelManager: imexChannelManager,
 	}
 
 	return m
@@ -126,7 +126,7 @@ func (m *DeploymentPodManager) Start(ctx context.Context) (rerr error) {
 }
 
 func (m *DeploymentPodManager) Stop() error {
-	if err := m.imexChannelManager.DeletePool(m.multiNodeEnvironmentLabel); err != nil {
+	if err := m.imexChannelManager.DeletePool(m.computeDomainLabel); err != nil {
 		return fmt.Errorf("error deleting IMEX channel pool: %w", err)
 	}
 	m.cancelContext()
@@ -164,7 +164,7 @@ func (m *DeploymentPodManager) onPodAddOrUpdate(ctx context.Context, obj any) er
 		return fmt.Errorf("node selector not yet complete")
 	}
 
-	if err := m.imexChannelManager.CreateOrUpdatePool(m.multiNodeEnvironmentLabel, &m.nodeSelector); err != nil {
+	if err := m.imexChannelManager.CreateOrUpdatePool(m.computeDomainLabel, &m.nodeSelector); err != nil {
 		return fmt.Errorf("failed to create or update IMEX channel pool: %w", err)
 	}
 

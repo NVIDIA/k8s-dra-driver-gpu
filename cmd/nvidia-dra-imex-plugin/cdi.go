@@ -167,6 +167,11 @@ func (cdi *CDIHandler) CreateStandardDeviceSpecFile(allocatable AllocatableDevic
 					HostPath:      filepath.Join(cdi.driverRoot, "/usr/bin/nvidia-imex"),
 					Options:       []string{"rw", "nosuid", "nodev", "bind"},
 				},
+				{
+					ContainerPath: "/usr/bin/nvidia-imex-ctl",
+					HostPath:      filepath.Join(cdi.driverRoot, "/usr/bin/nvidia-imex-ctl"),
+					Options:       []string{"rw", "nosuid", "nodev", "bind"},
+				},
 			},
 		},
 	}

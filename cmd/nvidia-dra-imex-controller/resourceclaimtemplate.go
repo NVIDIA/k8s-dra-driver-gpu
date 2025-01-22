@@ -44,32 +44,32 @@ const (
 )
 
 type ResourceClaimTemplateTemplateData struct {
-	Namespace                      string
-	GenerateName                   string
-	Finalizer                      string
-	MultiNodeEnvironmentLabelKey   string
-	MultiNodeEnvironmentLabelValue types.UID
-	DeviceClassName                string
-	DriverName                     string
-	ImexDaemonConfig               *nvapi.ImexDaemonConfig
+	Namespace               string
+	GenerateName            string
+	Finalizer               string
+	ComputeDomainLabelKey   string
+	ComputeDomainLabelValue types.UID
+	DeviceClassName         string
+	DriverName              string
+	ImexDaemonConfig        *nvapi.ImexDaemonConfig
 }
 
 type ResourceClaimTemplateManager struct {
-	config                     *ManagerConfig
-	waitGroup                  sync.WaitGroup
-	cancelContext              context.CancelFunc
-	multiNodeEnvironmentExists MultiNodeEnvironmentExistsFunc
+	config              *ManagerConfig
+	waitGroup           sync.WaitGroup
+	cancelContext       context.CancelFunc
+	computeDomainExists ComputeDomainExistsFunc
 
 	factory  informers.SharedInformerFactory
 	informer cache.SharedIndexInformer
 	lister   resourcelisters.ResourceClaimTemplateLister
 }
 
-func NewResourceClaimTemplateManager(config *ManagerConfig, mneExists MultiNodeEnvironmentExistsFunc) *ResourceClaimTemplateManager {
+func NewResourceClaimTemplateManager(config *ManagerConfig, cdExists ComputeDomainExistsFunc) *ResourceClaimTemplateManager {
 	labelSelector := &metav1.LabelSelector{
 		MatchExpressions: []metav1.LabelSelectorRequirement{
 			{
-				Key:      multiNodeEnvironmentLabelKey,
+				Key:      computeDomainLabelKey,
 				Operator: metav1.LabelSelectorOpExists,
 			},
 		},
@@ -87,11 +87,11 @@ func NewResourceClaimTemplateManager(config *ManagerConfig, mneExists MultiNodeE
 	lister := factory.Resource().V1beta1().ResourceClaimTemplates().Lister()
 
 	m := &ResourceClaimTemplateManager{
-		config:                     config,
-		multiNodeEnvironmentExists: mneExists,
-		factory:                    factory,
-		informer:                   informer,
-		lister:                     lister,
+		config:              config,
+		computeDomainExists: cdExists,
+		factory:             factory,
+		informer:            informer,
+		lister:              lister,
 	}
 
 	return m
@@ -109,7 +109,7 @@ func (m *ResourceClaimTemplateManager) Start(ctx context.Context) (rerr error) {
 		}
 	}()
 
-	if err := addMultiNodeEnvironmentLabelIndexer[*resourceapi.ResourceClaimTemplate](m.informer); err != nil {
+	if err := addComputeDomainLabelIndexer[*resourceapi.ResourceClaimTemplate](m.informer); err != nil {
 		return fmt.Errorf("error adding indexer for MulitNodeEnvironment label: %w", err)
 	}
 
@@ -144,8 +144,8 @@ func (m *ResourceClaimTemplateManager) Stop() error {
 	return nil
 }
 
-func (m *ResourceClaimTemplateManager) Create(ctx context.Context, namespace string, mne *nvapi.MultiNodeEnvironment) (*resourceapi.ResourceClaimTemplate, error) {
-	rct, err := getByMultiNodeEnvironmentUID[*resourceapi.ResourceClaimTemplate](ctx, m.informer, string(mne.UID))
+func (m *ResourceClaimTemplateManager) Create(ctx context.Context, namespace string, cd *nvapi.ComputeDomain) (*resourceapi.ResourceClaimTemplate, error) {
+	rct, err := getByComputeDomainUID[*resourceapi.ResourceClaimTemplate](ctx, m.informer, string(cd.UID))
 	if err != nil {
 		return nil, fmt.Errorf("error retrieving ResourceClaimTemplate: %w", err)
 	}
@@ -154,18 +154,18 @@ func (m *ResourceClaimTemplateManager) Create(ctx context.Context, namespace str
 	}
 
 	imexDaemonConfig := nvapi.DefaultImexDaemonConfig()
-	imexDaemonConfig.NumNodes = mne.Spec.NumNodes
-	imexDaemonConfig.DomainID = string(mne.UID)
+	imexDaemonConfig.NumNodes = cd.Spec.NumNodes
+	imexDaemonConfig.DomainID = string(cd.UID)
 
 	templateData := ResourceClaimTemplateTemplateData{
-		Namespace:                      m.config.driverNamespace,
-		GenerateName:                   fmt.Sprintf("%s-claim-template-", mne.Name),
-		Finalizer:                      multiNodeEnvironmentFinalizer,
-		MultiNodeEnvironmentLabelKey:   multiNodeEnvironmentLabelKey,
-		MultiNodeEnvironmentLabelValue: mne.UID,
-		DeviceClassName:                ImexDaemonDeviceClass,
-		DriverName:                     DriverName,
-		ImexDaemonConfig:               imexDaemonConfig,
+		Namespace:               m.config.driverNamespace,
+		GenerateName:            fmt.Sprintf("%s-claim-template-", cd.Name),
+		Finalizer:               computeDomainFinalizer,
+		ComputeDomainLabelKey:   computeDomainLabelKey,
+		ComputeDomainLabelValue: cd.UID,
+		DeviceClassName:         ImexDaemonDeviceClass,
+		DriverName:              DriverName,
+		ImexDaemonConfig:        imexDaemonConfig,
 	}
 
 	tmpl, err := template.ParseFiles(ResourceClaimTemplateTemplatePath)
@@ -198,8 +198,8 @@ func (m *ResourceClaimTemplateManager) Create(ctx context.Context, namespace str
 	return rct, nil
 }
 
-func (m *ResourceClaimTemplateManager) Delete(ctx context.Context, mneUID string) error {
-	rct, err := getByMultiNodeEnvironmentUID[*resourceapi.ResourceClaimTemplate](ctx, m.informer, mneUID)
+func (m *ResourceClaimTemplateManager) Delete(ctx context.Context, cdUID string) error {
+	rct, err := getByComputeDomainUID[*resourceapi.ResourceClaimTemplate](ctx, m.informer, cdUID)
 	if err != nil {
 		return fmt.Errorf("error retrieving ResourceClaim: %w", err)
 	}
@@ -232,7 +232,7 @@ func (m *ResourceClaimTemplateManager) RemoveFinalizer(ctx context.Context, name
 
 	newRCT.Finalizers = []string{}
 	for _, f := range rct.Finalizers {
-		if f != multiNodeEnvironmentFinalizer {
+		if f != computeDomainFinalizer {
 			newRCT.Finalizers = append(newRCT.Finalizers, f)
 		}
 	}
@@ -261,12 +261,12 @@ func (m *ResourceClaimTemplateManager) onAddOrUpdate(ctx context.Context, obj an
 
 	klog.Infof("Processing added or updated ResourceClaimTemplate: %s/%s", rct.Namespace, rct.Name)
 
-	exists, err := m.multiNodeEnvironmentExists(rct.Labels[multiNodeEnvironmentLabelKey])
+	exists, err := m.computeDomainExists(rct.Labels[computeDomainLabelKey])
 	if err != nil {
 		return fmt.Errorf("error checking if owner exists: %w", err)
 	}
 	if !exists {
-		if err := m.Delete(ctx, rct.Labels[multiNodeEnvironmentLabelKey]); err != nil {
+		if err := m.Delete(ctx, rct.Labels[computeDomainLabelKey]); err != nil {
 			return fmt.Errorf("error deleting ResourceClaimTemplate '%s/%s': %w", rct.Namespace, rct.Name, err)
 		}
 		return nil

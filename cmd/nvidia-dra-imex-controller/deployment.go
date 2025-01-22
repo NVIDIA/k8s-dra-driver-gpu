@@ -43,22 +43,22 @@ const (
 )
 
 type DeploymentTemplateData struct {
-	Namespace                      string
-	GenerateName                   string
-	Finalizer                      string
-	MultiNodeEnvironmentLabelKey   string
-	MultiNodeEnvironmentLabelValue types.UID
-	Replicas                       int
-	ResourceClaimTemplateName      string
+	Namespace                 string
+	GenerateName              string
+	Finalizer                 string
+	ComputeDomainLabelKey     string
+	ComputeDomainLabelValue   types.UID
+	Replicas                  int
+	ResourceClaimTemplateName string
 }
 
 type DeploymentManager struct {
 	sync.Mutex
 
-	config                     *ManagerConfig
-	waitGroup                  sync.WaitGroup
-	cancelContext              context.CancelFunc
-	multiNodeEnvironmentExists MultiNodeEnvironmentExistsFunc
+	config              *ManagerConfig
+	waitGroup           sync.WaitGroup
+	cancelContext       context.CancelFunc
+	computeDomainExists ComputeDomainExistsFunc
 
 	factory  informers.SharedInformerFactory
 	informer cache.SharedIndexInformer
@@ -69,11 +69,11 @@ type DeploymentManager struct {
 	podManagers                  map[string]*DeploymentPodManager
 }
 
-func NewDeploymentManager(config *ManagerConfig, mneExists MultiNodeEnvironmentExistsFunc) *DeploymentManager {
+func NewDeploymentManager(config *ManagerConfig, cdExists ComputeDomainExistsFunc) *DeploymentManager {
 	labelSelector := &metav1.LabelSelector{
 		MatchExpressions: []metav1.LabelSelectorRequirement{
 			{
-				Key:      multiNodeEnvironmentLabelKey,
+				Key:      computeDomainLabelKey,
 				Operator: metav1.LabelSelectorOpExists,
 			},
 		},
@@ -92,15 +92,15 @@ func NewDeploymentManager(config *ManagerConfig, mneExists MultiNodeEnvironmentE
 	lister := factory.Apps().V1().Deployments().Lister()
 
 	m := &DeploymentManager{
-		config:                     config,
-		multiNodeEnvironmentExists: mneExists,
-		factory:                    factory,
-		informer:                   informer,
-		lister:                     lister,
-		podManagers:                make(map[string]*DeploymentPodManager),
+		config:              config,
+		computeDomainExists: cdExists,
+		factory:             factory,
+		informer:            informer,
+		lister:              lister,
+		podManagers:         make(map[string]*DeploymentPodManager),
 	}
 	m.imexChannelManager = NewImexChannelManager(config)
-	m.resourceClaimTemplateManager = NewResourceClaimTemplateManager(config, mneExists)
+	m.resourceClaimTemplateManager = NewResourceClaimTemplateManager(config, cdExists)
 
 	return m
 }
@@ -117,7 +117,7 @@ func (m *DeploymentManager) Start(ctx context.Context) (rerr error) {
 		}
 	}()
 
-	if err := addMultiNodeEnvironmentLabelIndexer[*appsv1.Deployment](m.informer); err != nil {
+	if err := addComputeDomainLabelIndexer[*appsv1.Deployment](m.informer); err != nil {
 		return fmt.Errorf("error adding indexer for MulitNodeEnvironment label: %w", err)
 	}
 
@@ -166,8 +166,8 @@ func (m *DeploymentManager) Stop() error {
 	return nil
 }
 
-func (m *DeploymentManager) Create(ctx context.Context, namespace string, replicas int, mne *nvapi.MultiNodeEnvironment) (*appsv1.Deployment, error) {
-	d, err := getByMultiNodeEnvironmentUID[*appsv1.Deployment](ctx, m.informer, string(mne.UID))
+func (m *DeploymentManager) Create(ctx context.Context, namespace string, replicas int, cd *nvapi.ComputeDomain) (*appsv1.Deployment, error) {
+	d, err := getByComputeDomainUID[*appsv1.Deployment](ctx, m.informer, string(cd.UID))
 	if err != nil {
 		return nil, fmt.Errorf("error retrieving Deployment: %w", err)
 	}
@@ -175,19 +175,19 @@ func (m *DeploymentManager) Create(ctx context.Context, namespace string, replic
 		return d, nil
 	}
 
-	rct, err := m.resourceClaimTemplateManager.Create(ctx, namespace, mne)
+	rct, err := m.resourceClaimTemplateManager.Create(ctx, namespace, cd)
 	if err != nil {
 		return nil, fmt.Errorf("error creating ResourceClaimTemplate: %w", err)
 	}
 
 	templateData := DeploymentTemplateData{
-		Namespace:                      m.config.driverNamespace,
-		GenerateName:                   fmt.Sprintf("%s-", mne.Name),
-		Finalizer:                      multiNodeEnvironmentFinalizer,
-		MultiNodeEnvironmentLabelKey:   multiNodeEnvironmentLabelKey,
-		MultiNodeEnvironmentLabelValue: mne.UID,
-		Replicas:                       replicas,
-		ResourceClaimTemplateName:      rct.Name,
+		Namespace:                 m.config.driverNamespace,
+		GenerateName:              fmt.Sprintf("%s-", cd.Name),
+		Finalizer:                 computeDomainFinalizer,
+		ComputeDomainLabelKey:     computeDomainLabelKey,
+		ComputeDomainLabelValue:   cd.UID,
+		Replicas:                  replicas,
+		ResourceClaimTemplateName: rct.Name,
 	}
 
 	tmpl, err := template.ParseFiles(DeploymentTemplatePath)
@@ -220,8 +220,8 @@ func (m *DeploymentManager) Create(ctx context.Context, namespace string, replic
 	return d, nil
 }
 
-func (m *DeploymentManager) Delete(ctx context.Context, mneUID string) error {
-	d, err := getByMultiNodeEnvironmentUID[*appsv1.Deployment](ctx, m.informer, mneUID)
+func (m *DeploymentManager) Delete(ctx context.Context, cdUID string) error {
+	d, err := getByComputeDomainUID[*appsv1.Deployment](ctx, m.informer, cdUID)
 	if err != nil {
 		return fmt.Errorf("error retrieving Deployment: %w", err)
 	}
@@ -238,11 +238,11 @@ func (m *DeploymentManager) Delete(ctx context.Context, mneUID string) error {
 		return fmt.Errorf("erroring deleting Deployment: %w", err)
 	}
 
-	if err := m.resourceClaimTemplateManager.Delete(ctx, mneUID); err != nil {
+	if err := m.resourceClaimTemplateManager.Delete(ctx, cdUID); err != nil {
 		return fmt.Errorf("error deleting ResourceClaimTemplate: %w", err)
 	}
 
-	key := d.Spec.Selector.MatchLabels[multiNodeEnvironmentLabelKey]
+	key := d.Spec.Selector.MatchLabels[computeDomainLabelKey]
 	if err := m.removePodManager(key); err != nil {
 		return fmt.Errorf("error removing Pod manager: %w", err)
 	}
@@ -255,7 +255,7 @@ func (m *DeploymentManager) RemoveFinalizer(ctx context.Context, d *appsv1.Deplo
 
 	newD.Finalizers = []string{}
 	for _, f := range d.Finalizers {
-		if f != multiNodeEnvironmentFinalizer {
+		if f != computeDomainFinalizer {
 			newD.Finalizers = append(newD.Finalizers, f)
 		}
 	}
@@ -283,12 +283,12 @@ func (m *DeploymentManager) onAddOrUpdate(ctx context.Context, obj any) error {
 
 	klog.Infof("Processing added or updated Deployment: %s/%s", d.Namespace, d.Name)
 
-	exists, err := m.multiNodeEnvironmentExists(d.Labels[multiNodeEnvironmentLabelKey])
+	exists, err := m.computeDomainExists(d.Labels[computeDomainLabelKey])
 	if err != nil {
 		return fmt.Errorf("error checking if owner exists: %w", err)
 	}
 	if !exists {
-		if err := m.Delete(ctx, d.Labels[multiNodeEnvironmentLabelKey]); err != nil {
+		if err := m.Delete(ctx, d.Labels[computeDomainLabelKey]); err != nil {
 			return fmt.Errorf("error deleting Deployment '%s/%s': %w", d.Namespace, d.Name, err)
 		}
 		return nil
@@ -302,7 +302,7 @@ func (m *DeploymentManager) onAddOrUpdate(ctx context.Context, obj any) error {
 }
 
 func (m *DeploymentManager) addPodManager(ctx context.Context, labelSelector *metav1.LabelSelector, numPods int) error {
-	key := labelSelector.MatchLabels[multiNodeEnvironmentLabelKey]
+	key := labelSelector.MatchLabels[computeDomainLabelKey]
 
 	if _, exists := m.podManagers[key]; exists {
 		return nil

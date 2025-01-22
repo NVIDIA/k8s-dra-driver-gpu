@@ -28,8 +28,8 @@ type FakeGpuV1alpha1 struct {
 	*testing.Fake
 }
 
-func (c *FakeGpuV1alpha1) MultiNodeEnvironments(namespace string) v1alpha1.MultiNodeEnvironmentInterface {
-	return &FakeMultiNodeEnvironments{c, namespace}
+func (c *FakeGpuV1alpha1) ComputeDomains(namespace string) v1alpha1.ComputeDomainInterface {
+	return &FakeComputeDomains{c, namespace}
 }
 
 // RESTClient returns a RESTClient that is used to communicate

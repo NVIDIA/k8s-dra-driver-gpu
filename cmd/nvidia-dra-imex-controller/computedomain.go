@@ -30,36 +30,36 @@ import (
 	nvlisters "github.com/NVIDIA/k8s-dra-driver/pkg/nvidia.com/resource/listers/gpu/v1alpha1"
 )
 
-type MultiNodeEnvironmentExistsFunc func(uid string) (bool, error)
+type ComputeDomainExistsFunc func(uid string) (bool, error)
 
 const (
 	informerResyncPeriod = 10 * time.Minute
 
-	multiNodeEnvironmentLabelKey  = "gpu.nvidia.com/multiNodeEnvironment"
-	multiNodeEnvironmentFinalizer = multiNodeEnvironmentLabelKey
+	computeDomainLabelKey  = "gpu.nvidia.com/computeDomain"
+	computeDomainFinalizer = computeDomainLabelKey
 )
 
-type MultiNodeEnvironmentManager struct {
+type ComputeDomainManager struct {
 	config        *ManagerConfig
 	waitGroup     sync.WaitGroup
 	cancelContext context.CancelFunc
 
 	factory  nvinformers.SharedInformerFactory
 	informer cache.SharedIndexInformer
-	lister   nvlisters.MultiNodeEnvironmentLister
+	lister   nvlisters.ComputeDomainLister
 
 	deploymentManager    *DeploymentManager
 	deviceClassManager   *DeviceClassManager
 	resourceClaimManager *ResourceClaimManager
 }
 
-// NewMultiNodeEnvironmentManager creates a new MultiNodeEnvironmentManager.
-func NewMultiNodeEnvironmentManager(config *ManagerConfig) *MultiNodeEnvironmentManager {
+// NewComputeDomainManager creates a new ComputeDomainManager.
+func NewComputeDomainManager(config *ManagerConfig) *ComputeDomainManager {
 	factory := nvinformers.NewSharedInformerFactory(config.clientsets.Nvidia, informerResyncPeriod)
-	informer := factory.Gpu().V1alpha1().MultiNodeEnvironments().Informer()
-	lister := nvlisters.NewMultiNodeEnvironmentLister(informer.GetIndexer())
+	informer := factory.Gpu().V1alpha1().ComputeDomains().Informer()
+	lister := nvlisters.NewComputeDomainLister(informer.GetIndexer())
 
-	m := &MultiNodeEnvironmentManager{
+	m := &ComputeDomainManager{
 		config:   config,
 		factory:  factory,
 		informer: informer,
@@ -72,21 +72,21 @@ func NewMultiNodeEnvironmentManager(config *ManagerConfig) *MultiNodeEnvironment
 	return m
 }
 
-// Start starts a MultiNodeEnvironmentManager.
-func (m *MultiNodeEnvironmentManager) Start(ctx context.Context) (rerr error) {
+// Start starts a ComputeDomainManager.
+func (m *ComputeDomainManager) Start(ctx context.Context) (rerr error) {
 	ctx, cancel := context.WithCancel(ctx)
 	m.cancelContext = cancel
 
 	defer func() {
 		if rerr != nil {
 			if err := m.Stop(); err != nil {
-				klog.Errorf("error stopping MultiNodeEnvironment manager: %v", err)
+				klog.Errorf("error stopping ComputeDomain manager: %v", err)
 			}
 		}
 	}()
 
 	err := m.informer.AddIndexers(cache.Indexers{
-		"uid": uidIndexer[*nvapi.MultiNodeEnvironment],
+		"uid": uidIndexer[*nvapi.ComputeDomain],
 	})
 	if err != nil {
 		return fmt.Errorf("error adding indexer for UIDs: %w", err)
@@ -94,14 +94,14 @@ func (m *MultiNodeEnvironmentManager) Start(ctx context.Context) (rerr error) {
 
 	_, err = m.informer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj any) {
-			m.config.workQueue.Enqueue(obj, m.onMultiNodeEnvironmentAdd)
+			m.config.workQueue.Enqueue(obj, m.onComputeDomainAdd)
 		},
 		DeleteFunc: func(obj any) {
-			m.config.workQueue.Enqueue(obj, m.onMultiNodeEnvironmentDelete)
+			m.config.workQueue.Enqueue(obj, m.onComputeDomainDelete)
 		},
 	})
 	if err != nil {
-		return fmt.Errorf("error adding event handlers for MultiNodeEnvironment informer: %w", err)
+		return fmt.Errorf("error adding event handlers for ComputeDomain informer: %w", err)
 	}
 
 	m.waitGroup.Add(1)
@@ -111,7 +111,7 @@ func (m *MultiNodeEnvironmentManager) Start(ctx context.Context) (rerr error) {
 	}()
 
 	if !cache.WaitForCacheSync(ctx.Done(), m.informer.HasSynced) {
-		return fmt.Errorf("informer cache sync for MultiNodeEnvironments failed")
+		return fmt.Errorf("informer cache sync for ComputeDomains failed")
 	}
 
 	if err := m.deploymentManager.Start(ctx); err != nil {
@@ -129,7 +129,7 @@ func (m *MultiNodeEnvironmentManager) Start(ctx context.Context) (rerr error) {
 	return nil
 }
 
-func (m *MultiNodeEnvironmentManager) Stop() error {
+func (m *ComputeDomainManager) Stop() error {
 	if err := m.deploymentManager.Stop(); err != nil {
 		return fmt.Errorf("error stopping Deployment manager: %w", err)
 	}
@@ -144,62 +144,62 @@ func (m *MultiNodeEnvironmentManager) Stop() error {
 	return nil
 }
 
-// Exists checks if a MultiNodeEnvironment with a specific UID exists.
-func (m *MultiNodeEnvironmentManager) Exists(uid string) (bool, error) {
-	mnes, err := m.informer.GetIndexer().ByIndex("uid", uid)
+// Exists checks if a ComputeDomain with a specific UID exists.
+func (m *ComputeDomainManager) Exists(uid string) (bool, error) {
+	cds, err := m.informer.GetIndexer().ByIndex("uid", uid)
 	if err != nil {
 		return false, fmt.Errorf("error retrieving MultiNodeInformer by UID: %w", err)
 	}
-	if len(mnes) == 0 {
+	if len(cds) == 0 {
 		return false, nil
 	}
 	return true, nil
 }
 
-func (m *MultiNodeEnvironmentManager) onMultiNodeEnvironmentAdd(ctx context.Context, obj any) error {
-	mne, ok := obj.(*nvapi.MultiNodeEnvironment)
+func (m *ComputeDomainManager) onComputeDomainAdd(ctx context.Context, obj any) error {
+	cd, ok := obj.(*nvapi.ComputeDomain)
 	if !ok {
-		return fmt.Errorf("failed to cast to MultiNodeEnvironment")
+		return fmt.Errorf("failed to cast to ComputeDomain")
 	}
 
-	klog.Infof("Processing added MultiNodeEnvironment: %s/%s", mne.Namespace, mne.Name)
+	klog.Infof("Processing added ComputeDomain: %s/%s", cd.Namespace, cd.Name)
 
-	if _, err := m.deploymentManager.Create(ctx, m.config.driverNamespace, mne.Spec.NumNodes, mne); err != nil {
+	if _, err := m.deploymentManager.Create(ctx, m.config.driverNamespace, cd.Spec.NumNodes, cd); err != nil {
 		return fmt.Errorf("error creating Deployment: %w", err)
 	}
 
-	dc, err := m.deviceClassManager.Create(ctx, mne.Spec.DeviceClassName, mne)
+	dc, err := m.deviceClassManager.Create(ctx, cd.Spec.DeviceClassName, cd)
 	if err != nil {
 		return fmt.Errorf("error creating DeviceClass: %w", err)
 	}
 
-	if mne.Spec.ResourceClaimName != "" {
-		if _, err := m.resourceClaimManager.Create(ctx, mne.Namespace, mne.Spec.ResourceClaimName, dc.Name, mne); err != nil {
-			return fmt.Errorf("error creating ResourceClaim '%s/%s': %w", mne.Namespace, mne.Spec.ResourceClaimName, err)
+	if cd.Spec.ResourceClaimName != "" {
+		if _, err := m.resourceClaimManager.Create(ctx, cd.Namespace, cd.Spec.ResourceClaimName, dc.Name, cd); err != nil {
+			return fmt.Errorf("error creating ResourceClaim '%s/%s': %w", cd.Namespace, cd.Spec.ResourceClaimName, err)
 		}
 	}
 
 	return nil
 }
 
-func (m *MultiNodeEnvironmentManager) onMultiNodeEnvironmentDelete(ctx context.Context, obj any) error {
-	mne, ok := obj.(*nvapi.MultiNodeEnvironment)
+func (m *ComputeDomainManager) onComputeDomainDelete(ctx context.Context, obj any) error {
+	cd, ok := obj.(*nvapi.ComputeDomain)
 	if !ok {
-		return fmt.Errorf("failed to cast to MultiNodeEnvironment")
+		return fmt.Errorf("failed to cast to ComputeDomain")
 	}
 
-	klog.Infof("Processing deleted MultiNodeEnvironment: %s/%s", mne.Namespace, mne.Name)
+	klog.Infof("Processing deleted ComputeDomain: %s/%s", cd.Namespace, cd.Name)
 
-	if err := m.deploymentManager.Delete(ctx, string(mne.UID)); err != nil {
+	if err := m.deploymentManager.Delete(ctx, string(cd.UID)); err != nil {
 		return fmt.Errorf("error deleting Deployment: %w", err)
 	}
 
-	if err := m.deviceClassManager.Delete(ctx, string(mne.UID)); err != nil {
+	if err := m.deviceClassManager.Delete(ctx, string(cd.UID)); err != nil {
 		return fmt.Errorf("error deleting DeviceClass: %w", err)
 	}
 
-	if err := m.resourceClaimManager.Delete(ctx, string(mne.UID)); err != nil {
-		return fmt.Errorf("error deleting ResourceClaim '%s/%s': %w", mne.Namespace, mne.Spec.ResourceClaimName, err)
+	if err := m.resourceClaimManager.Delete(ctx, string(cd.UID)); err != nil {
+		return fmt.Errorf("error deleting ResourceClaim '%s/%s': %w", cd.Namespace, cd.Spec.ResourceClaimName, err)
 	}
 
 	return nil

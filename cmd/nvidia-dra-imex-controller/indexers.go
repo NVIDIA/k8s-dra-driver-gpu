@@ -32,15 +32,15 @@ func uidIndexer[T metav1.ObjectMetaAccessor](obj any) ([]string, error) {
 	return []string{string(d.GetObjectMeta().GetUID())}, nil
 }
 
-func addMultiNodeEnvironmentLabelIndexer[T metav1.ObjectMetaAccessor](informer cache.SharedIndexInformer) error {
+func addComputeDomainLabelIndexer[T metav1.ObjectMetaAccessor](informer cache.SharedIndexInformer) error {
 	return informer.AddIndexers(cache.Indexers{
-		"multiNodeEnvironmentLabel": func(obj any) ([]string, error) {
+		"computeDomainLabel": func(obj any) ([]string, error) {
 			d, ok := obj.(T)
 			if !ok {
 				return nil, fmt.Errorf("expected a %T but got %T", *new(T), obj)
 			}
 			labels := d.GetObjectMeta().GetLabels()
-			if value, exists := labels[multiNodeEnvironmentLabelKey]; exists {
+			if value, exists := labels[computeDomainLabelKey]; exists {
 				return []string{value}, nil
 			}
 			return nil, nil
@@ -48,17 +48,17 @@ func addMultiNodeEnvironmentLabelIndexer[T metav1.ObjectMetaAccessor](informer c
 	})
 }
 
-func getByMultiNodeEnvironmentUID[T1 *T2, T2 any](ctx context.Context, informer cache.SharedIndexInformer, mneUID string) (T1, error) {
+func getByComputeDomainUID[T1 *T2, T2 any](ctx context.Context, informer cache.SharedIndexInformer, cdUID string) (T1, error) {
 	if !cache.WaitForCacheSync(ctx.Done(), informer.HasSynced) {
 		return nil, fmt.Errorf("cache sync failed for Deployment")
 	}
 
-	ds, err := informer.GetIndexer().ByIndex("multiNodeEnvironmentLabel", mneUID)
+	ds, err := informer.GetIndexer().ByIndex("computeDomainLabel", cdUID)
 	if err != nil {
-		return nil, fmt.Errorf("error getting %T via MultiNodeEnvironment label: %w", *new(T1), err)
+		return nil, fmt.Errorf("error getting %T via ComputeDomain label: %w", *new(T1), err)
 	}
 	if len(ds) > 1 {
-		return nil, fmt.Errorf("multiple %T object with same MultiNodeEnvironment label: %w", *new(T1), err)
+		return nil, fmt.Errorf("multiple %T object with same ComputeDomain label: %w", *new(T1), err)
 	}
 	if len(ds) == 0 {
 		return nil, nil

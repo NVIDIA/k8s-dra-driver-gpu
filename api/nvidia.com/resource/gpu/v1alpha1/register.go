@@ -41,8 +41,8 @@ func Resource(resource string) schema.GroupResource {
 
 func addKnownTypes(scheme *runtime.Scheme) error {
 	scheme.AddKnownTypes(SchemeGroupVersion,
-		&MultiNodeEnvironment{},
-		&MultiNodeEnvironmentList{},
+		&ComputeDomain{},
+		&ComputeDomainList{},
 	)
 	metav1.AddToGroupVersion(scheme, SchemeGroupVersion)
 	return nil

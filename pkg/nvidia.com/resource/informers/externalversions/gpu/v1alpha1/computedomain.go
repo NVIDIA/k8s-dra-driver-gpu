@@ -32,59 +32,59 @@ import (
 	cache "k8s.io/client-go/tools/cache"
 )
 
-// MultiNodeEnvironmentInformer provides access to a shared informer and lister for
-// MultiNodeEnvironments.
-type MultiNodeEnvironmentInformer interface {
+// ComputeDomainInformer provides access to a shared informer and lister for
+// ComputeDomains.
+type ComputeDomainInformer interface {
 	Informer() cache.SharedIndexInformer
-	Lister() v1alpha1.MultiNodeEnvironmentLister
+	Lister() v1alpha1.ComputeDomainLister
 }
 
-type multiNodeEnvironmentInformer struct {
+type computeDomainInformer struct {
 	factory          internalinterfaces.SharedInformerFactory
 	tweakListOptions internalinterfaces.TweakListOptionsFunc
 	namespace        string
 }
 
-// NewMultiNodeEnvironmentInformer constructs a new informer for MultiNodeEnvironment type.
+// NewComputeDomainInformer constructs a new informer for ComputeDomain type.
 // Always prefer using an informer factory to get a shared informer instead of getting an independent
 // one. This reduces memory footprint and number of connections to the server.
-func NewMultiNodeEnvironmentInformer(client versioned.Interface, namespace string, resyncPeriod time.Duration, indexers cache.Indexers) cache.SharedIndexInformer {
-	return NewFilteredMultiNodeEnvironmentInformer(client, namespace, resyncPeriod, indexers, nil)
+func NewComputeDomainInformer(client versioned.Interface, namespace string, resyncPeriod time.Duration, indexers cache.Indexers) cache.SharedIndexInformer {
+	return NewFilteredComputeDomainInformer(client, namespace, resyncPeriod, indexers, nil)
 }
 
-// NewFilteredMultiNodeEnvironmentInformer constructs a new informer for MultiNodeEnvironment type.
+// NewFilteredComputeDomainInformer constructs a new informer for ComputeDomain type.
 // Always prefer using an informer factory to get a shared informer instead of getting an independent
 // one. This reduces memory footprint and number of connections to the server.
-func NewFilteredMultiNodeEnvironmentInformer(client versioned.Interface, namespace string, resyncPeriod time.Duration, indexers cache.Indexers, tweakListOptions internalinterfaces.TweakListOptionsFunc) cache.SharedIndexInformer {
+func NewFilteredComputeDomainInformer(client versioned.Interface, namespace string, resyncPeriod time.Duration, indexers cache.Indexers, tweakListOptions internalinterfaces.TweakListOptionsFunc) cache.SharedIndexInformer {
 	return cache.NewSharedIndexInformer(
 		&cache.ListWatch{
 			ListFunc: func(options v1.ListOptions) (runtime.Object, error) {
 				if tweakListOptions != nil {
 					tweakListOptions(&options)
 				}
-				return client.GpuV1alpha1().MultiNodeEnvironments(namespace).List(context.TODO(), options)
+				return client.GpuV1alpha1().ComputeDomains(namespace).List(context.TODO(), options)
 			},
 			WatchFunc: func(options v1.ListOptions) (watch.Interface, error) {
 				if tweakListOptions != nil {
 					tweakListOptions(&options)
 				}
-				return client.GpuV1alpha1().MultiNodeEnvironments(namespace).Watch(context.TODO(), options)
+				return client.GpuV1alpha1().ComputeDomains(namespace).Watch(context.TODO(), options)
 			},
 		},
-		&gpuv1alpha1.MultiNodeEnvironment{},
+		&gpuv1alpha1.ComputeDomain{},
 		resyncPeriod,
 		indexers,
 	)
 }
 
-func (f *multiNodeEnvironmentInformer) defaultInformer(client versioned.Interface, resyncPeriod time.Duration) cache.SharedIndexInformer {
-	return NewFilteredMultiNodeEnvironmentInformer(client, f.namespace, resyncPeriod, cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc}, f.tweakListOptions)
+func (f *computeDomainInformer) defaultInformer(client versioned.Interface, resyncPeriod time.Duration) cache.SharedIndexInformer {
+	return NewFilteredComputeDomainInformer(client, f.namespace, resyncPeriod, cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc}, f.tweakListOptions)
 }
 
-func (f *multiNodeEnvironmentInformer) Informer() cache.SharedIndexInformer {
-	return f.factory.InformerFor(&gpuv1alpha1.MultiNodeEnvironment{}, f.defaultInformer)
+func (f *computeDomainInformer) Informer() cache.SharedIndexInformer {
+	return f.factory.InformerFor(&gpuv1alpha1.ComputeDomain{}, f.defaultInformer)
 }
 
-func (f *multiNodeEnvironmentInformer) Lister() v1alpha1.MultiNodeEnvironmentLister {
-	return v1alpha1.NewMultiNodeEnvironmentLister(f.Informer().GetIndexer())
+func (f *computeDomainInformer) Lister() v1alpha1.ComputeDomainLister {
+	return v1alpha1.NewComputeDomainLister(f.Informer().GetIndexer())
 }

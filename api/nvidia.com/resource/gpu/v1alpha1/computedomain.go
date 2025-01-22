@@ -25,28 +25,28 @@ import (
 // +k8s:openapi-gen=true
 // +kubebuilder:resource:scope=Namespaced
 
-// MultiNodeEnvironment prepares a set of nodes to run a multi-node workload in.
-type MultiNodeEnvironment struct {
+// ComputeDomain prepares a set of nodes to run a multi-node workload in.
+type ComputeDomain struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec MultiNodeEnvironmentSpec `json:"spec,omitempty"`
+	Spec ComputeDomainSpec `json:"spec,omitempty"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 
-// MultiNodeEnvironmentList provides a list of MultiNodeEnvironments.
-type MultiNodeEnvironmentList struct {
+// ComputeDomainList provides a list of ComputeDomains.
+type ComputeDomainList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
 
-	Items []MultiNodeEnvironment `json:"items"`
+	Items []ComputeDomain `json:"items"`
 }
 
 // +kubebuilder:validation:XValidation:rule="(has(self.resourceClaimName) ? !has(self.deviceClassName) : has(self.deviceClassName))",message="Exactly one of 'resourceClaimName' or 'deviceClassName' must be set."
 
-// MultiNodeEnvironmentSpec provides the spec for a MultiNodeEnvironment.
-type MultiNodeEnvironmentSpec struct {
+// ComputeDomainSpec provides the spec for a ComputeDomain.
+type ComputeDomainSpec struct {
 	NumNodes          int    `json:"numNodes"`
 	ResourceClaimName string `json:"resourceClaimName,omitempty"`
 	DeviceClassName   string `json:"deviceClassName,omitempty"`
