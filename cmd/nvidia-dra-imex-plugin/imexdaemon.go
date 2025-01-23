@@ -21,20 +21,38 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"sync"
 	"text/template"
+	"time"
+
+	"k8s.io/apimachinery/pkg/util/wait"
+	"k8s.io/client-go/tools/cache"
+	"k8s.io/klog/v2"
 
 	cdiapi "tags.cncf.io/container-device-interface/pkg/cdi"
 	cdispec "tags.cncf.io/container-device-interface/specs-go"
+
+	nvapi "github.com/NVIDIA/k8s-dra-driver/api/nvidia.com/resource/v1beta1"
+	nvinformers "github.com/NVIDIA/k8s-dra-driver/pkg/nvidia.com/informers/externalversions"
 )
 
 const (
+	informerResyncPeriod = 10 * time.Minute
+
 	ImexDaemonSettingsRoot       = DriverPluginPath + "/imex"
 	ImexDaemonConfigTemplatePath = "/templates/imex-daemon-config.tmpl.cfg"
 )
 
 type ImexDaemonSettingsManager struct {
-	config          *Config
+	config        *Config
+	waitGroup     sync.WaitGroup
+	cancelContext context.CancelFunc
+
+	factory  nvinformers.SharedInformerFactory
+	informer cache.SharedIndexInformer
+
 	configFilesRoot string
+	cliqueID        string
 }
 
 type ImexDaemonSettings struct {
@@ -45,11 +63,57 @@ type ImexDaemonSettings struct {
 	nodesConfigPath string
 }
 
-func NewImexDaemonSettingsManager(config *Config, configFilesRoot string) *ImexDaemonSettingsManager {
-	return &ImexDaemonSettingsManager{
+func NewImexDaemonSettingsManager(config *Config, configFilesRoot, cliqueID string) *ImexDaemonSettingsManager {
+	factory := nvinformers.NewSharedInformerFactory(config.clientsets.Nvidia, informerResyncPeriod)
+	informer := factory.Resource().V1beta1().ComputeDomains().Informer()
+
+	m := &ImexDaemonSettingsManager{
 		config:          config,
+		factory:         factory,
+		informer:        informer,
 		configFilesRoot: configFilesRoot,
+		cliqueID:        cliqueID,
 	}
+
+	return m
+}
+
+func (m *ImexDaemonSettingsManager) Start(ctx context.Context) (rerr error) {
+	ctx, cancel := context.WithCancel(ctx)
+	m.cancelContext = cancel
+
+	defer func() {
+		if rerr != nil {
+			if err := m.Stop(); err != nil {
+				klog.Errorf("error stopping ImexDaemonSettings manager: %v", err)
+			}
+		}
+	}()
+
+	err := m.informer.AddIndexers(cache.Indexers{
+		"computeDomainUID": uidIndexer[*nvapi.ComputeDomain],
+	})
+	if err != nil {
+		return fmt.Errorf("error adding indexer for UIDs: %w", err)
+	}
+
+	m.waitGroup.Add(1)
+	go func() {
+		defer m.waitGroup.Done()
+		m.factory.Start(ctx.Done())
+	}()
+
+	if !cache.WaitForCacheSync(ctx.Done(), m.informer.HasSynced) {
+		return fmt.Errorf("informer cache sync for ComputeDomains failed")
+	}
+
+	return nil
+}
+
+func (m *ImexDaemonSettingsManager) Stop() error {
+	m.cancelContext()
+	m.waitGroup.Wait()
+	return nil
 }
 
 func (m *ImexDaemonSettingsManager) NewSettings(domain string) *ImexDaemonSettings {
@@ -124,7 +188,7 @@ func (s *ImexDaemonSettings) WriteConfigFile(ctx context.Context) error {
 }
 
 func (s *ImexDaemonSettings) WriteNodesConfigFile(ctx context.Context) error {
-	nodeIPs, err := s.GetNodeIPs(ctx)
+	nodeIPs, err := s.manager.GetNodeIPs(ctx, s.domain)
 	if err != nil {
 		return fmt.Errorf("error getting node IPs: %w", err)
 	}
@@ -141,7 +205,57 @@ func (s *ImexDaemonSettings) WriteNodesConfigFile(ctx context.Context) error {
 	return nil
 }
 
-func (s *ImexDaemonSettings) GetNodeIPs(ctx context.Context) ([]string, error) {
-	ips := []string{"10.136.206.41", "10.136.206.42", "10.136.206.43", "10.136.206.44"}
+func (m *ImexManager) GetNodeIPs(ctx context.Context, cdUID string) ([]string, error) {
+	// TODO: Move away from a retry solution and instead register a callback
+	// and react immediately when the desired ComputeDomain has its
+	// Status.Nodes field populated.
+	backoff := wait.Backoff{
+		Duration: time.Microsecond, // Initial delay
+		Factor:   3,                // Factor to multiply duration each iteration
+		Jitter:   0,                // Jitter factor for randomness
+		Steps:    16,               // Maximum number of steps
+		Cap:      45 * time.Second, // Maximum backoff duration
+	}
+
+	var nodes []*nvapi.ComputeDomainNode
+	err := wait.ExponentialBackoff(backoff, func() (bool, error) {
+		cd, err := m.GetComputeDomain(ctx, cdUID)
+		if err != nil {
+			return false, fmt.Errorf("error getting ComputeDomain: %w", err)
+		}
+		if cd == nil || cd.Status.Nodes == nil {
+			return false, nil
+		}
+		nodes = cd.Status.Nodes
+		return true, nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("error getting status of nodes in ComputeDomain: %w", err)
+	}
+
+	var ips []string
+	for _, node := range nodes {
+		if m.cliqueID == node.CliqueID {
+			ips = append(ips, node.IPAddress)
+		}
+	}
 	return ips, nil
+}
+
+func (m *ImexManager) GetComputeDomain(ctx context.Context, cdUID string) (*nvapi.ComputeDomain, error) {
+	cds, err := m.informer.GetIndexer().ByIndex("computeDomainUID", cdUID)
+	if err != nil {
+		return nil, fmt.Errorf("error retrieving ComputeDomain by UID: %w", err)
+	}
+	if len(cds) == 0 {
+		return nil, nil
+	}
+	if len(cds) != 1 {
+		return nil, fmt.Errorf("multiple ComputeDomains with the same UID")
+	}
+	cd, ok := cds[0].(*nvapi.ComputeDomain)
+	if !ok {
+		return nil, fmt.Errorf("failed to cast to ComputeDomain")
+	}
+	return cd, nil
 }

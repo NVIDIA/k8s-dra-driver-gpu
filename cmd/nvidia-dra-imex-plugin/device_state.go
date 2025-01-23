@@ -23,6 +23,7 @@ import (
 	"sync"
 
 	resourceapi "k8s.io/api/resource/v1beta1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/klog/v2"
 	drapbv1 "k8s.io/kubelet/pkg/apis/dra/v1beta1"
@@ -30,6 +31,10 @@ import (
 	cdiapi "tags.cncf.io/container-device-interface/pkg/cdi"
 
 	configapi "github.com/NVIDIA/k8s-dra-driver/api/nvidia.com/resource/v1beta1"
+)
+
+const (
+	CliqueIDLabelKey = "nvidia.com/gpu.clique"
 )
 
 type OpaqueDeviceConfig struct {
@@ -83,7 +88,13 @@ func NewDeviceState(ctx context.Context, config *Config) (*DeviceState, error) {
 		return nil, fmt.Errorf("unable to create CDI handler: %w", err)
 	}
 
-	imexDaemonSettingsManager := NewImexDaemonSettingsManager(config, ImexDaemonSettingsRoot)
+	node, err := config.clientsets.Core.CoreV1().Nodes().Get(ctx, config.flags.nodeName, metav1.GetOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("error getting Node: %w", err)
+	}
+
+	cliqueID := node.Labels[CliqueIDLabelKey]
+	imexDaemonSettingsManager := NewImexDaemonSettingsManager(config, ImexDaemonSettingsRoot, cliqueID)
 
 	if err := cdi.CreateStandardDeviceSpecFile(allocatable); err != nil {
 		return nil, fmt.Errorf("unable to create base CDI spec file: %v", err)

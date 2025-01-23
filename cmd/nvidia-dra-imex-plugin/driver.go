@@ -73,6 +73,10 @@ func NewDriver(ctx context.Context, config *Config) (*driver, error) {
 		resources.Devices = append(resources.Devices, device.GetDevice())
 	}
 
+	if err := state.imexDaemonSettingsManager.Start(ctx); err != nil {
+		return nil, err
+	}
+
 	if err := plugin.PublishResources(ctx, resources); err != nil {
 		return nil, err
 	}
@@ -83,6 +87,9 @@ func NewDriver(ctx context.Context, config *Config) (*driver, error) {
 func (d *driver) Shutdown() error {
 	if d == nil {
 		return nil
+	}
+	if err := d.state.imexDaemonSettingsManager.Stop(); err != nil {
+		return fmt.Errorf("error stopping ImexDaemonSettings manager: %w", err)
 	}
 	d.plugin.Stop()
 	return nil
