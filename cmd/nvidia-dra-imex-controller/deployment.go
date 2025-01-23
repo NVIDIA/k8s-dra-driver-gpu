@@ -308,7 +308,7 @@ func (m *DeploymentManager) addPodManager(ctx context.Context, labelSelector *me
 		return nil
 	}
 
-	podManager := NewDeploymentPodManager(m.config, m.imexChannelManager, labelSelector, numPods)
+	podManager := NewDeploymentPodManager(m.config, m.imexChannelManager, labelSelector, numPods, m.getComputeDomain)
 
 	if err := podManager.Start(ctx); err != nil {
 		return fmt.Errorf("error creating Pod manager: %w", err)

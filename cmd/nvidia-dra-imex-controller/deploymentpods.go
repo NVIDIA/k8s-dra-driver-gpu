@@ -29,6 +29,12 @@ import (
 	corev1listers "k8s.io/client-go/listers/core/v1"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
+
+	nvapi "github.com/NVIDIA/k8s-dra-driver/api/nvidia.com/resource/v1beta1"
+)
+
+const (
+	CliqueIDLabelKey = "nvidia.com/gpu.clique"
 )
 
 type DeploymentPodManager struct {
@@ -40,14 +46,16 @@ type DeploymentPodManager struct {
 	informer cache.SharedInformer
 	lister   corev1listers.PodLister
 
-	nodeSelector       corev1.NodeSelector
+	getComputeDomain   GetComputeDomainFunc
+	computeDomainNodes []*nvapi.ComputeDomainNode
 	computeDomainLabel string
 	numPods            int
+	nodeSelector       corev1.NodeSelector
 
 	imexChannelManager *ImexChannelManager
 }
 
-func NewDeploymentPodManager(config *ManagerConfig, imexChannelManager *ImexChannelManager, labelSelector *metav1.LabelSelector, numPods int) *DeploymentPodManager {
+func NewDeploymentPodManager(config *ManagerConfig, imexChannelManager *ImexChannelManager, labelSelector *metav1.LabelSelector, numPods int, getComputeDomain GetComputeDomainFunc) *DeploymentPodManager {
 	factory := informers.NewSharedInformerFactoryWithOptions(
 		config.clientsets.Core,
 		informerResyncPeriod,
@@ -79,9 +87,10 @@ func NewDeploymentPodManager(config *ManagerConfig, imexChannelManager *ImexChan
 		factory:            factory,
 		informer:           informer,
 		lister:             lister,
-		nodeSelector:       nodeSelector,
+		getComputeDomain:   getComputeDomain,
 		computeDomainLabel: labelSelector.MatchLabels[computeDomainLabelKey],
 		numPods:            numPods,
+		nodeSelector:       nodeSelector,
 		imexChannelManager: imexChannelManager,
 	}
 
@@ -150,23 +159,68 @@ func (m *DeploymentPodManager) onPodAddOrUpdate(ctx context.Context, obj any) er
 
 	klog.Infof("Processing added or updated Pod: %s/%s", p.Namespace, p.Name)
 
+	cd, err := m.getComputeDomain(p.Labels[computeDomainLabelKey])
+	if err != nil {
+		return fmt.Errorf("error getting ComputeDomain: %w", err)
+	}
+	if cd == nil {
+		return nil
+	}
+
 	if p.Spec.NodeName == "" {
 		return fmt.Errorf("pod not yet scheduled: %s/%s", p.Namespace, p.Name)
 	}
 
-	hostnameLabels := m.nodeSelector.NodeSelectorTerms[0].MatchExpressions[0].Values
-	if !slices.Contains(hostnameLabels, p.Spec.NodeName) {
-		hostnameLabels = append(hostnameLabels, p.Spec.NodeName)
-	}
-	m.nodeSelector.NodeSelectorTerms[0].MatchExpressions[0].Values = hostnameLabels
-
-	if len(hostnameLabels) != m.numPods {
-		return fmt.Errorf("node selector not yet complete")
+	var nodeNames []string
+	for _, node := range m.computeDomainNodes {
+		nodeNames = append(nodeNames, node.Name)
 	}
 
+	if !slices.Contains(nodeNames, p.Spec.NodeName) {
+		node, err := m.GetComputeDomainNode(ctx, p.Spec.NodeName)
+		if err != nil {
+			return fmt.Errorf("error getting ComputeDomainNode: %w", err)
+		}
+		nodeNames = append(nodeNames, node.Name)
+		m.computeDomainNodes = append(m.computeDomainNodes, node)
+	}
+
+	if len(nodeNames) != m.numPods {
+		return fmt.Errorf("not all pods scheduled yet")
+	}
+
+	cd.Status.Nodes = m.computeDomainNodes
+	if _, err = m.config.clientsets.Nvidia.ResourceV1beta1().ComputeDomains(cd.Namespace).UpdateStatus(ctx, cd, metav1.UpdateOptions{}); err != nil {
+		return fmt.Errorf("error updating nodes in ComputeDomain status: %w", err)
+	}
+
+	m.nodeSelector.NodeSelectorTerms[0].MatchExpressions[0].Values = nodeNames
 	if err := m.imexChannelManager.CreateOrUpdatePool(m.computeDomainLabel, &m.nodeSelector); err != nil {
 		return fmt.Errorf("failed to create or update IMEX channel pool: %w", err)
 	}
 
 	return nil
+}
+
+func (m *DeploymentPodManager) GetComputeDomainNode(ctx context.Context, nodeName string) (*nvapi.ComputeDomainNode, error) {
+	node, err := m.config.clientsets.Core.CoreV1().Nodes().Get(ctx, nodeName, metav1.GetOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("error getting Node '%s': %w", nodeName, err)
+	}
+
+	var ipAddress string
+	for _, addr := range node.Status.Addresses {
+		if addr.Type == corev1.NodeInternalIP {
+			ipAddress = addr.Address
+			break
+		}
+	}
+
+	n := &nvapi.ComputeDomainNode{
+		Name:      nodeName,
+		IPAddress: ipAddress,
+		CliqueID:  node.Labels[CliqueIDLabelKey],
+	}
+
+	return n, nil
 }

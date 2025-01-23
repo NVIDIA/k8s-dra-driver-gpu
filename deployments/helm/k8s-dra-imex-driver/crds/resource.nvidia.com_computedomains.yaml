@@ -53,6 +53,32 @@ spec:
             - message: Exactly one of 'resourceClaimName' or 'deviceClassName' must
                 be set.
               rule: '(has(self.resourceClaimName) ? !has(self.deviceClassName) : has(self.deviceClassName))'
+          status:
+            description: ComputeDomainStatus provides the status for a ComputeDomain.
+            properties:
+              nodes:
+                items:
+                  description: ComputeDomainNode provides information about each node
+                    added to a ComputeDomain.
+                  properties:
+                    cliqueID:
+                      type: string
+                    ipAddress:
+                      type: string
+                    name:
+                      type: string
+                  required:
+                  - cliqueID
+                  - ipAddress
+                  - name
+                  type: object
+                type: array
+                x-kubernetes-list-map-keys:
+                - name
+                x-kubernetes-list-type: map
+            type: object
         type: object
     served: true
     storage: true
+    subresources:
+      status: {}
