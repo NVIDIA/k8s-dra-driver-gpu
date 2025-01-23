@@ -55,10 +55,10 @@ type DeploymentTemplateData struct {
 type DeploymentManager struct {
 	sync.Mutex
 
-	config              *ManagerConfig
-	waitGroup           sync.WaitGroup
-	cancelContext       context.CancelFunc
-	computeDomainExists ComputeDomainExistsFunc
+	config           *ManagerConfig
+	waitGroup        sync.WaitGroup
+	cancelContext    context.CancelFunc
+	getComputeDomain GetComputeDomainFunc
 
 	factory  informers.SharedInformerFactory
 	informer cache.SharedIndexInformer
@@ -69,7 +69,7 @@ type DeploymentManager struct {
 	podManagers                  map[string]*DeploymentPodManager
 }
 
-func NewDeploymentManager(config *ManagerConfig, cdExists ComputeDomainExistsFunc) *DeploymentManager {
+func NewDeploymentManager(config *ManagerConfig, getComputeDomain GetComputeDomainFunc) *DeploymentManager {
 	labelSelector := &metav1.LabelSelector{
 		MatchExpressions: []metav1.LabelSelectorRequirement{
 			{
@@ -92,15 +92,15 @@ func NewDeploymentManager(config *ManagerConfig, cdExists ComputeDomainExistsFun
 	lister := factory.Apps().V1().Deployments().Lister()
 
 	m := &DeploymentManager{
-		config:              config,
-		computeDomainExists: cdExists,
-		factory:             factory,
-		informer:            informer,
-		lister:              lister,
-		podManagers:         make(map[string]*DeploymentPodManager),
+		config:           config,
+		getComputeDomain: getComputeDomain,
+		factory:          factory,
+		informer:         informer,
+		lister:           lister,
+		podManagers:      make(map[string]*DeploymentPodManager),
 	}
 	m.imexChannelManager = NewImexChannelManager(config)
-	m.resourceClaimTemplateManager = NewResourceClaimTemplateManager(config, cdExists)
+	m.resourceClaimTemplateManager = NewResourceClaimTemplateManager(config, getComputeDomain)
 
 	return m
 }
@@ -283,11 +283,11 @@ func (m *DeploymentManager) onAddOrUpdate(ctx context.Context, obj any) error {
 
 	klog.Infof("Processing added or updated Deployment: %s/%s", d.Namespace, d.Name)
 
-	exists, err := m.computeDomainExists(d.Labels[computeDomainLabelKey])
+	cd, err := m.getComputeDomain(d.Labels[computeDomainLabelKey])
 	if err != nil {
-		return fmt.Errorf("error checking if owner exists: %w", err)
+		return fmt.Errorf("error getting ComputeDomain: %w", err)
 	}
-	if !exists {
+	if cd == nil {
 		if err := m.Delete(ctx, d.Labels[computeDomainLabelKey]); err != nil {
 			return fmt.Errorf("error deleting Deployment '%s/%s': %w", d.Namespace, d.Name, err)
 		}

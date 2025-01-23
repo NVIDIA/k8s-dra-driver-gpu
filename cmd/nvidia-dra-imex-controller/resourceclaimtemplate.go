@@ -55,17 +55,17 @@ type ResourceClaimTemplateTemplateData struct {
 }
 
 type ResourceClaimTemplateManager struct {
-	config              *ManagerConfig
-	waitGroup           sync.WaitGroup
-	cancelContext       context.CancelFunc
-	computeDomainExists ComputeDomainExistsFunc
+	config           *ManagerConfig
+	waitGroup        sync.WaitGroup
+	cancelContext    context.CancelFunc
+	getComputeDomain GetComputeDomainFunc
 
 	factory  informers.SharedInformerFactory
 	informer cache.SharedIndexInformer
 	lister   resourcelisters.ResourceClaimTemplateLister
 }
 
-func NewResourceClaimTemplateManager(config *ManagerConfig, cdExists ComputeDomainExistsFunc) *ResourceClaimTemplateManager {
+func NewResourceClaimTemplateManager(config *ManagerConfig, getComputeDomain GetComputeDomainFunc) *ResourceClaimTemplateManager {
 	labelSelector := &metav1.LabelSelector{
 		MatchExpressions: []metav1.LabelSelectorRequirement{
 			{
@@ -87,11 +87,11 @@ func NewResourceClaimTemplateManager(config *ManagerConfig, cdExists ComputeDoma
 	lister := factory.Resource().V1beta1().ResourceClaimTemplates().Lister()
 
 	m := &ResourceClaimTemplateManager{
-		config:              config,
-		computeDomainExists: cdExists,
-		factory:             factory,
-		informer:            informer,
-		lister:              lister,
+		config:           config,
+		getComputeDomain: getComputeDomain,
+		factory:          factory,
+		informer:         informer,
+		lister:           lister,
 	}
 
 	return m
@@ -261,11 +261,11 @@ func (m *ResourceClaimTemplateManager) onAddOrUpdate(ctx context.Context, obj an
 
 	klog.Infof("Processing added or updated ResourceClaimTemplate: %s/%s", rct.Namespace, rct.Name)
 
-	exists, err := m.computeDomainExists(rct.Labels[computeDomainLabelKey])
+	cd, err := m.getComputeDomain(rct.Labels[computeDomainLabelKey])
 	if err != nil {
-		return fmt.Errorf("error checking if owner exists: %w", err)
+		return fmt.Errorf("error getting ComputeDomain: %w", err)
 	}
-	if !exists {
+	if cd == nil {
 		if err := m.Delete(ctx, rct.Labels[computeDomainLabelKey]); err != nil {
 			return fmt.Errorf("error deleting ResourceClaimTemplate '%s/%s': %w", rct.Namespace, rct.Name, err)
 		}

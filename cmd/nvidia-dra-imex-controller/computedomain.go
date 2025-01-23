@@ -30,7 +30,7 @@ import (
 	nvlisters "github.com/NVIDIA/k8s-dra-driver/pkg/nvidia.com/listers/resource/v1beta1"
 )
 
-type ComputeDomainExistsFunc func(uid string) (bool, error)
+type GetComputeDomainFunc func(uid string) (*nvapi.ComputeDomain, error)
 
 const (
 	informerResyncPeriod = 10 * time.Minute
@@ -65,9 +65,9 @@ func NewComputeDomainManager(config *ManagerConfig) *ComputeDomainManager {
 		informer: informer,
 		lister:   lister,
 	}
-	m.deploymentManager = NewDeploymentManager(config, m.Exists)
-	m.deviceClassManager = NewDeviceClassManager(config, m.Exists)
-	m.resourceClaimManager = NewResourceClaimManager(config, m.Exists)
+	m.deploymentManager = NewDeploymentManager(config, m.Get)
+	m.deviceClassManager = NewDeviceClassManager(config, m.Get)
+	m.resourceClaimManager = NewResourceClaimManager(config, m.Get)
 
 	return m
 }
@@ -144,16 +144,23 @@ func (m *ComputeDomainManager) Stop() error {
 	return nil
 }
 
-// Exists checks if a ComputeDomain with a specific UID exists.
-func (m *ComputeDomainManager) Exists(uid string) (bool, error) {
+// Get gets a ComputeDomain with a specific UID.
+func (m *ComputeDomainManager) Get(uid string) (*nvapi.ComputeDomain, error) {
 	cds, err := m.informer.GetIndexer().ByIndex("uid", uid)
 	if err != nil {
-		return false, fmt.Errorf("error retrieving MultiNodeInformer by UID: %w", err)
+		return nil, fmt.Errorf("error retrieving ComputeDomain by UID: %w", err)
 	}
 	if len(cds) == 0 {
-		return false, nil
+		return nil, nil
 	}
-	return true, nil
+	if len(cds) != 1 {
+		return nil, fmt.Errorf("multiple ComputeDomains with the same UID")
+	}
+	cd, ok := cds[0].(*nvapi.ComputeDomain)
+	if !ok {
+		return nil, fmt.Errorf("failed to cast to ComputeDomain")
+	}
+	return cd, nil
 }
 
 func (m *ComputeDomainManager) onComputeDomainAdd(ctx context.Context, obj any) error {

@@ -33,17 +33,17 @@ import (
 )
 
 type DeviceClassManager struct {
-	config              *ManagerConfig
-	waitGroup           sync.WaitGroup
-	cancelContext       context.CancelFunc
-	computeDomainExists ComputeDomainExistsFunc
+	config           *ManagerConfig
+	waitGroup        sync.WaitGroup
+	cancelContext    context.CancelFunc
+	getComputeDomain GetComputeDomainFunc
 
 	factory  informers.SharedInformerFactory
 	informer cache.SharedIndexInformer
 	lister   resourcelisters.DeviceClassLister
 }
 
-func NewDeviceClassManager(config *ManagerConfig, cdExists ComputeDomainExistsFunc) *DeviceClassManager {
+func NewDeviceClassManager(config *ManagerConfig, getComputeDomain GetComputeDomainFunc) *DeviceClassManager {
 	labelSelector := &metav1.LabelSelector{
 		MatchExpressions: []metav1.LabelSelectorRequirement{
 			{
@@ -65,11 +65,11 @@ func NewDeviceClassManager(config *ManagerConfig, cdExists ComputeDomainExistsFu
 	lister := factory.Resource().V1beta1().DeviceClasses().Lister()
 
 	m := &DeviceClassManager{
-		config:              config,
-		computeDomainExists: cdExists,
-		factory:             factory,
-		informer:            informer,
-		lister:              lister,
+		config:           config,
+		getComputeDomain: getComputeDomain,
+		factory:          factory,
+		informer:         informer,
+		lister:           lister,
 	}
 
 	return m
@@ -236,11 +236,11 @@ func (m *DeviceClassManager) onAddOrUpdate(ctx context.Context, obj any) error {
 
 	klog.Infof("Processing added or updated DeviceClass: %s", dc.Name)
 
-	exists, err := m.computeDomainExists(dc.Labels[computeDomainLabelKey])
+	cd, err := m.getComputeDomain(dc.Labels[computeDomainLabelKey])
 	if err != nil {
-		return fmt.Errorf("error checking if owner exists: %w", err)
+		return fmt.Errorf("error getting ComputeDomain: %w", err)
 	}
-	if !exists {
+	if cd == nil {
 		if err := m.Delete(ctx, dc.Labels[computeDomainLabelKey]); err != nil {
 			return fmt.Errorf("error deleting DeviceClass '%s': %w", dc.Name, err)
 		}

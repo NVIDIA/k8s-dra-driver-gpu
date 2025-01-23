@@ -33,17 +33,17 @@ import (
 )
 
 type ResourceClaimManager struct {
-	config              *ManagerConfig
-	waitGroup           sync.WaitGroup
-	cancelContext       context.CancelFunc
-	computeDomainExists ComputeDomainExistsFunc
+	config           *ManagerConfig
+	waitGroup        sync.WaitGroup
+	cancelContext    context.CancelFunc
+	getComputeDomain GetComputeDomainFunc
 
 	factory  informers.SharedInformerFactory
 	informer cache.SharedIndexInformer
 	lister   resourcelisters.ResourceClaimLister
 }
 
-func NewResourceClaimManager(config *ManagerConfig, cdExists ComputeDomainExistsFunc) *ResourceClaimManager {
+func NewResourceClaimManager(config *ManagerConfig, getComputeDomain GetComputeDomainFunc) *ResourceClaimManager {
 	labelSelector := &metav1.LabelSelector{
 		MatchExpressions: []metav1.LabelSelectorRequirement{
 			{
@@ -65,11 +65,11 @@ func NewResourceClaimManager(config *ManagerConfig, cdExists ComputeDomainExists
 	lister := factory.Resource().V1beta1().ResourceClaims().Lister()
 
 	m := &ResourceClaimManager{
-		config:              config,
-		computeDomainExists: cdExists,
-		factory:             factory,
-		informer:            informer,
-		lister:              lister,
+		config:           config,
+		getComputeDomain: getComputeDomain,
+		factory:          factory,
+		informer:         informer,
+		lister:           lister,
 	}
 
 	return m
@@ -220,11 +220,11 @@ func (m *ResourceClaimManager) onAddOrUpdate(ctx context.Context, obj any) error
 
 	klog.Infof("Processing added or updated ResourceClaim: %s/%s", rc.Namespace, rc.Name)
 
-	exists, err := m.computeDomainExists(rc.Labels[computeDomainLabelKey])
+	cd, err := m.getComputeDomain(rc.Labels[computeDomainLabelKey])
 	if err != nil {
-		return fmt.Errorf("error checking if owner exists: %w", err)
+		return fmt.Errorf("error getting ComputeDomain: %w", err)
 	}
-	if !exists {
+	if cd == nil {
 		if err := m.Delete(ctx, rc.Labels[computeDomainLabelKey]); err != nil {
 			return fmt.Errorf("error deleting ResourceClaim '%s/%s': %w", rc.Namespace, rc.Name, err)
 		}
