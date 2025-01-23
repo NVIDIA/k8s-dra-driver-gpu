@@ -24,6 +24,7 @@ import (
 	"text/template"
 
 	appsv1 "k8s.io/api/apps/v1"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -212,6 +213,8 @@ func (m *DeploymentManager) Create(ctx context.Context, namespace string, replic
 		return nil, fmt.Errorf("failed to convert unstructured data to typed object: %w", err)
 	}
 
+	m.applyAffinities(&deployment, cd)
+
 	d, err = m.config.clientsets.Core.AppsV1().Deployments(deployment.Namespace).Create(ctx, &deployment, metav1.CreateOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("error creating Deployment: %w", err)
@@ -353,4 +356,96 @@ func (m *DeploymentManager) removeAllPodManagers() error {
 	}
 	m.Unlock()
 	return nil
+}
+
+func (m *DeploymentManager) applyAffinities(d *appsv1.Deployment, cd *nvapi.ComputeDomain) {
+	labelSelector := &metav1.LabelSelector{
+		MatchExpressions: []metav1.LabelSelectorRequirement{
+			{
+				Key:      computeDomainLabelKey,
+				Operator: metav1.LabelSelectorOpIn,
+				Values:   []string{string(cd.UID)},
+			},
+		},
+	}
+
+	preferredTopologyAlignment := []corev1.WeightedPodAffinityTerm{
+		{
+			Weight: 100,
+			PodAffinityTerm: corev1.PodAffinityTerm{
+				LabelSelector: labelSelector,
+				TopologyKey:   CliqueIDLabelKey,
+			},
+		},
+	}
+
+	affinity := &corev1.Affinity{
+		PodAffinity: &corev1.PodAffinity{
+			PreferredDuringSchedulingIgnoredDuringExecution: preferredTopologyAlignment,
+		},
+	}
+
+	getPTS := func(alignment *nvapi.ComputeDomainTopologyAlignment) []corev1.PodAffinityTerm {
+		podAffinityTerms := make([]corev1.PodAffinityTerm, len(alignment.Required.TopologyKeys))
+		for i, key := range alignment.Required.TopologyKeys {
+			podAffinityTerms[i] = corev1.PodAffinityTerm{
+				LabelSelector: labelSelector,
+				TopologyKey:   key,
+			}
+		}
+		return podAffinityTerms
+	}
+
+	getWPTS := func(alignment *nvapi.ComputeDomainTopologyAlignment) []corev1.WeightedPodAffinityTerm {
+		weightedPodAffinityTerms := make([]corev1.WeightedPodAffinityTerm, len(alignment.Preferred))
+		for i, term := range alignment.Preferred {
+			weightedPodAffinityTerms[i] = corev1.WeightedPodAffinityTerm{
+				Weight: term.Weight,
+				PodAffinityTerm: corev1.PodAffinityTerm{
+					LabelSelector: labelSelector,
+					TopologyKey:   term.TopologyKey,
+				},
+			}
+		}
+		return weightedPodAffinityTerms
+	}
+
+	if cd.Spec.NodeSelector != nil {
+		d.Spec.Template.Spec.NodeSelector = cd.Spec.NodeSelector
+	}
+
+	if cd.Spec.NodeAffinity != nil {
+		nodeAffinity := &corev1.NodeAffinity{}
+		if cd.Spec.NodeAffinity.Required != nil {
+			nodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution = cd.Spec.NodeAffinity.Required
+		}
+		if cd.Spec.NodeAffinity.Preferred != nil {
+			nodeAffinity.PreferredDuringSchedulingIgnoredDuringExecution = cd.Spec.NodeAffinity.Preferred
+		}
+		affinity.NodeAffinity = nodeAffinity
+	}
+
+	if cd.Spec.TopologyAlignment != nil {
+		podAffinity := &corev1.PodAffinity{}
+		if cd.Spec.TopologyAlignment.Required != nil {
+			podAffinity.RequiredDuringSchedulingIgnoredDuringExecution = getPTS(cd.Spec.TopologyAlignment)
+		}
+		if cd.Spec.TopologyAlignment.Preferred != nil {
+			podAffinity.PreferredDuringSchedulingIgnoredDuringExecution = getWPTS(cd.Spec.TopologyAlignment)
+		}
+		affinity.PodAffinity = podAffinity
+	}
+
+	if cd.Spec.TopologyAntiAlignment != nil {
+		podAntiAffinity := &corev1.PodAntiAffinity{}
+		if cd.Spec.TopologyAntiAlignment.Required != nil {
+			podAntiAffinity.RequiredDuringSchedulingIgnoredDuringExecution = getPTS(cd.Spec.TopologyAntiAlignment)
+		}
+		if cd.Spec.TopologyAlignment.Preferred != nil {
+			podAntiAffinity.PreferredDuringSchedulingIgnoredDuringExecution = getWPTS(cd.Spec.TopologyAntiAlignment)
+		}
+		affinity.PodAntiAffinity = podAntiAffinity
+	}
+
+	d.Spec.Template.Spec.Affinity = affinity
 }

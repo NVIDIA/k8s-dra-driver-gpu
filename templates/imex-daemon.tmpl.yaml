@@ -51,18 +51,6 @@ spec:
               test "$(nvidia-imex-ctl -q)" = "READY"
           initialDelaySeconds: 1
           periodSeconds: 1
-      affinity:
-        podAffinity:
-          preferredDuringSchedulingIgnoredDuringExecution:
-          - weight: 100
-            podAffinityTerm:
-              labelSelector:
-                matchExpressions:
-                - key: {{ .ComputeDomainLabelKey }}
-                  operator: In
-                  values:
-                  - {{ .ComputeDomainLabelValue }}
-              topologyKey: "nvidia.com/gpu.clique"
       resourceClaims:
       - name: imex-daemon
         resourceClaimTemplateName: {{ .ResourceClaimTemplateName }}

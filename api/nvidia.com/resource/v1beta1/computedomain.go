@@ -17,6 +17,7 @@
 package v1beta1
 
 import (
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -49,9 +50,39 @@ type ComputeDomainList struct {
 
 // ComputeDomainSpec provides the spec for a ComputeDomain.
 type ComputeDomainSpec struct {
-	NumNodes          int    `json:"numNodes"`
-	ResourceClaimName string `json:"resourceClaimName,omitempty"`
-	DeviceClassName   string `json:"deviceClassName,omitempty"`
+	NumNodes              int                             `json:"numNodes"`
+	ResourceClaimName     string                          `json:"resourceClaimName,omitempty"`
+	DeviceClassName       string                          `json:"deviceClassName,omitempty"`
+	NodeSelector          map[string]string               `json:"nodeSelector,omitempty"`
+	NodeAffinity          *ComputeDomainNodeAffinity      `json:"nodeAffinity,omitempty"`
+	TopologyAlignment     *ComputeDomainTopologyAlignment `json:"topologyAlignment,omitempty"`
+	TopologyAntiAlignment *ComputeDomainTopologyAlignment `json:"topologyAntiAlignment,omitempty"`
+}
+
+// +kubebuilder:validation:XValidation:rule="has(self.preferred) || has(self.required)",message="At least one of 'preferred' or 'required' must be set."
+
+type ComputeDomainNodeAffinity struct {
+	// +listType=atomic
+	Preferred []corev1.PreferredSchedulingTerm `json:"preferred,omitempty"`
+	Required  *corev1.NodeSelector             `json:"required,omitempty"`
+}
+
+// +kubebuilder:validation:XValidation:rule="has(self.preferred) || has(self.required)",message="At least one of 'preferred' or 'required' must be set."
+
+type ComputeDomainTopologyAlignment struct {
+	// +listType=atomic
+	Preferred []ComputeDomainWeightedTopologyKey `json:"preferred,omitempty"`
+	Required  *ComputeDomainTopologyKeys         `json:"required,omitempty"`
+}
+
+type ComputeDomainTopologyKeys struct {
+	// +listType=atomic
+	TopologyKeys []string `json:"topologyKeys"`
+}
+
+type ComputeDomainWeightedTopologyKey struct {
+	Weight      int32  `json:"weight"`
+	TopologyKey string `json:"topologyKey"`
 }
 
 // ComputeDomainStatus provides the status for a ComputeDomain.
