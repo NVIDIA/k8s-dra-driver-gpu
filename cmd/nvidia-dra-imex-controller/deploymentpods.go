@@ -48,14 +48,10 @@ type DeploymentPodManager struct {
 
 	getComputeDomain   GetComputeDomainFunc
 	computeDomainNodes []*nvapi.ComputeDomainNode
-	computeDomainLabel string
 	numPods            int
-	nodeSelector       corev1.NodeSelector
-
-	imexChannelManager *ImexChannelManager
 }
 
-func NewDeploymentPodManager(config *ManagerConfig, imexChannelManager *ImexChannelManager, labelSelector *metav1.LabelSelector, numPods int, getComputeDomain GetComputeDomainFunc) *DeploymentPodManager {
+func NewDeploymentPodManager(config *ManagerConfig, labelSelector *metav1.LabelSelector, numPods int, getComputeDomain GetComputeDomainFunc) *DeploymentPodManager {
 	factory := informers.NewSharedInformerFactoryWithOptions(
 		config.clientsets.Core,
 		informerResyncPeriod,
@@ -68,30 +64,13 @@ func NewDeploymentPodManager(config *ManagerConfig, imexChannelManager *ImexChan
 	informer := factory.Core().V1().Pods().Informer()
 	lister := factory.Core().V1().Pods().Lister()
 
-	nodeSelector := corev1.NodeSelector{
-		NodeSelectorTerms: []corev1.NodeSelectorTerm{
-			{
-				MatchExpressions: []corev1.NodeSelectorRequirement{
-					{
-						Key:      "kubernetes.io/hostname",
-						Operator: corev1.NodeSelectorOpIn,
-						Values:   []string{},
-					},
-				},
-			},
-		},
-	}
-
 	m := &DeploymentPodManager{
-		config:             config,
-		factory:            factory,
-		informer:           informer,
-		lister:             lister,
-		getComputeDomain:   getComputeDomain,
-		computeDomainLabel: labelSelector.MatchLabels[computeDomainLabelKey],
-		numPods:            numPods,
-		nodeSelector:       nodeSelector,
-		imexChannelManager: imexChannelManager,
+		config:           config,
+		factory:          factory,
+		informer:         informer,
+		lister:           lister,
+		getComputeDomain: getComputeDomain,
+		numPods:          numPods,
 	}
 
 	return m
@@ -135,9 +114,6 @@ func (m *DeploymentPodManager) Start(ctx context.Context) (rerr error) {
 }
 
 func (m *DeploymentPodManager) Stop() error {
-	if err := m.imexChannelManager.DeletePool(m.computeDomainLabel); err != nil {
-		return fmt.Errorf("error deleting IMEX channel pool: %w", err)
-	}
 	m.cancelContext()
 	m.waitGroup.Wait()
 	return nil
@@ -192,11 +168,6 @@ func (m *DeploymentPodManager) onPodAddOrUpdate(ctx context.Context, obj any) er
 	cd.Status.Nodes = m.computeDomainNodes
 	if _, err = m.config.clientsets.Nvidia.ResourceV1beta1().ComputeDomains(cd.Namespace).UpdateStatus(ctx, cd, metav1.UpdateOptions{}); err != nil {
 		return fmt.Errorf("error updating nodes in ComputeDomain status: %w", err)
-	}
-
-	m.nodeSelector.NodeSelectorTerms[0].MatchExpressions[0].Values = nodeNames
-	if err := m.imexChannelManager.CreateOrUpdatePool(m.computeDomainLabel, &m.nodeSelector); err != nil {
-		return fmt.Errorf("failed to create or update IMEX channel pool: %w", err)
 	}
 
 	return nil

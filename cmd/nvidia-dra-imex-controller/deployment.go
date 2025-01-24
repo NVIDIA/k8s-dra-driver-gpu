@@ -246,8 +246,13 @@ func (m *DeploymentManager) Delete(ctx context.Context, cdUID string) error {
 	}
 
 	key := d.Spec.Selector.MatchLabels[computeDomainLabelKey]
+
 	if err := m.removePodManager(key); err != nil {
 		return fmt.Errorf("error removing Pod manager: %w", err)
+	}
+
+	if err := m.imexChannelManager.DeletePool(key); err != nil {
+		return fmt.Errorf("error deleting IMEX channel pool: %w", err)
 	}
 
 	return nil
@@ -301,6 +306,42 @@ func (m *DeploymentManager) onAddOrUpdate(ctx context.Context, obj any) error {
 		return fmt.Errorf("error adding Pod manager '%s/%s': %w", d.Namespace, d.Name, err)
 	}
 
+	if d.Status.AvailableReplicas != *d.Spec.Replicas {
+		return nil
+	}
+
+	if err := m.createOrUpdatePool(d, cd); err != nil {
+		return fmt.Errorf("error creating or updating pool: %w", err)
+	}
+
+	return nil
+}
+
+func (m *DeploymentManager) createOrUpdatePool(d *appsv1.Deployment, cd *nvapi.ComputeDomain) error {
+	var nodeNames []string
+	for _, node := range cd.Status.Nodes {
+		nodeNames = append(nodeNames, node.Name)
+	}
+
+	nodeSelector := corev1.NodeSelector{
+		NodeSelectorTerms: []corev1.NodeSelectorTerm{
+			{
+				MatchExpressions: []corev1.NodeSelectorRequirement{
+					{
+						Key:      "kubernetes.io/hostname",
+						Operator: corev1.NodeSelectorOpIn,
+						Values:   nodeNames,
+					},
+				},
+			},
+		},
+	}
+
+	computeDomainLabel := d.Spec.Selector.MatchLabels[computeDomainLabelKey]
+	if err := m.imexChannelManager.CreateOrUpdatePool(computeDomainLabel, &nodeSelector); err != nil {
+		return fmt.Errorf("failed to create or update IMEX channel pool: %w", err)
+	}
+
 	return nil
 }
 
@@ -311,7 +352,7 @@ func (m *DeploymentManager) addPodManager(ctx context.Context, labelSelector *me
 		return nil
 	}
 
-	podManager := NewDeploymentPodManager(m.config, m.imexChannelManager, labelSelector, numPods, m.getComputeDomain)
+	podManager := NewDeploymentPodManager(m.config, labelSelector, numPods, m.getComputeDomain)
 
 	if err := podManager.Start(ctx); err != nil {
 		return fmt.Errorf("error creating Pod manager: %w", err)
