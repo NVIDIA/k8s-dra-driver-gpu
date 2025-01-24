@@ -21,6 +21,11 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+const (
+	ComputeDomainModeImmediate = "Immediate"
+	ComputeDomainModeDelayed   = "Delayed"
+)
+
 // +genclient
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 // +k8s:openapi-gen=true
@@ -47,9 +52,18 @@ type ComputeDomainList struct {
 }
 
 // +kubebuilder:validation:XValidation:rule="(has(self.resourceClaimName) ? !has(self.deviceClassName) : has(self.deviceClassName))",message="Exactly one of 'resourceClaimName' or 'deviceClassName' must be set."
+// +kubebuilder:validation:XValidation:rule="self.mode != 'Delayed'",message="'Delayed' mode is not yet supported."
+// +kubebuilder:validation:XValidation:rule="self.mode == 'Immediate' || (self.mode == 'Delayed' && size(self.resourceClaimNames) == 1)",message="When 'mode' is 'Delayed', 'resourceClaimNames' must have exactly one entry."
+// +kubebuilder:validation:XValidation:rule="self.mode == 'Immediate' || (self.mode == 'Delayed' && !has(self.nodeSelector))",message="When 'mode' is 'Delayed', 'NodeSelector' must not be set."
+// +kubebuilder:validation:XValidation:rule="self.mode == 'Immediate' || (self.mode == 'Delayed' && !has(self.topologyAlignment))",message="When 'mode' is 'Delayed', 'TopologyAlignment' must not be set."
+// +kubebuilder:validation:XValidation:rule="self.mode == 'Immediate' || (self.mode == 'Delayed' && (!has(self.nodeAffinity) || !has(self.nodeAffinity.preferred)))",message="When mode is 'Delayed', 'nodeAffinity.preferred' must not be set; only 'nodeAffinity.required' is allowed."
+// +kubebuilder:validation:XValidation:rule="self.mode == 'Immediate' || (self.mode == 'Delayed' && !has(self.topologyAntiAlignment))",message="When 'mode' is 'Delayed', 'TopologyAntiAlignment' must not be set."
 
 // ComputeDomainSpec provides the spec for a ComputeDomain.
 type ComputeDomainSpec struct {
+	// +kubebuilder:validation:Enum=Immediate;Delayed
+	// +kubebuilder:default=Immediate
+	Mode                  string                          `json:"mode"`
 	NumNodes              int                             `json:"numNodes"`
 	ResourceClaimName     string                          `json:"resourceClaimName,omitempty"`
 	DeviceClassName       string                          `json:"deviceClassName,omitempty"`
