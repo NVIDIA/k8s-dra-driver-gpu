@@ -157,28 +157,6 @@ func (cdi *CDIHandler) CreateStandardDeviceSpecFile(allocatable AllocatableDevic
 		return fmt.Errorf("failed to get common CDI spec edits: %w", err)
 	}
 
-	// Add the nvidia-imex binary as an extra container edit.
-	// TODO: Build a more robust way of doing this.
-	extraContainerEdits := &cdiapi.ContainerEdits{
-		ContainerEdits: &cdispec.ContainerEdits{
-			Mounts: []*cdispec.Mount{
-				{
-					ContainerPath: "/usr/bin/nvidia-imex",
-					HostPath:      filepath.Join(cdi.driverRoot, "/usr/bin/nvidia-imex"),
-					Options:       []string{"rw", "nosuid", "nodev", "bind"},
-				},
-				{
-					ContainerPath: "/usr/bin/nvidia-imex-ctl",
-					HostPath:      filepath.Join(cdi.driverRoot, "/usr/bin/nvidia-imex-ctl"),
-					Options:       []string{"rw", "nosuid", "nodev", "bind"},
-				},
-			},
-		},
-	}
-
-	// Add the extra container edits into the set of common edits.
-	commonEdits.Append(extraContainerEdits)
-
 	// Make sure that NVIDIA_VISIBLE_DEVICES is set to void to avoid the
 	// nvidia-container-runtime honoring it in addition to the underlying
 	// runtime honoring CDI.
