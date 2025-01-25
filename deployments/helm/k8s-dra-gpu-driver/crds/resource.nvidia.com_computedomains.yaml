@@ -242,8 +242,10 @@ spec:
                 type: object
               numNodes:
                 type: integer
-              resourceClaimName:
-                type: string
+              resourceClaimNames:
+                items:
+                  type: string
+                type: array
               topologyAlignment:
                 properties:
                   preferred:
@@ -309,9 +311,9 @@ spec:
             - numNodes
             type: object
             x-kubernetes-validations:
-            - message: Exactly one of 'resourceClaimName' or 'deviceClassName' must
-                be set.
-              rule: '(has(self.resourceClaimName) ? !has(self.deviceClassName) : has(self.deviceClassName))'
+            - message: At least one name must be specified in 'resourceClaimNames'
+                if 'deviceClassName' is not specified.
+              rule: has(self.deviceClassName) || size(self.resourceClaimNames) > 0
             - message: '''Delayed'' mode is not yet supported.'
               rule: self.mode != 'Delayed'
             - message: When 'mode' is 'Delayed', 'resourceClaimNames' must have exactly

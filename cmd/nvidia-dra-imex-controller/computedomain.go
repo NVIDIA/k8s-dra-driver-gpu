@@ -180,9 +180,9 @@ func (m *ComputeDomainManager) onComputeDomainAdd(ctx context.Context, obj any) 
 		return fmt.Errorf("error creating DeviceClass: %w", err)
 	}
 
-	if cd.Spec.ResourceClaimName != "" {
-		if _, err := m.resourceClaimManager.Create(ctx, cd.Namespace, cd.Spec.ResourceClaimName, dc.Name, cd); err != nil {
-			return fmt.Errorf("error creating ResourceClaim '%s/%s': %w", cd.Namespace, cd.Spec.ResourceClaimName, err)
+	for _, name := range cd.Spec.ResourceClaimNames {
+		if _, err := m.resourceClaimManager.Create(ctx, cd.Namespace, name, dc.Name, cd); err != nil {
+			return fmt.Errorf("error creating ResourceClaim '%s/%s': %w", cd.Namespace, name, err)
 		}
 	}
 
@@ -206,7 +206,7 @@ func (m *ComputeDomainManager) onComputeDomainDelete(ctx context.Context, obj an
 	}
 
 	if err := m.resourceClaimManager.Delete(ctx, string(cd.UID)); err != nil {
-		return fmt.Errorf("error deleting ResourceClaim '%s/%s': %w", cd.Namespace, cd.Spec.ResourceClaimName, err)
+		return fmt.Errorf("error deleting ResourceClaim: %w", err)
 	}
 
 	return nil

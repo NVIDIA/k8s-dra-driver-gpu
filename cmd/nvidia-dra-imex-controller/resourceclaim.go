@@ -123,11 +123,14 @@ func (m *ResourceClaimManager) Stop() error {
 }
 
 func (m *ResourceClaimManager) Create(ctx context.Context, namespace, name, deviceClassName string, cd *nvapi.ComputeDomain) (*resourceapi.ResourceClaim, error) {
-	rc, err := getByComputeDomainUID[*resourceapi.ResourceClaim](ctx, m.informer, string(cd.UID))
-	if err != nil {
-		return nil, fmt.Errorf("error retrieving ResourceClaim: %w", err)
+	rc, err := m.config.clientsets.Core.ResourceV1beta1().ResourceClaims(namespace).Get(ctx, name, metav1.GetOptions{})
+	if err != nil && !errors.IsNotFound(err) {
+		return nil, fmt.Errorf("error getting ResourceClaim: %w", err)
 	}
-	if rc != nil {
+	if err == nil && rc.Labels[computeDomainLabelKey] != string(cd.UID) {
+		return nil, fmt.Errorf("existing ResourceClaim '%s/%s' not associated with ComputeDomain '%v'", namespace, name, cd.UID)
+	}
+	if err == nil {
 		return rc, nil
 	}
 
@@ -158,21 +161,23 @@ func (m *ResourceClaimManager) Create(ctx context.Context, namespace, name, devi
 }
 
 func (m *ResourceClaimManager) Delete(ctx context.Context, cdUID string) error {
-	rc, err := getByComputeDomainUID[*resourceapi.ResourceClaim](ctx, m.informer, cdUID)
+	rcs, err := getByComputeDomainUID[*resourceapi.ResourceClaim](ctx, m.informer, cdUID)
 	if err != nil {
 		return fmt.Errorf("error retrieving ResourceClaim: %w", err)
 	}
-	if rc == nil {
+	if len(rcs) == 0 {
 		return nil
 	}
 
-	if err := m.RemoveFinalizer(ctx, rc.Namespace, rc.Name); err != nil {
-		return fmt.Errorf("error removing finalizer on ResourceClaim '%s/%s': %w", rc.Namespace, rc.Name, err)
-	}
+	for _, rc := range rcs {
+		if err := m.RemoveFinalizer(ctx, rc.Namespace, rc.Name); err != nil {
+			return fmt.Errorf("error removing finalizer on ResourceClaim '%s/%s': %w", rc.Namespace, rc.Name, err)
+		}
 
-	err = m.config.clientsets.Core.ResourceV1beta1().ResourceClaims(rc.Namespace).Delete(ctx, rc.Name, metav1.DeleteOptions{})
-	if err != nil && !errors.IsNotFound(err) {
-		return fmt.Errorf("erroring deleting ResourceClaim: %w", err)
+		err := m.config.clientsets.Core.ResourceV1beta1().ResourceClaims(rc.Namespace).Delete(ctx, rc.Name, metav1.DeleteOptions{})
+		if err != nil && !errors.IsNotFound(err) {
+			return fmt.Errorf("erroring deleting ResourceClaim: %w", err)
+		}
 	}
 
 	return nil

@@ -145,12 +145,15 @@ func (m *ResourceClaimTemplateManager) Stop() error {
 }
 
 func (m *ResourceClaimTemplateManager) Create(ctx context.Context, namespace string, cd *nvapi.ComputeDomain) (*resourceapi.ResourceClaimTemplate, error) {
-	rct, err := getByComputeDomainUID[*resourceapi.ResourceClaimTemplate](ctx, m.informer, string(cd.UID))
+	rcts, err := getByComputeDomainUID[*resourceapi.ResourceClaimTemplate](ctx, m.informer, string(cd.UID))
 	if err != nil {
 		return nil, fmt.Errorf("error retrieving ResourceClaimTemplate: %w", err)
 	}
-	if rct != nil {
-		return rct, nil
+	if len(rcts) > 1 {
+		return nil, fmt.Errorf("more than one ResourceClaimTemplate found with same ComputeDomain UID")
+	}
+	if len(rcts) == 1 {
+		return rcts[0], nil
 	}
 
 	imexDaemonConfig := nvapi.DefaultImexDaemonConfig()
@@ -190,7 +193,7 @@ func (m *ResourceClaimTemplateManager) Create(ctx context.Context, namespace str
 		return nil, fmt.Errorf("failed to convert unstructured data to typed object: %w", err)
 	}
 
-	rct, err = m.config.clientsets.Core.ResourceV1beta1().ResourceClaimTemplates(namespace).Create(ctx, &resourceClaimTemplate, metav1.CreateOptions{})
+	rct, err := m.config.clientsets.Core.ResourceV1beta1().ResourceClaimTemplates(namespace).Create(ctx, &resourceClaimTemplate, metav1.CreateOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("error creating ResourceClaimTemplate: %w", err)
 	}
@@ -199,13 +202,18 @@ func (m *ResourceClaimTemplateManager) Create(ctx context.Context, namespace str
 }
 
 func (m *ResourceClaimTemplateManager) Delete(ctx context.Context, cdUID string) error {
-	rct, err := getByComputeDomainUID[*resourceapi.ResourceClaimTemplate](ctx, m.informer, cdUID)
+	rcts, err := getByComputeDomainUID[*resourceapi.ResourceClaimTemplate](ctx, m.informer, cdUID)
 	if err != nil {
-		return fmt.Errorf("error retrieving ResourceClaim: %w", err)
+		return fmt.Errorf("error retrieving ResourceClaimTemplate: %w", err)
 	}
-	if rct == nil {
+	if len(rcts) > 1 {
+		return fmt.Errorf("more than one ResourceClaimTemplate found with same ComputeDomain UID")
+	}
+	if len(rcts) == 0 {
 		return nil
 	}
+
+	rct := rcts[0]
 
 	if err := m.RemoveFinalizer(ctx, rct.Namespace, rct.Name); err != nil {
 		return fmt.Errorf("error removing finalizer on ResourceClaimTemplate '%s/%s': %w", rct.Namespace, rct.Name, err)

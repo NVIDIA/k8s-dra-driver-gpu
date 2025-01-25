@@ -123,12 +123,15 @@ func (m *DeviceClassManager) Stop() error {
 }
 
 func (m *DeviceClassManager) Create(ctx context.Context, name string, cd *nvapi.ComputeDomain) (*resourceapi.DeviceClass, error) {
-	dc, err := getByComputeDomainUID[*resourceapi.DeviceClass](ctx, m.informer, string(cd.UID))
+	dcs, err := getByComputeDomainUID[*resourceapi.DeviceClass](ctx, m.informer, string(cd.UID))
 	if err != nil {
 		return nil, fmt.Errorf("error retrieving DeviceClass: %w", err)
 	}
-	if dc != nil {
-		return dc, nil
+	if len(dcs) > 1 {
+		return nil, fmt.Errorf("more than one DeviceClass found with same ComputeDomain UID")
+	}
+	if len(dcs) == 1 {
+		return dcs[0], nil
 	}
 
 	deviceClass := &resourceapi.DeviceClass{
@@ -165,7 +168,7 @@ func (m *DeviceClassManager) Create(ctx context.Context, name string, cd *nvapi.
 		deviceClass.Name = name
 	}
 
-	dc, err = m.config.clientsets.Core.ResourceV1beta1().DeviceClasses().Create(ctx, deviceClass, metav1.CreateOptions{})
+	dc, err := m.config.clientsets.Core.ResourceV1beta1().DeviceClasses().Create(ctx, deviceClass, metav1.CreateOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("error creating DeviceClass: %w", err)
 	}
@@ -174,13 +177,18 @@ func (m *DeviceClassManager) Create(ctx context.Context, name string, cd *nvapi.
 }
 
 func (m *DeviceClassManager) Delete(ctx context.Context, cdUID string) error {
-	dc, err := getByComputeDomainUID[*resourceapi.DeviceClass](ctx, m.informer, cdUID)
+	dcs, err := getByComputeDomainUID[*resourceapi.DeviceClass](ctx, m.informer, cdUID)
 	if err != nil {
 		return fmt.Errorf("error retrieving DeviceClass: %w", err)
 	}
-	if dc == nil {
+	if len(dcs) > 1 {
+		return fmt.Errorf("more than one DeviceClass found with same ComputeDomain UID")
+	}
+	if len(dcs) == 0 {
 		return nil
 	}
+
+	dc := dcs[0]
 
 	if err := m.RemoveFinalizer(ctx, dc.Name); err != nil {
 		return fmt.Errorf("error removing finalizer on DeviceClass '%s': %w", dc.Name, err)

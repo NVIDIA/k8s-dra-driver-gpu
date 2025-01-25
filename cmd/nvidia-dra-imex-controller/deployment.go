@@ -168,12 +168,15 @@ func (m *DeploymentManager) Stop() error {
 }
 
 func (m *DeploymentManager) Create(ctx context.Context, namespace string, replicas int, cd *nvapi.ComputeDomain) (*appsv1.Deployment, error) {
-	d, err := getByComputeDomainUID[*appsv1.Deployment](ctx, m.informer, string(cd.UID))
+	ds, err := getByComputeDomainUID[*appsv1.Deployment](ctx, m.informer, string(cd.UID))
 	if err != nil {
 		return nil, fmt.Errorf("error retrieving Deployment: %w", err)
 	}
-	if d != nil {
-		return d, nil
+	if len(ds) > 1 {
+		return nil, fmt.Errorf("more than one Deployment found with same ComputeDomain UID")
+	}
+	if len(ds) == 1 {
+		return ds[0], nil
 	}
 
 	rct, err := m.resourceClaimTemplateManager.Create(ctx, namespace, cd)
@@ -215,7 +218,7 @@ func (m *DeploymentManager) Create(ctx context.Context, namespace string, replic
 
 	m.applyAffinities(&deployment, cd)
 
-	d, err = m.config.clientsets.Core.AppsV1().Deployments(deployment.Namespace).Create(ctx, &deployment, metav1.CreateOptions{})
+	d, err := m.config.clientsets.Core.AppsV1().Deployments(deployment.Namespace).Create(ctx, &deployment, metav1.CreateOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("error creating Deployment: %w", err)
 	}
@@ -224,13 +227,18 @@ func (m *DeploymentManager) Create(ctx context.Context, namespace string, replic
 }
 
 func (m *DeploymentManager) Delete(ctx context.Context, cdUID string) error {
-	d, err := getByComputeDomainUID[*appsv1.Deployment](ctx, m.informer, cdUID)
+	ds, err := getByComputeDomainUID[*appsv1.Deployment](ctx, m.informer, cdUID)
 	if err != nil {
 		return fmt.Errorf("error retrieving Deployment: %w", err)
 	}
-	if d == nil {
+	if len(ds) > 1 {
+		return fmt.Errorf("more than one Deployment found with same ComputeDomain UID")
+	}
+	if len(ds) == 0 {
 		return nil
 	}
+
+	d := ds[0]
 
 	if err := m.RemoveFinalizer(ctx, d); err != nil {
 		return fmt.Errorf("error removing finalizer on Deployment: %w", err)

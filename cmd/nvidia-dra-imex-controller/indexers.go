@@ -48,26 +48,27 @@ func addComputeDomainLabelIndexer[T metav1.ObjectMetaAccessor](informer cache.Sh
 	})
 }
 
-func getByComputeDomainUID[T1 *T2, T2 any](ctx context.Context, informer cache.SharedIndexInformer, cdUID string) (T1, error) {
+func getByComputeDomainUID[T1 *T2, T2 any](ctx context.Context, informer cache.SharedIndexInformer, cdUID string) ([]T1, error) {
 	if !cache.WaitForCacheSync(ctx.Done(), informer.HasSynced) {
 		return nil, fmt.Errorf("cache sync failed for Deployment")
 	}
 
-	ds, err := informer.GetIndexer().ByIndex("computeDomainLabel", cdUID)
+	objs, err := informer.GetIndexer().ByIndex("computeDomainLabel", cdUID)
 	if err != nil {
 		return nil, fmt.Errorf("error getting %T via ComputeDomain label: %w", *new(T1), err)
 	}
-	if len(ds) > 1 {
-		return nil, fmt.Errorf("multiple %T object with same ComputeDomain label: %w", *new(T1), err)
-	}
-	if len(ds) == 0 {
+	if len(objs) == 0 {
 		return nil, nil
 	}
 
-	d, ok := ds[0].(T1)
-	if !ok {
-		return nil, fmt.Errorf("failed to cast to %T", *new(T1))
+	var ds []T1
+	for _, obj := range objs {
+		d, ok := obj.(T1)
+		if !ok {
+			return nil, fmt.Errorf("failed to cast to %T", *new(T1))
+		}
+		ds = append(ds, d)
 	}
 
-	return d, nil
+	return ds, nil
 }

@@ -51,7 +51,7 @@ type ComputeDomainList struct {
 	Items []ComputeDomain `json:"items"`
 }
 
-// +kubebuilder:validation:XValidation:rule="(has(self.resourceClaimName) ? !has(self.deviceClassName) : has(self.deviceClassName))",message="Exactly one of 'resourceClaimName' or 'deviceClassName' must be set."
+// +kubebuilder:validation:XValidation:rule="has(self.deviceClassName) || size(self.resourceClaimNames) > 0",message="At least one name must be specified in 'resourceClaimNames' if 'deviceClassName' is not specified."
 // +kubebuilder:validation:XValidation:rule="self.mode != 'Delayed'",message="'Delayed' mode is not yet supported."
 // +kubebuilder:validation:XValidation:rule="self.mode == 'Immediate' || (self.mode == 'Delayed' && size(self.resourceClaimNames) == 1)",message="When 'mode' is 'Delayed', 'resourceClaimNames' must have exactly one entry."
 // +kubebuilder:validation:XValidation:rule="self.mode == 'Immediate' || (self.mode == 'Delayed' && !has(self.nodeSelector))",message="When 'mode' is 'Delayed', 'NodeSelector' must not be set."
@@ -65,8 +65,8 @@ type ComputeDomainSpec struct {
 	// +kubebuilder:default=Immediate
 	Mode                  string                          `json:"mode"`
 	NumNodes              int                             `json:"numNodes"`
-	ResourceClaimName     string                          `json:"resourceClaimName,omitempty"`
 	DeviceClassName       string                          `json:"deviceClassName,omitempty"`
+	ResourceClaimNames    []string                        `json:"resourceClaimNames,omitempty"`
 	NodeSelector          map[string]string               `json:"nodeSelector,omitempty"`
 	NodeAffinity          *ComputeDomainNodeAffinity      `json:"nodeAffinity,omitempty"`
 	TopologyAlignment     *ComputeDomainTopologyAlignment `json:"topologyAlignment,omitempty"`
