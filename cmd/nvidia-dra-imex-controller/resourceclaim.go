@@ -25,7 +25,6 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/informers"
-	resourcelisters "k8s.io/client-go/listers/resource/v1beta1"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
 
@@ -33,17 +32,15 @@ import (
 )
 
 type ResourceClaimManager struct {
-	config           *ManagerConfig
-	waitGroup        sync.WaitGroup
-	cancelContext    context.CancelFunc
-	getComputeDomain GetComputeDomainFunc
+	config        *ManagerConfig
+	waitGroup     sync.WaitGroup
+	cancelContext context.CancelFunc
 
 	factory  informers.SharedInformerFactory
 	informer cache.SharedIndexInformer
-	lister   resourcelisters.ResourceClaimLister
 }
 
-func NewResourceClaimManager(config *ManagerConfig, getComputeDomain GetComputeDomainFunc) *ResourceClaimManager {
+func NewResourceClaimManager(config *ManagerConfig) *ResourceClaimManager {
 	labelSelector := &metav1.LabelSelector{
 		MatchExpressions: []metav1.LabelSelectorRequirement{
 			{
@@ -62,14 +59,11 @@ func NewResourceClaimManager(config *ManagerConfig, getComputeDomain GetComputeD
 	)
 
 	informer := factory.Resource().V1beta1().ResourceClaims().Informer()
-	lister := factory.Resource().V1beta1().ResourceClaims().Lister()
 
 	m := &ResourceClaimManager{
-		config:           config,
-		getComputeDomain: getComputeDomain,
-		factory:          factory,
-		informer:         informer,
-		lister:           lister,
+		config:   config,
+		factory:  factory,
+		informer: informer,
 	}
 
 	return m
@@ -89,18 +83,6 @@ func (m *ResourceClaimManager) Start(ctx context.Context) (rerr error) {
 
 	if err := addComputeDomainLabelIndexer[*resourceapi.ResourceClaim](m.informer); err != nil {
 		return fmt.Errorf("error adding indexer for MulitNodeEnvironment label: %w", err)
-	}
-
-	_, err := m.informer.AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc: func(obj any) {
-			m.config.workQueue.Enqueue(obj, m.onAddOrUpdate)
-		},
-		UpdateFunc: func(objOld, objNew any) {
-			m.config.workQueue.Enqueue(objNew, m.onAddOrUpdate)
-		},
-	})
-	if err != nil {
-		return fmt.Errorf("error adding event handlers for ResourceClaim informer: %w", err)
 	}
 
 	m.waitGroup.Add(1)
@@ -196,7 +178,6 @@ func (m *ResourceClaimManager) RemoveFinalizer(ctx context.Context, cdUID string
 		return nil
 	}
 
-
 	for _, rc := range rcs {
 		newRC := rc.DeepCopy()
 		newRC.Finalizers = []string{}
@@ -212,36 +193,6 @@ func (m *ResourceClaimManager) RemoveFinalizer(ctx context.Context, cdUID string
 		if _, err = m.config.clientsets.Core.ResourceV1beta1().ResourceClaims(rc.Namespace).Update(ctx, newRC, metav1.UpdateOptions{}); err != nil {
 			return fmt.Errorf("error updating ResourceClaim: %w", err)
 		}
-	}
-
-	return nil
-}
-
-func (m *ResourceClaimManager) onAddOrUpdate(ctx context.Context, obj any) error {
-	rc, ok := obj.(*resourceapi.ResourceClaim)
-	if !ok {
-		return fmt.Errorf("failed to cast to ResourceClaim")
-	}
-
-	rc, err := m.lister.ResourceClaims(rc.Namespace).Get(rc.Name)
-	if err != nil && errors.IsNotFound(err) {
-		return nil
-	}
-	if err != nil {
-		return fmt.Errorf("erroring retreiving ResourceClaim: %w", err)
-	}
-
-	klog.Infof("Processing added or updated ResourceClaim: %s/%s", rc.Namespace, rc.Name)
-
-	cd, err := m.getComputeDomain(rc.Labels[computeDomainLabelKey])
-	if err != nil {
-		return fmt.Errorf("error getting ComputeDomain: %w", err)
-	}
-	if cd == nil {
-		if err := m.Delete(ctx, rc.Labels[computeDomainLabelKey]); err != nil {
-			return fmt.Errorf("error deleting ResourceClaim '%s/%s': %w", rc.Namespace, rc.Name, err)
-		}
-		return nil
 	}
 
 	return nil

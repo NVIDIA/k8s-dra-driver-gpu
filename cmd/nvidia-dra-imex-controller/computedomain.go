@@ -28,7 +28,6 @@ import (
 
 	nvapi "github.com/NVIDIA/k8s-dra-driver/api/nvidia.com/resource/v1beta1"
 	nvinformers "github.com/NVIDIA/k8s-dra-driver/pkg/nvidia.com/informers/externalversions"
-	nvlisters "github.com/NVIDIA/k8s-dra-driver/pkg/nvidia.com/listers/resource/v1beta1"
 )
 
 type GetComputeDomainFunc func(uid string) (*nvapi.ComputeDomain, error)
@@ -47,7 +46,6 @@ type ComputeDomainManager struct {
 
 	factory  nvinformers.SharedInformerFactory
 	informer cache.SharedIndexInformer
-	lister   nvlisters.ComputeDomainLister
 
 	deploymentManager    *DeploymentManager
 	deviceClassManager   *DeviceClassManager
@@ -58,17 +56,15 @@ type ComputeDomainManager struct {
 func NewComputeDomainManager(config *ManagerConfig) *ComputeDomainManager {
 	factory := nvinformers.NewSharedInformerFactory(config.clientsets.Nvidia, informerResyncPeriod)
 	informer := factory.Resource().V1beta1().ComputeDomains().Informer()
-	lister := nvlisters.NewComputeDomainLister(informer.GetIndexer())
 
 	m := &ComputeDomainManager{
 		config:   config,
 		factory:  factory,
 		informer: informer,
-		lister:   lister,
 	}
 	m.deploymentManager = NewDeploymentManager(config, m.Get)
-	m.deviceClassManager = NewDeviceClassManager(config, m.Get)
-	m.resourceClaimManager = NewResourceClaimManager(config, m.Get)
+	m.deviceClassManager = NewDeviceClassManager(config)
+	m.resourceClaimManager = NewResourceClaimManager(config)
 
 	return m
 }

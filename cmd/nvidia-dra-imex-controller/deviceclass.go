@@ -25,7 +25,6 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/informers"
-	resourcelisters "k8s.io/client-go/listers/resource/v1beta1"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
 
@@ -33,17 +32,15 @@ import (
 )
 
 type DeviceClassManager struct {
-	config           *ManagerConfig
-	waitGroup        sync.WaitGroup
-	cancelContext    context.CancelFunc
-	getComputeDomain GetComputeDomainFunc
+	config        *ManagerConfig
+	waitGroup     sync.WaitGroup
+	cancelContext context.CancelFunc
 
 	factory  informers.SharedInformerFactory
 	informer cache.SharedIndexInformer
-	lister   resourcelisters.DeviceClassLister
 }
 
-func NewDeviceClassManager(config *ManagerConfig, getComputeDomain GetComputeDomainFunc) *DeviceClassManager {
+func NewDeviceClassManager(config *ManagerConfig) *DeviceClassManager {
 	labelSelector := &metav1.LabelSelector{
 		MatchExpressions: []metav1.LabelSelectorRequirement{
 			{
@@ -62,14 +59,11 @@ func NewDeviceClassManager(config *ManagerConfig, getComputeDomain GetComputeDom
 	)
 
 	informer := factory.Resource().V1beta1().DeviceClasses().Informer()
-	lister := factory.Resource().V1beta1().DeviceClasses().Lister()
 
 	m := &DeviceClassManager{
-		config:           config,
-		getComputeDomain: getComputeDomain,
-		factory:          factory,
-		informer:         informer,
-		lister:           lister,
+		config:   config,
+		factory:  factory,
+		informer: informer,
 	}
 
 	return m
@@ -89,18 +83,6 @@ func (m *DeviceClassManager) Start(ctx context.Context) (rerr error) {
 
 	if err := addComputeDomainLabelIndexer[*resourceapi.DeviceClass](m.informer); err != nil {
 		return fmt.Errorf("error adding indexer for MulitNodeEnvironment label: %w", err)
-	}
-
-	_, err := m.informer.AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc: func(obj any) {
-			m.config.workQueue.Enqueue(obj, m.onAddOrUpdate)
-		},
-		UpdateFunc: func(objOld, objNew any) {
-			m.config.workQueue.Enqueue(objNew, m.onAddOrUpdate)
-		},
-	})
-	if err != nil {
-		return fmt.Errorf("error adding event handlers for DeviceClass informer: %w", err)
 	}
 
 	m.waitGroup.Add(1)
@@ -233,36 +215,6 @@ func (m *DeviceClassManager) RemoveFinalizer(ctx context.Context, cdUID string) 
 
 	if _, err = m.config.clientsets.Core.ResourceV1beta1().DeviceClasses().Update(ctx, newDC, metav1.UpdateOptions{}); err != nil {
 		return fmt.Errorf("error updating DeviceClass: %w", err)
-	}
-
-	return nil
-}
-
-func (m *DeviceClassManager) onAddOrUpdate(ctx context.Context, obj any) error {
-	dc, ok := obj.(*resourceapi.DeviceClass)
-	if !ok {
-		return fmt.Errorf("failed to cast to DeviceClass")
-	}
-
-	dc, err := m.lister.Get(dc.Name)
-	if err != nil && errors.IsNotFound(err) {
-		return nil
-	}
-	if err != nil {
-		return fmt.Errorf("erroring retreiving DeviceClass: %w", err)
-	}
-
-	klog.Infof("Processing added or updated DeviceClass: %s", dc.Name)
-
-	cd, err := m.getComputeDomain(dc.Labels[computeDomainLabelKey])
-	if err != nil {
-		return fmt.Errorf("error getting ComputeDomain: %w", err)
-	}
-	if cd == nil {
-		if err := m.Delete(ctx, dc.Labels[computeDomainLabelKey]); err != nil {
-			return fmt.Errorf("error deleting DeviceClass '%s': %w", dc.Name, err)
-		}
-		return nil
 	}
 
 	return nil

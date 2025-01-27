@@ -32,7 +32,6 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/yaml"
 	"k8s.io/client-go/informers"
-	appsv1listers "k8s.io/client-go/listers/apps/v1"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
 
@@ -63,7 +62,6 @@ type DeploymentManager struct {
 
 	factory  informers.SharedInformerFactory
 	informer cache.SharedIndexInformer
-	lister   appsv1listers.DeploymentLister
 
 	resourceClaimTemplateManager *ResourceClaimTemplateManager
 	imexChannelManager           *ImexChannelManager
@@ -90,18 +88,16 @@ func NewDeploymentManager(config *ManagerConfig, getComputeDomain GetComputeDoma
 	)
 
 	informer := factory.Apps().V1().Deployments().Informer()
-	lister := factory.Apps().V1().Deployments().Lister()
 
 	m := &DeploymentManager{
 		config:           config,
 		getComputeDomain: getComputeDomain,
 		factory:          factory,
 		informer:         informer,
-		lister:           lister,
 		podManagers:      make(map[string]*DeploymentPodManager),
 	}
 	m.imexChannelManager = NewImexChannelManager(config)
-	m.resourceClaimTemplateManager = NewResourceClaimTemplateManager(config, getComputeDomain)
+	m.resourceClaimTemplateManager = NewResourceClaimTemplateManager(config)
 
 	return m
 }
@@ -307,26 +303,7 @@ func (m *DeploymentManager) onAddOrUpdate(ctx context.Context, obj any) error {
 		return fmt.Errorf("failed to cast to Deployment")
 	}
 
-	d, err := m.lister.Deployments(d.Namespace).Get(d.Name)
-	if err != nil && errors.IsNotFound(err) {
-		return nil
-	}
-	if err != nil {
-		return fmt.Errorf("erroring retreiving Deployment: %w", err)
-	}
-
 	klog.Infof("Processing added or updated Deployment: %s/%s", d.Namespace, d.Name)
-
-	cd, err := m.getComputeDomain(d.Labels[computeDomainLabelKey])
-	if err != nil {
-		return fmt.Errorf("error getting ComputeDomain: %w", err)
-	}
-	if cd == nil {
-		if err := m.Delete(ctx, d.Labels[computeDomainLabelKey]); err != nil {
-			return fmt.Errorf("error deleting Deployment '%s/%s': %w", d.Namespace, d.Name, err)
-		}
-		return nil
-	}
 
 	if err := m.addPodManager(ctx, d.Spec.Selector, int(*d.Spec.Replicas)); err != nil {
 		return fmt.Errorf("error adding Pod manager '%s/%s': %w", d.Namespace, d.Name, err)
@@ -336,14 +313,22 @@ func (m *DeploymentManager) onAddOrUpdate(ctx context.Context, obj any) error {
 		return nil
 	}
 
-	if err := m.createOrUpdatePool(d, cd); err != nil {
+	if err := m.createOrUpdatePool(d); err != nil {
 		return fmt.Errorf("error creating or updating pool: %w", err)
 	}
 
 	return nil
 }
 
-func (m *DeploymentManager) createOrUpdatePool(d *appsv1.Deployment, cd *nvapi.ComputeDomain) error {
+func (m *DeploymentManager) createOrUpdatePool(d *appsv1.Deployment) error {
+	cd, err := m.getComputeDomain(d.Labels[computeDomainLabelKey])
+	if err != nil {
+		return fmt.Errorf("error getting ComputeDomain: %w", err)
+	}
+	if cd == nil {
+		return nil
+	}
+
 	var nodeNames []string
 	for _, node := range cd.Status.Nodes {
 		nodeNames = append(nodeNames, node.Name)
