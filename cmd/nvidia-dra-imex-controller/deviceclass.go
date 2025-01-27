@@ -190,7 +190,7 @@ func (m *DeviceClassManager) Delete(ctx context.Context, cdUID string) error {
 
 	dc := dcs[0]
 
-	if err := m.RemoveFinalizer(ctx, dc.Name); err != nil {
+	if err := m.RemoveFinalizer(ctx, cdUID); err != nil {
 		return fmt.Errorf("error removing finalizer on DeviceClass '%s': %w", dc.Name, err)
 	}
 
@@ -206,26 +206,32 @@ func (m *DeviceClassManager) Delete(ctx context.Context, cdUID string) error {
 	return nil
 }
 
-func (m *DeviceClassManager) RemoveFinalizer(ctx context.Context, name string) error {
-	dc, err := m.lister.Get(name)
-	if err != nil && errors.IsNotFound(err) {
-		return nil
-	}
+func (m *DeviceClassManager) RemoveFinalizer(ctx context.Context, cdUID string) error {
+	dcs, err := getByComputeDomainUID[*resourceapi.DeviceClass](ctx, m.informer, cdUID)
 	if err != nil {
 		return fmt.Errorf("error retrieving DeviceClass: %w", err)
 	}
+	if len(dcs) > 1 {
+		return fmt.Errorf("more than one DeviceClass found with same ComputeDomain UID")
+	}
+	if len(dcs) == 0 {
+		return nil
+	}
+
+	dc := dcs[0]
 
 	newDC := dc.DeepCopy()
-
 	newDC.Finalizers = []string{}
 	for _, f := range dc.Finalizers {
 		if f != computeDomainFinalizer {
 			newDC.Finalizers = append(newDC.Finalizers, f)
 		}
 	}
+	if len(dc.Finalizers) == len(newDC.Finalizers) {
+		return nil
+	}
 
-	_, err = m.config.clientsets.Core.ResourceV1beta1().DeviceClasses().Update(ctx, newDC, metav1.UpdateOptions{})
-	if err != nil {
+	if _, err = m.config.clientsets.Core.ResourceV1beta1().DeviceClasses().Update(ctx, newDC, metav1.UpdateOptions{}); err != nil {
 		return fmt.Errorf("error updating DeviceClass: %w", err)
 	}
 

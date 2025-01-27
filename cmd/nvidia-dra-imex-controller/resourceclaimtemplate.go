@@ -215,7 +215,7 @@ func (m *ResourceClaimTemplateManager) Delete(ctx context.Context, cdUID string)
 
 	rct := rcts[0]
 
-	if err := m.RemoveFinalizer(ctx, rct.Namespace, rct.Name); err != nil {
+	if err := m.RemoveFinalizer(ctx, cdUID); err != nil {
 		return fmt.Errorf("error removing finalizer on ResourceClaimTemplate '%s/%s': %w", rct.Namespace, rct.Name, err)
 	}
 
@@ -231,26 +231,32 @@ func (m *ResourceClaimTemplateManager) Delete(ctx context.Context, cdUID string)
 	return nil
 }
 
-func (m *ResourceClaimTemplateManager) RemoveFinalizer(ctx context.Context, namespace, name string) error {
-	rct, err := m.lister.ResourceClaimTemplates(namespace).Get(name)
-	if err != nil && errors.IsNotFound(err) {
-		return nil
-	}
+func (m *ResourceClaimTemplateManager) RemoveFinalizer(ctx context.Context, cdUID string) error {
+	rcts, err := getByComputeDomainUID[*resourceapi.ResourceClaimTemplate](ctx, m.informer, cdUID)
 	if err != nil {
 		return fmt.Errorf("error retrieving ResourceClaimTemplate: %w", err)
 	}
+	if len(rcts) > 1 {
+		return fmt.Errorf("more than one ResourceClaimTemplate found with same ComputeDomain UID")
+	}
+	if len(rcts) == 0 {
+		return nil
+	}
+
+	rct := rcts[0]
 
 	newRCT := rct.DeepCopy()
-
 	newRCT.Finalizers = []string{}
 	for _, f := range rct.Finalizers {
 		if f != computeDomainFinalizer {
 			newRCT.Finalizers = append(newRCT.Finalizers, f)
 		}
 	}
+	if len(rct.Finalizers) == len(newRCT.Finalizers) {
+		return nil
+	}
 
-	_, err = m.config.clientsets.Core.ResourceV1beta1().ResourceClaimTemplates(namespace).Update(ctx, newRCT, metav1.UpdateOptions{})
-	if err != nil {
+	if _, err = m.config.clientsets.Core.ResourceV1beta1().ResourceClaimTemplates(rct.Namespace).Update(ctx, newRCT, metav1.UpdateOptions{}); err != nil {
 		return fmt.Errorf("error updating ResourceClaimTemplate: %w", err)
 	}
 

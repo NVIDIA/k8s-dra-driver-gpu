@@ -163,17 +163,17 @@ func (m *ResourceClaimManager) Create(ctx context.Context, namespace, name, devi
 func (m *ResourceClaimManager) Delete(ctx context.Context, cdUID string) error {
 	rcs, err := getByComputeDomainUID[*resourceapi.ResourceClaim](ctx, m.informer, cdUID)
 	if err != nil {
-		return fmt.Errorf("error retrieving ResourceClaim: %w", err)
+		return fmt.Errorf("error retrieving ResourceClaims: %w", err)
 	}
 	if len(rcs) == 0 {
 		return nil
 	}
 
-	for _, rc := range rcs {
-		if err := m.RemoveFinalizer(ctx, rc.Namespace, rc.Name); err != nil {
-			return fmt.Errorf("error removing finalizer on ResourceClaim '%s/%s': %w", rc.Namespace, rc.Name, err)
-		}
+	if err := m.RemoveFinalizer(ctx, cdUID); err != nil {
+		return fmt.Errorf("error removing finalizer on ResourceClaims': %w", err)
+	}
 
+	for _, rc := range rcs {
 		if rc.GetDeletionTimestamp() != nil {
 			continue
 		}
@@ -187,27 +187,31 @@ func (m *ResourceClaimManager) Delete(ctx context.Context, cdUID string) error {
 	return nil
 }
 
-func (m *ResourceClaimManager) RemoveFinalizer(ctx context.Context, namespace, name string) error {
-	rc, err := m.lister.ResourceClaims(namespace).Get(name)
-	if err != nil && errors.IsNotFound(err) {
+func (m *ResourceClaimManager) RemoveFinalizer(ctx context.Context, cdUID string) error {
+	rcs, err := getByComputeDomainUID[*resourceapi.ResourceClaim](ctx, m.informer, cdUID)
+	if err != nil {
+		return fmt.Errorf("error retrieving ResourceClaims: %w", err)
+	}
+	if len(rcs) == 0 {
 		return nil
 	}
-	if err != nil {
-		return fmt.Errorf("error retrieving ResourceClaim: %w", err)
-	}
 
-	newRC := rc.DeepCopy()
 
-	newRC.Finalizers = []string{}
-	for _, f := range rc.Finalizers {
-		if f != computeDomainFinalizer {
-			newRC.Finalizers = append(newRC.Finalizers, f)
+	for _, rc := range rcs {
+		newRC := rc.DeepCopy()
+		newRC.Finalizers = []string{}
+		for _, f := range rc.Finalizers {
+			if f != computeDomainFinalizer {
+				newRC.Finalizers = append(newRC.Finalizers, f)
+			}
 		}
-	}
+		if len(rc.Finalizers) == len(newRC.Finalizers) {
+			return nil
+		}
 
-	_, err = m.config.clientsets.Core.ResourceV1beta1().ResourceClaims(namespace).Update(ctx, newRC, metav1.UpdateOptions{})
-	if err != nil {
-		return fmt.Errorf("error updating ResourceClaim: %w", err)
+		if _, err = m.config.clientsets.Core.ResourceV1beta1().ResourceClaims(rc.Namespace).Update(ctx, newRC, metav1.UpdateOptions{}); err != nil {
+			return fmt.Errorf("error updating ResourceClaim: %w", err)
+		}
 	}
 
 	return nil

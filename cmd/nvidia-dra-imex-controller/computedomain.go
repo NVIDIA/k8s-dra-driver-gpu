@@ -22,7 +22,6 @@ import (
 	"sync"
 	"time"
 
-	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
@@ -166,26 +165,24 @@ func (m *ComputeDomainManager) Get(uid string) (*nvapi.ComputeDomain, error) {
 }
 
 // RemoveFinalizer removes the finalizer from a ComputeDomain.
-func (m *ComputeDomainManager) RemoveFinalizer(ctx context.Context, namespace, name string) error {
-	cd, err := m.lister.ComputeDomains(namespace).Get(name)
-	if err != nil && errors.IsNotFound(err) {
-		return nil
-	}
+func (m *ComputeDomainManager) RemoveFinalizer(ctx context.Context, uid string) error {
+	cd, err := m.Get(uid)
 	if err != nil {
 		return fmt.Errorf("error retrieving ComputeDomain: %w", err)
 	}
 
 	newCD := cd.DeepCopy()
-
 	newCD.Finalizers = []string{}
 	for _, f := range cd.Finalizers {
 		if f != computeDomainFinalizer {
 			newCD.Finalizers = append(newCD.Finalizers, f)
 		}
 	}
+	if len(cd.Finalizers) == len(newCD.Finalizers) {
+		return nil
+	}
 
-	_, err = m.config.clientsets.Nvidia.ResourceV1beta1().ComputeDomains(namespace).Update(ctx, newCD, metav1.UpdateOptions{})
-	if err != nil {
+	if _, err = m.config.clientsets.Nvidia.ResourceV1beta1().ComputeDomains(cd.Namespace).Update(ctx, newCD, metav1.UpdateOptions{}); err != nil {
 		return fmt.Errorf("error updating ComputeDomain: %w", err)
 	}
 
@@ -229,7 +226,7 @@ func (m *ComputeDomainManager) onAddOrUpdate(ctx context.Context, obj any) error
 			return fmt.Errorf("error deleting ResourceClaim: %w", err)
 		}
 
-		if err := m.RemoveFinalizer(ctx, cd.Namespace, cd.Name); err != nil {
+		if err := m.RemoveFinalizer(ctx, string(cd.UID)); err != nil {
 			return fmt.Errorf("error removing finalizer: %w", err)
 		}
 

@@ -253,7 +253,7 @@ func (m *DeploymentManager) Delete(ctx context.Context, cdUID string) error {
 		return fmt.Errorf("error deleting IMEX channel pool: %w", err)
 	}
 
-	if err := m.RemoveFinalizer(ctx, d); err != nil {
+	if err := m.RemoveFinalizer(ctx, cdUID); err != nil {
 		return fmt.Errorf("error removing finalizer on Deployment: %w", err)
 	}
 
@@ -269,14 +269,29 @@ func (m *DeploymentManager) Delete(ctx context.Context, cdUID string) error {
 	return nil
 }
 
-func (m *DeploymentManager) RemoveFinalizer(ctx context.Context, d *appsv1.Deployment) error {
-	newD := d.DeepCopy()
+func (m *DeploymentManager) RemoveFinalizer(ctx context.Context, cdUID string) error {
+	ds, err := getByComputeDomainUID[*appsv1.Deployment](ctx, m.informer, cdUID)
+	if err != nil {
+		return fmt.Errorf("error retrieving Deployment: %w", err)
+	}
+	if len(ds) > 1 {
+		return fmt.Errorf("more than one Deployment found with same ComputeDomain UID")
+	}
+	if len(ds) == 0 {
+		return nil
+	}
 
+	d := ds[0]
+
+	newD := d.DeepCopy()
 	newD.Finalizers = []string{}
 	for _, f := range d.Finalizers {
 		if f != computeDomainFinalizer {
 			newD.Finalizers = append(newD.Finalizers, f)
 		}
+	}
+	if len(d.Finalizers) == len(newD.Finalizers) {
+		return nil
 	}
 
 	if _, err := m.config.clientsets.Core.AppsV1().Deployments(d.Namespace).Update(ctx, newD, metav1.UpdateOptions{}); err != nil {
