@@ -219,6 +219,10 @@ func (m *ResourceClaimTemplateManager) Delete(ctx context.Context, cdUID string)
 		return fmt.Errorf("error removing finalizer on ResourceClaimTemplate '%s/%s': %w", rct.Namespace, rct.Name, err)
 	}
 
+	if rct.GetDeletionTimestamp() != nil {
+		return nil
+	}
+
 	err = m.config.clientsets.Core.ResourceV1beta1().ResourceClaimTemplates(rct.Namespace).Delete(ctx, rct.Name, metav1.DeleteOptions{})
 	if err != nil && !errors.IsNotFound(err) {
 		return fmt.Errorf("erroring deleting ResourceClaimTemplate: %w", err)

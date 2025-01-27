@@ -194,6 +194,10 @@ func (m *DeviceClassManager) Delete(ctx context.Context, cdUID string) error {
 		return fmt.Errorf("error removing finalizer on DeviceClass '%s': %w", dc.Name, err)
 	}
 
+	if dc.GetDeletionTimestamp() != nil {
+		return nil
+	}
+
 	err = m.config.clientsets.Core.ResourceV1beta1().DeviceClasses().Delete(ctx, dc.Name, metav1.DeleteOptions{})
 	if err != nil && !errors.IsNotFound(err) {
 		return fmt.Errorf("erroring deleting DeviceClass: %w", err)

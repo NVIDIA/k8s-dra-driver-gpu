@@ -174,6 +174,10 @@ func (m *ResourceClaimManager) Delete(ctx context.Context, cdUID string) error {
 			return fmt.Errorf("error removing finalizer on ResourceClaim '%s/%s': %w", rc.Namespace, rc.Name, err)
 		}
 
+		if rc.GetDeletionTimestamp() != nil {
+			continue
+		}
+
 		err := m.config.clientsets.Core.ResourceV1beta1().ResourceClaims(rc.Namespace).Delete(ctx, rc.Name, metav1.DeleteOptions{})
 		if err != nil && !errors.IsNotFound(err) {
 			return fmt.Errorf("erroring deleting ResourceClaim: %w", err)

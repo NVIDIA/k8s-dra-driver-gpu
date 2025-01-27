@@ -239,21 +239,11 @@ func (m *DeploymentManager) Delete(ctx context.Context, cdUID string) error {
 	}
 
 	d := ds[0]
-
-	if err := m.RemoveFinalizer(ctx, d); err != nil {
-		return fmt.Errorf("error removing finalizer on Deployment: %w", err)
-	}
-
-	err = m.config.clientsets.Core.AppsV1().Deployments(d.Namespace).Delete(ctx, d.Name, metav1.DeleteOptions{})
-	if err != nil && !errors.IsNotFound(err) {
-		return fmt.Errorf("erroring deleting Deployment: %w", err)
-	}
+	key := d.Spec.Selector.MatchLabels[computeDomainLabelKey]
 
 	if err := m.resourceClaimTemplateManager.Delete(ctx, cdUID); err != nil {
 		return fmt.Errorf("error deleting ResourceClaimTemplate: %w", err)
 	}
-
-	key := d.Spec.Selector.MatchLabels[computeDomainLabelKey]
 
 	if err := m.removePodManager(key); err != nil {
 		return fmt.Errorf("error removing Pod manager: %w", err)
@@ -261,6 +251,19 @@ func (m *DeploymentManager) Delete(ctx context.Context, cdUID string) error {
 
 	if err := m.imexChannelManager.DeletePool(key); err != nil {
 		return fmt.Errorf("error deleting IMEX channel pool: %w", err)
+	}
+
+	if err := m.RemoveFinalizer(ctx, d); err != nil {
+		return fmt.Errorf("error removing finalizer on Deployment: %w", err)
+	}
+
+	if d.GetDeletionTimestamp() != nil {
+		return nil
+	}
+
+	err = m.config.clientsets.Core.AppsV1().Deployments(d.Namespace).Delete(ctx, d.Name, metav1.DeleteOptions{})
+	if err != nil && !errors.IsNotFound(err) {
+		return fmt.Errorf("erroring deleting Deployment: %w", err)
 	}
 
 	return nil
