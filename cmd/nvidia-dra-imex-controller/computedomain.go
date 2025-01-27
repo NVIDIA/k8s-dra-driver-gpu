@@ -22,6 +22,8 @@ import (
 	"sync"
 	"time"
 
+	"k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
 
@@ -94,10 +96,10 @@ func (m *ComputeDomainManager) Start(ctx context.Context) (rerr error) {
 
 	_, err = m.informer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj any) {
-			m.config.workQueue.Enqueue(obj, m.onComputeDomainAdd)
+			m.config.workQueue.Enqueue(obj, m.onAddOrUpdate)
 		},
-		DeleteFunc: func(obj any) {
-			m.config.workQueue.Enqueue(obj, m.onComputeDomainDelete)
+		UpdateFunc: func(oldObj, newObj any) {
+			m.config.workQueue.Enqueue(newObj, m.onAddOrUpdate)
 		},
 	})
 	if err != nil {
@@ -163,13 +165,80 @@ func (m *ComputeDomainManager) Get(uid string) (*nvapi.ComputeDomain, error) {
 	return cd, nil
 }
 
-func (m *ComputeDomainManager) onComputeDomainAdd(ctx context.Context, obj any) error {
+// RemoveFinalizer removes the finalizer from a ComputeDomain.
+func (m *ComputeDomainManager) RemoveFinalizer(ctx context.Context, namespace, name string) error {
+	cd, err := m.lister.ComputeDomains(namespace).Get(name)
+	if err != nil && errors.IsNotFound(err) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("error retrieving ComputeDomain: %w", err)
+	}
+
+	newCD := cd.DeepCopy()
+
+	newCD.Finalizers = []string{}
+	for _, f := range cd.Finalizers {
+		if f != computeDomainFinalizer {
+			newCD.Finalizers = append(newCD.Finalizers, f)
+		}
+	}
+
+	_, err = m.config.clientsets.Nvidia.ResourceV1beta1().ComputeDomains(namespace).Update(ctx, newCD, metav1.UpdateOptions{})
+	if err != nil {
+		return fmt.Errorf("error updating ComputeDomain: %w", err)
+	}
+
+	return nil
+}
+
+func (m *ComputeDomainManager) addFinalizer(ctx context.Context, cd *nvapi.ComputeDomain) error {
+	for _, f := range cd.Finalizers {
+		if f == computeDomainFinalizer {
+			return nil
+		}
+	}
+
+	newCD := cd.DeepCopy()
+	newCD.Finalizers = append(newCD.Finalizers, computeDomainFinalizer)
+	if _, err := m.config.clientsets.Nvidia.ResourceV1beta1().ComputeDomains(cd.Namespace).Update(ctx, newCD, metav1.UpdateOptions{}); err != nil {
+		return fmt.Errorf("error updating ComputeDomain: %w", err)
+	}
+
+	return nil
+}
+
+func (m *ComputeDomainManager) onAddOrUpdate(ctx context.Context, obj any) error {
 	cd, ok := obj.(*nvapi.ComputeDomain)
 	if !ok {
 		return fmt.Errorf("failed to cast to ComputeDomain")
 	}
 
-	klog.Infof("Processing added ComputeDomain: %s/%s", cd.Namespace, cd.Name)
+	klog.Infof("Processing added or updated ComputeDomain: %s/%s", cd.Namespace, cd.Name)
+
+	if cd.GetDeletionTimestamp() != nil {
+		if err := m.deploymentManager.Delete(ctx, string(cd.UID)); err != nil {
+			return fmt.Errorf("error deleting Deployment: %w", err)
+		}
+
+		if err := m.deviceClassManager.Delete(ctx, string(cd.UID)); err != nil {
+			return fmt.Errorf("error deleting DeviceClass: %w", err)
+		}
+
+		if err := m.resourceClaimManager.Delete(ctx, string(cd.UID)); err != nil {
+			return fmt.Errorf("error deleting ResourceClaim: %w", err)
+		}
+
+		if err := m.RemoveFinalizer(ctx, cd.Namespace, cd.Name); err != nil {
+			return fmt.Errorf("error removing finalizer: %w", err)
+		}
+
+		return nil
+	}
+
+	if err := m.addFinalizer(ctx, cd); err != nil {
+		return fmt.Errorf("error adding finalizer: %w", err)
+	}
 
 	if _, err := m.deploymentManager.Create(ctx, m.config.driverNamespace, cd.Spec.NumNodes, cd); err != nil {
 		return fmt.Errorf("error creating Deployment: %w", err)
@@ -184,29 +253,6 @@ func (m *ComputeDomainManager) onComputeDomainAdd(ctx context.Context, obj any) 
 		if _, err := m.resourceClaimManager.Create(ctx, cd.Namespace, name, dc.Name, cd); err != nil {
 			return fmt.Errorf("error creating ResourceClaim '%s/%s': %w", cd.Namespace, name, err)
 		}
-	}
-
-	return nil
-}
-
-func (m *ComputeDomainManager) onComputeDomainDelete(ctx context.Context, obj any) error {
-	cd, ok := obj.(*nvapi.ComputeDomain)
-	if !ok {
-		return fmt.Errorf("failed to cast to ComputeDomain")
-	}
-
-	klog.Infof("Processing deleted ComputeDomain: %s/%s", cd.Namespace, cd.Name)
-
-	if err := m.deploymentManager.Delete(ctx, string(cd.UID)); err != nil {
-		return fmt.Errorf("error deleting Deployment: %w", err)
-	}
-
-	if err := m.deviceClassManager.Delete(ctx, string(cd.UID)); err != nil {
-		return fmt.Errorf("error deleting DeviceClass: %w", err)
-	}
-
-	if err := m.resourceClaimManager.Delete(ctx, string(cd.UID)); err != nil {
-		return fmt.Errorf("error deleting ResourceClaim: %w", err)
 	}
 
 	return nil
