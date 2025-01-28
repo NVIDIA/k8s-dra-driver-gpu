@@ -49,10 +49,10 @@ type DeviceConfigState struct {
 
 type DeviceState struct {
 	sync.Mutex
-	cdi                       *CDIHandler
-	imexDaemonSettingsManager *ImexDaemonSettingsManager
-	allocatable               AllocatableDevices
-	config                    *Config
+	cdi         *CDIHandler
+	imexManager *ImexManager
+	allocatable AllocatableDevices
+	config      *Config
 
 	nvdevlib          *deviceLib
 	checkpointManager checkpointmanager.CheckpointManager
@@ -94,7 +94,7 @@ func NewDeviceState(ctx context.Context, config *Config) (*DeviceState, error) {
 	}
 
 	cliqueID := node.Labels[CliqueIDLabelKey]
-	imexDaemonSettingsManager := NewImexDaemonSettingsManager(config, ImexDaemonSettingsRoot, cliqueID)
+	imexManager := NewImexManager(config, ImexDaemonSettingsRoot, cliqueID)
 
 	if err := cdi.CreateStandardDeviceSpecFile(allocatable); err != nil {
 		return nil, fmt.Errorf("unable to create base CDI spec file: %v", err)
@@ -106,12 +106,12 @@ func NewDeviceState(ctx context.Context, config *Config) (*DeviceState, error) {
 	}
 
 	state := &DeviceState{
-		cdi:                       cdi,
-		imexDaemonSettingsManager: imexDaemonSettingsManager,
-		allocatable:               allocatable,
-		config:                    config,
-		nvdevlib:                  nvdevlib,
-		checkpointManager:         checkpointManager,
+		cdi:               cdi,
+		imexManager:       imexManager,
+		allocatable:       allocatable,
+		config:            config,
+		nvdevlib:          nvdevlib,
+		checkpointManager: checkpointManager,
 	}
 
 	checkpoints, err := state.checkpointManager.ListCheckpoints()
@@ -346,8 +346,8 @@ func (s *DeviceState) unprepareDevices(ctx context.Context, claimUID string, dev
 			continue
 		}
 
-		// Create new IMEX daemon settings from the IMEX daemon manager.
-		imexDaemonSettings := s.imexDaemonSettingsManager.NewSettings(group.ConfigState.ImexDomain)
+		// Create new IMEX daemon settings from the IMEX manager.
+		imexDaemonSettings := s.imexManager.NewSettings(group.ConfigState.ImexDomain)
 
 		// Unprepare the new IMEX Daemon.
 		if err := imexDaemonSettings.Unprepare(ctx); err != nil {
@@ -378,7 +378,7 @@ func (s *DeviceState) applyImexChannelConfig(ctx context.Context, config *config
 		if err := s.nvdevlib.createImexChannelDevice(imexChannel.Channel); err != nil {
 			return nil, fmt.Errorf("error creating IMEX channel device: %w", err)
 		}
-		configState.containerEdits = configState.containerEdits.Append(s.cdi.GetImexChannelContainerEdits(imexChannel))
+		configState.containerEdits = configState.containerEdits.Append(s.imexManager.GetImexChannelContainerEdits(s.cdi.devRoot, imexChannel))
 	}
 
 	return &configState, nil
@@ -404,8 +404,8 @@ func (s *DeviceState) applyImexDaemonConfig(ctx context.Context, config *configa
 	// Declare a device group state object to populate.
 	var configState DeviceConfigState
 
-	// Create new IMEX daemon settings from the IMEX daemon manager.
-	imexDaemonSettings := s.imexDaemonSettingsManager.NewSettings(config.DomainID)
+	// Create new IMEX daemon settings from the IMEX manager.
+	imexDaemonSettings := s.imexManager.NewSettings(config.DomainID)
 
 	// Prepare the new IMEX Daemon.
 	if err := imexDaemonSettings.Prepare(ctx); err != nil {

@@ -21,6 +21,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"sync"
 	"text/template"
 	"time"
@@ -43,7 +44,7 @@ const (
 	ImexDaemonConfigTemplatePath = "/templates/imex-daemon-config.tmpl.cfg"
 )
 
-type ImexDaemonSettingsManager struct {
+type ImexManager struct {
 	config        *Config
 	waitGroup     sync.WaitGroup
 	cancelContext context.CancelFunc
@@ -56,18 +57,18 @@ type ImexDaemonSettingsManager struct {
 }
 
 type ImexDaemonSettings struct {
-	manager         *ImexDaemonSettingsManager
+	manager         *ImexManager
 	domain          string
 	rootDir         string
 	configPath      string
 	nodesConfigPath string
 }
 
-func NewImexDaemonSettingsManager(config *Config, configFilesRoot, cliqueID string) *ImexDaemonSettingsManager {
+func NewImexManager(config *Config, configFilesRoot, cliqueID string) *ImexManager {
 	factory := nvinformers.NewSharedInformerFactory(config.clientsets.Nvidia, informerResyncPeriod)
 	informer := factory.Resource().V1beta1().ComputeDomains().Informer()
 
-	m := &ImexDaemonSettingsManager{
+	m := &ImexManager{
 		config:          config,
 		factory:         factory,
 		informer:        informer,
@@ -78,7 +79,7 @@ func NewImexDaemonSettingsManager(config *Config, configFilesRoot, cliqueID stri
 	return m
 }
 
-func (m *ImexDaemonSettingsManager) Start(ctx context.Context) (rerr error) {
+func (m *ImexManager) Start(ctx context.Context) (rerr error) {
 	ctx, cancel := context.WithCancel(ctx)
 	m.cancelContext = cancel
 
@@ -110,19 +111,34 @@ func (m *ImexDaemonSettingsManager) Start(ctx context.Context) (rerr error) {
 	return nil
 }
 
-func (m *ImexDaemonSettingsManager) Stop() error {
+func (m *ImexManager) Stop() error {
 	m.cancelContext()
 	m.waitGroup.Wait()
 	return nil
 }
 
-func (m *ImexDaemonSettingsManager) NewSettings(domain string) *ImexDaemonSettings {
+func (m *ImexManager) NewSettings(domain string) *ImexDaemonSettings {
 	return &ImexDaemonSettings{
 		manager:         m,
 		domain:          domain,
 		rootDir:         fmt.Sprintf("%s/%s", m.configFilesRoot, domain),
 		configPath:      fmt.Sprintf("%s/%s/%s", m.configFilesRoot, domain, "config.cfg"),
 		nodesConfigPath: fmt.Sprintf("%s/%s/%s", m.configFilesRoot, domain, "nodes_config.cfg"),
+	}
+}
+
+func (m *ImexManager) GetImexChannelContainerEdits(devRoot string, info *ImexChannelInfo) *cdiapi.ContainerEdits {
+	channelPath := fmt.Sprintf("/dev/nvidia-caps-imex-channels/channel%d", info.Channel)
+
+	return &cdiapi.ContainerEdits{
+		ContainerEdits: &cdispec.ContainerEdits{
+			DeviceNodes: []*cdispec.DeviceNode{
+				{
+					Path:     channelPath,
+					HostPath: filepath.Join(devRoot, channelPath),
+				},
+			},
+		},
 	}
 }
 

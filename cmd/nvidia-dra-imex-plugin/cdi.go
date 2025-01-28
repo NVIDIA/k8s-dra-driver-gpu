@@ -19,7 +19,6 @@ package main
 import (
 	"fmt"
 	"io"
-	"path/filepath"
 
 	"github.com/sirupsen/logrus"
 
@@ -201,21 +200,6 @@ func (cdi *CDIHandler) CreateStandardDeviceSpecFile(allocatable AllocatableDevic
 	// Write the spec out to disk.
 	specName := cdiapi.GenerateTransientSpecName(cdiVendor, cdiDeviceClass, cdiBaseSpecIdentifier)
 	return cdi.cache.WriteSpec(spec.Raw(), specName)
-}
-
-func (cdi *CDIHandler) GetImexChannelContainerEdits(info *ImexChannelInfo) *cdiapi.ContainerEdits {
-	channelPath := fmt.Sprintf("/dev/nvidia-caps-imex-channels/channel%d", info.Channel)
-
-	return &cdiapi.ContainerEdits{
-		ContainerEdits: &cdispec.ContainerEdits{
-			DeviceNodes: []*cdispec.DeviceNode{
-				{
-					Path:     channelPath,
-					HostPath: filepath.Join(cdi.devRoot, channelPath),
-				},
-			},
-		},
-	}
 }
 
 func (cdi *CDIHandler) CreateClaimSpecFile(claimUID string, preparedDevices PreparedDevices) error {
