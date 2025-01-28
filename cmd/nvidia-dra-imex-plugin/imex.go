@@ -128,6 +128,10 @@ func (m *ImexManager) NewSettings(domain string) *ImexDaemonSettings {
 }
 
 func (m *ImexManager) GetImexChannelContainerEdits(devRoot string, info *ImexChannelInfo) *cdiapi.ContainerEdits {
+	if m.cliqueID == "" {
+		return nil
+	}
+
 	channelPath := fmt.Sprintf("/dev/nvidia-caps-imex-channels/channel%d", info.Channel)
 
 	return &cdiapi.ContainerEdits{
