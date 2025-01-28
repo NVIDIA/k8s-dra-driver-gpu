@@ -197,10 +197,6 @@ func (m *ResourceClaimTemplateManager) Delete(ctx context.Context, cdUID string)
 
 	rct := rcts[0]
 
-	if err := m.RemoveFinalizer(ctx, cdUID); err != nil {
-		return fmt.Errorf("error removing finalizer on ResourceClaimTemplate '%s/%s': %w", rct.Namespace, rct.Name, err)
-	}
-
 	if rct.GetDeletionTimestamp() != nil {
 		return nil
 	}
@@ -226,6 +222,10 @@ func (m *ResourceClaimTemplateManager) RemoveFinalizer(ctx context.Context, cdUI
 	}
 
 	rct := rcts[0]
+
+	if rct.GetDeletionTimestamp() == nil {
+		return fmt.Errorf("attempting to remove finalizer before ResourceClaimTemplate marked for deletion")
+	}
 
 	newRCT := rct.DeepCopy()
 	newRCT.Finalizers = []string{}

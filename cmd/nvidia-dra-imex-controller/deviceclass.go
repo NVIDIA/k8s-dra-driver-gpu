@@ -172,10 +172,6 @@ func (m *DeviceClassManager) Delete(ctx context.Context, cdUID string) error {
 
 	dc := dcs[0]
 
-	if err := m.RemoveFinalizer(ctx, cdUID); err != nil {
-		return fmt.Errorf("error removing finalizer on DeviceClass '%s': %w", dc.Name, err)
-	}
-
 	if dc.GetDeletionTimestamp() != nil {
 		return nil
 	}
@@ -201,6 +197,10 @@ func (m *DeviceClassManager) RemoveFinalizer(ctx context.Context, cdUID string) 
 	}
 
 	dc := dcs[0]
+
+	if dc.GetDeletionTimestamp() == nil {
+		return fmt.Errorf("attempting to remove finalizer before DeviceClass marked for deletion")
+	}
 
 	newDC := dc.DeepCopy()
 	newDC.Finalizers = []string{}

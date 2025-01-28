@@ -249,10 +249,6 @@ func (m *DeploymentManager) Delete(ctx context.Context, cdUID string) error {
 		return fmt.Errorf("error deleting IMEX channel pool: %w", err)
 	}
 
-	if err := m.RemoveFinalizer(ctx, cdUID); err != nil {
-		return fmt.Errorf("error removing finalizer on Deployment: %w", err)
-	}
-
 	if d.GetDeletionTimestamp() != nil {
 		return nil
 	}
@@ -266,6 +262,16 @@ func (m *DeploymentManager) Delete(ctx context.Context, cdUID string) error {
 }
 
 func (m *DeploymentManager) RemoveFinalizer(ctx context.Context, cdUID string) error {
+	if err := m.resourceClaimTemplateManager.RemoveFinalizer(ctx, cdUID); err != nil {
+		return fmt.Errorf("error removing finalizer on ResourceClaimTemplate: %w", err)
+	}
+	if err := m.removeFinalizer(ctx, cdUID); err != nil {
+		return fmt.Errorf("error removing finalizer on Deployment: %w", err)
+	}
+	return nil
+}
+
+func (m *DeploymentManager) removeFinalizer(ctx context.Context, cdUID string) error {
 	ds, err := getByComputeDomainUID[*appsv1.Deployment](ctx, m.informer, cdUID)
 	if err != nil {
 		return fmt.Errorf("error retrieving Deployment: %w", err)
@@ -278,6 +284,10 @@ func (m *DeploymentManager) RemoveFinalizer(ctx context.Context, cdUID string) e
 	}
 
 	d := ds[0]
+
+	if d.GetDeletionTimestamp() == nil {
+		return fmt.Errorf("attempting to remove finalizer before Deployment marked for deletion")
+	}
 
 	newD := d.DeepCopy()
 	newD.Finalizers = []string{}

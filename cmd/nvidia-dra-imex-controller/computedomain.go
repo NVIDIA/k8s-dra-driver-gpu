@@ -167,6 +167,10 @@ func (m *ComputeDomainManager) RemoveFinalizer(ctx context.Context, uid string) 
 		return fmt.Errorf("error retrieving ComputeDomain: %w", err)
 	}
 
+	if cd.GetDeletionTimestamp() == nil {
+		return fmt.Errorf("attempting to remove finalizer before ComputeDomain marked for deletion")
+	}
+
 	newCD := cd.DeepCopy()
 	newCD.Finalizers = []string{}
 	for _, f := range cd.Finalizers {
@@ -210,20 +214,39 @@ func (m *ComputeDomainManager) onAddOrUpdate(ctx context.Context, obj any) error
 	klog.Infof("Processing added or updated ComputeDomain: %s/%s", cd.Namespace, cd.Name)
 
 	if cd.GetDeletionTimestamp() != nil {
-		if err := m.deploymentManager.Delete(ctx, string(cd.UID)); err != nil {
-			return fmt.Errorf("error deleting Deployment: %w", err)
+		if err := m.resourceClaimManager.Delete(ctx, string(cd.UID)); err != nil {
+			return fmt.Errorf("error deleting ResourceClaim: %w", err)
 		}
 
 		if err := m.deviceClassManager.Delete(ctx, string(cd.UID)); err != nil {
 			return fmt.Errorf("error deleting DeviceClass: %w", err)
 		}
 
-		if err := m.resourceClaimManager.Delete(ctx, string(cd.UID)); err != nil {
-			return fmt.Errorf("error deleting ResourceClaim: %w", err)
+		if err := m.deploymentManager.Delete(ctx, string(cd.UID)); err != nil {
+			return fmt.Errorf("error deleting Deployment: %w", err)
 		}
 
-		if err := m.RemoveFinalizer(ctx, string(cd.UID)); err != nil {
-			return fmt.Errorf("error removing finalizer: %w", err)
+		// TODO: Condition the removal of these finalizers on there being no
+		// workloads running in the compute domain. One idea to do this is to
+		// (1) ensure that the ResourceSlice associated with the ComputeDomain
+		// has been deleted, and (2) track the allocation of channels in the
+		// ComputeDomain status and wait for that list to become empty.
+		if true {
+			if err := m.resourceClaimManager.RemoveFinalizer(ctx, string(cd.UID)); err != nil {
+				return fmt.Errorf("error deleting ResourceClaim: %w", err)
+			}
+
+			if err := m.deviceClassManager.RemoveFinalizer(ctx, string(cd.UID)); err != nil {
+				return fmt.Errorf("error deleting DeviceClass: %w", err)
+			}
+
+			if err := m.deploymentManager.RemoveFinalizer(ctx, string(cd.UID)); err != nil {
+				return fmt.Errorf("error deleting Deployment: %w", err)
+			}
+
+			if err := m.RemoveFinalizer(ctx, string(cd.UID)); err != nil {
+				return fmt.Errorf("error removing finalizer: %w", err)
+			}
 		}
 
 		return nil

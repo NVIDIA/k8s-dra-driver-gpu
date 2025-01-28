@@ -151,10 +151,6 @@ func (m *ResourceClaimManager) Delete(ctx context.Context, cdUID string) error {
 		return nil
 	}
 
-	if err := m.RemoveFinalizer(ctx, cdUID); err != nil {
-		return fmt.Errorf("error removing finalizer on ResourceClaims': %w", err)
-	}
-
 	for _, rc := range rcs {
 		if rc.GetDeletionTimestamp() != nil {
 			continue
@@ -179,6 +175,10 @@ func (m *ResourceClaimManager) RemoveFinalizer(ctx context.Context, cdUID string
 	}
 
 	for _, rc := range rcs {
+		if rc.GetDeletionTimestamp() == nil {
+			return fmt.Errorf("attempting to remove finalizer before ResoureClaim marked for deletion")
+		}
+
 		newRC := rc.DeepCopy()
 		newRC.Finalizers = []string{}
 		for _, f := range rc.Finalizers {
