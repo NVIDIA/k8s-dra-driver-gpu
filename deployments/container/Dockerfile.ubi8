@@ -13,10 +13,7 @@
 # limitations under the License.
 
 ARG GOLANG_VERSION=1.23.1
-ARG CUDA_IMAGE=cuda
-ARG CUDA_VERSION=11.8.0
-ARG BASE_DIST=ubi8
-FROM --platform=${TARGETARCH} nvcr.io/nvidia/cuda:${CUDA_VERSION}-base-${BASE_DIST} as build
+FROM nvcr.io/nvidia/cuda:12.3.2-base-ubi8 AS build
 
 RUN yum install -y \
     wget make git gcc \
@@ -39,17 +36,17 @@ ARG VERSION="N/A"
 ARG GIT_COMMIT="unknown"
 RUN make PREFIX=/artifacts cmds
 
-FROM nvcr.io/nvidia/${CUDA_IMAGE}:${CUDA_VERSION}-base-${BASE_DIST}
+FROM nvcr.io/nvidia/cuda:12.3.2-base-ubi8
 
 ENV NVIDIA_DISABLE_REQUIRE="true"
 ENV NVIDIA_VISIBLE_DEVICES=all
 ENV NVIDIA_DRIVER_CAPABILITIES=utility
+ARG VERSION="N/A"
+ARG GIT_COMMIT="unknown"
 
 LABEL io.k8s.display-name="NVIDIA DRA Driver"
 LABEL name="NVIDIA DRA Driver"
 LABEL vendor="NVIDIA"
-ARG VERSION="N/A"
-ARG GIT_COMMIT="unknown"
 LABEL version=${VERSION}
 LABEL com.nvidia.git-commit="${GIT_COMMIT}"
 LABEL release="N/A"
@@ -62,10 +59,3 @@ RUN mkdir /licenses && mv /NGC-DL-CONTAINER-LICENSE /licenses/NGC-DL-CONTAINER-L
 COPY --from=build /artifacts/nvidia-dra-controller /usr/bin/nvidia-dra-controller
 COPY --from=build /artifacts/nvidia-dra-plugin     /usr/bin/nvidia-dra-plugin
 COPY --from=build /build/templates                 /templates
-
-# Install / upgrade packages here that are required to resolve CVEs
-ARG CVE_UPDATES
-RUN if [ -n "${CVE_UPDATES}" ]; then \
-        yum update -y ${CVE_UPDATES} && \
-        rm -rf /var/cache/yum/*; \
-    fi

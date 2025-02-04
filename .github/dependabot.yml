@@ -3,6 +3,7 @@
 
 version: 2
 updates:
+# main branch
   - package-ecosystem: "gomod"
     target-branch: main
     directory: "/"
@@ -11,6 +12,18 @@ updates:
       day: "sunday"
     ignore:
     - dependency-name: k8s.io/*
+    labels:
+    - dependencies
+
+  - package-ecosystem: "docker"
+    target-branch: main
+    directories:
+    # CUDA image
+    - "/deployments/container"
+    # Golang version
+    - "/deployments/devel"
+    schedule:
+      interval: "daily"
     labels:
     - dependencies
 
