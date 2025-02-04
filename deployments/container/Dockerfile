@@ -13,16 +13,16 @@
 # limitations under the License.
 
 ARG GOLANG_VERSION=1.23.1
-FROM nvcr.io/nvidia/cuda:12.3.2-base-ubi9 AS build
+# We use an ubuntu20.04 base image to allow for a more efficient multi-arch builds.
+FROM --platform=${BUILDOS}/amd64 nvcr.io/nvidia/cuda:12.3.2-base-ubuntu20.04 AS build
 
-RUN yum install -y \
-    wget make git gcc \
-     && \
-    rm -rf /var/cache/yum/*
+RUN apt-get update && \
+    apt-get install -y wget make git gcc-aarch64-linux-gnu gcc \
+    && \
+    rm -rf /var/lib/apt/lists/*
 
-ARG TARGETARCH
 ARG GOLANG_VERSION=x.x.x
-RUN wget -nv -O - https://storage.googleapis.com/golang/go${GOLANG_VERSION}.linux-${TARGETARCH}.tar.gz \
+RUN wget -nv -O - https://storage.googleapis.com/golang/go${GOLANG_VERSION}.linux-amd64.tar.gz \
     | tar -C /usr/local -xz
 
 ENV GOPATH /go
@@ -34,7 +34,14 @@ COPY . .
 RUN mkdir /artifacts
 ARG VERSION="N/A"
 ARG GIT_COMMIT="unknown"
-RUN make PREFIX=/artifacts cmds
+ARG TARGETARCH
+
+RUN if [ "$TARGETARCH" = "amd64" ]; then \
+        cc=gcc; \
+    elif [ "$TARGETARCH" = "arm64" ]; then \
+        cc=aarch64-linux-gnu-gcc; \
+    fi && \
+    make CC=${cc} GOARCH=${TARGETARCH} PREFIX=/artifacts cmds
 
 FROM nvcr.io/nvidia/cuda:12.3.2-base-ubi9
 

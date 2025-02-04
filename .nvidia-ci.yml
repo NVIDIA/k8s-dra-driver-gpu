@@ -70,11 +70,6 @@ image-ubi9:
     - .image-pull
     - .dist-ubi9
 
-image-ubuntu20.04:
-  extends:
-    - .image-pull
-    - .dist-ubuntu20.04
-
 # We skip the integration tests for the internal CI:
 .integration:
   stage: test
@@ -118,11 +113,6 @@ image-ubuntu20.04:
 
 # Define the external release targets
 # Release to NGC
-release:ngc-ubuntu20.04:
-  extends:
-    - .release:ngc
-    - .dist-ubuntu20.04
-
 release:ngc-ubi9:
   extends:
     - .release:ngc

@@ -25,9 +25,6 @@ on:
 jobs:
   build:
     runs-on: linux-amd64-cpu4
-    strategy:
-      matrix:
-        dist: [ubuntu20.04, ubi9]
     steps:
       - uses: actions/checkout@v4
         name: Check out code
@@ -66,4 +63,4 @@ jobs:
           VERSION: ${COMMIT_SHORT_SHA}
         run: |
           echo "${VERSION}"
-          make -f deployments/container/Makefile build-${{ matrix.dist }}
+          make -f deployments/container/Makefile build
