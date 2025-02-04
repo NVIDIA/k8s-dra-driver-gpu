@@ -13,7 +13,7 @@
 # limitations under the License.
 
 ARG GOLANG_VERSION=1.23.1
-FROM nvcr.io/nvidia/cuda:12.3.2-base-ubi8 AS build
+FROM nvcr.io/nvidia/cuda:12.3.2-base-ubi9 AS build
 
 RUN yum install -y \
     wget make git gcc \
@@ -36,7 +36,7 @@ ARG VERSION="N/A"
 ARG GIT_COMMIT="unknown"
 RUN make PREFIX=/artifacts cmds
 
-FROM nvcr.io/nvidia/cuda:12.3.2-base-ubi8
+FROM nvcr.io/nvidia/cuda:12.3.2-base-ubi9
 
 ENV NVIDIA_DISABLE_REQUIRE="true"
 ENV NVIDIA_VISIBLE_DEVICES=all

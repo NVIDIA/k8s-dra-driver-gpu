@@ -65,10 +65,10 @@ variables:
     - regctl registry login "${OUT_REGISTRY}" -u "${OUT_REGISTRY_USER}" -p "${OUT_REGISTRY_TOKEN}"
     - make -f deployments/container/Makefile IMAGE=${IN_REGISTRY}/${IN_IMAGE_NAME}:${IN_VERSION}-${DIST} OUT_IMAGE=${OUT_IMAGE_NAME}:${CI_COMMIT_SHORT_SHA}-${DIST} push-${DIST}
 
-image-ubi8:
+image-ubi9:
   extends:
     - .image-pull
-    - .dist-ubi8
+    - .dist-ubi9
 
 image-ubuntu20.04:
   extends:
@@ -123,7 +123,7 @@ release:ngc-ubuntu20.04:
     - .release:ngc
     - .dist-ubuntu20.04
 
-release:ngc-ubi8:
+release:ngc-ubi9:
   extends:
     - .release:ngc
-    - .dist-ubi8
+    - .dist-ubi9

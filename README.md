@@ -54,7 +54,7 @@ cd k8s-dra-driver
 
 ### Setting up the infrastructure
 
-Here's a demo showing how to install and configure DRA, and run a pod in a `kind` cluster on a Linux workstation. 
+Here's a demo showing how to install and configure DRA, and run a pod in a `kind` cluster on a Linux workstation.
 
 <p align="center">
 <img width="800" src="./demo/specs/quickstart/basic-demo.svg">
@@ -158,7 +158,7 @@ export VERSION=v0.1.0
 
 REGISTRY=nvcr.io/nvidia/cloud-native
 IMAGE=k8s-dra-driver
-PLATFORM=ubi8
+PLATFORM=ubi9
 
 sudo true
 make -f deployments/container/Makefile build-${PLATFORM}
