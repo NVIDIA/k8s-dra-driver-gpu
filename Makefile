@@ -31,14 +31,12 @@ CMDS := $(patsubst ./cmd/%/,%,$(sort $(dir $(wildcard ./cmd/*/))))
 CMD_TARGETS := $(patsubst %,cmd-%, $(CMDS))
 
 CHECK_TARGETS := golangci-lint
-MAKE_TARGETS := binaries build build-image check fmt lint-internal test examples cmds coverage generate vendor check-vendor $(CHECK_TARGETS)
+MAKE_TARGETS := binaries build build-image check fmt lint-internal test examples cmds coverage generate vendor check-modules $(CHECK_TARGETS)
 
 TARGETS := $(MAKE_TARGETS) $(CMD_TARGETS)
 
 DOCKER_TARGETS := $(patsubst %,docker-%, $(TARGETS))
 .PHONY: $(TARGETS) $(DOCKER_TARGETS)
-DOCKERFILE_DEVEL ?= "images/devel/Dockerfile"
-DOCKERFILE_CONTEXT ?= "https://github.com/NVIDIA/k8s-test-infra.git"
 
 GOOS ?= linux
 GOARCH ?= $(shell uname -m | sed -e 's,aarch64,arm64,' -e 's,x86_64,amd64,')
@@ -90,7 +88,7 @@ vendor:
 	go mod vendor
 	go mod verify
 
-check-vendor: vendor
+check-modules: vendor
 	git diff --quiet HEAD -- go.mod go.sum vendor
 
 COVERAGE_FILE := coverage.out
@@ -116,17 +114,16 @@ generate-deepcopy: .remove-deepcopy
 		rm -f $(CURDIR)/$${dir}/zz_generated.deepcopy.go; \
 	done
 
-build-image:
-	$(DOCKER) build \
-		--progress=plain \
-		--build-arg GOLANG_VERSION="$(GOLANG_VERSION)" \
-		--build-arg CLIENT_GEN_VERSION="$(CLIENT_GEN_VERSION)" \
-		--build-arg CONTROLLER_GEN_VERSION="$(CONTROLLER_GEN_VERSION)" \
-		--build-arg GOLANGCI_LINT_VERSION="$(GOLANGCI_LINT_VERSION)" \
-		--build-arg MOQ_VERSION="$(MOQ_VERSION)" \
-		--tag $(BUILDIMAGE) \
-		-f $(DOCKERFILE_DEVEL) \
-		$(DOCKERFILE_CONTEXT)
+# Generate an image for containerized builds
+# Note: This image is local only
+.PHONY: .build-image
+.build-image:
+	make -f deployments/devel/Makefile .build-image
+
+ifeq ($(BUILD_DEVEL_IMAGE),yes)
+$(DOCKER_TARGETS): .build-image
+.shell: .build-image
+endif
 
 $(DOCKER_TARGETS): docker-%:
 	@echo "Running 'make $(*)' in container image $(BUILDIMAGE)"
@@ -134,6 +131,7 @@ $(DOCKER_TARGETS): docker-%:
 		--rm \
 		-e GOCACHE=/tmp/.cache/go \
 		-e GOMODCACHE=/tmp/.cache/gomod \
+		-e GOLANGCI_LINT_CACHE=/tmp/.cache/golangci-lint \
 		-v $(PWD):/work \
 		-w /work \
 		--user $$(id -u):$$(id -g) \
@@ -148,6 +146,7 @@ PHONY: .shell
 		-ti \
 		-e GOCACHE=/tmp/.cache/go \
 		-e GOMODCACHE=/tmp/.cache/gomod \
+		-e GOLANGCI_LINT_CACHE=/tmp/.cache/golangci-lint \
 		-v $(PWD):/work \
 		-w /work \
 		--user $$(id -u):$$(id -g) \

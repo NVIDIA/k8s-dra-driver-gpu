@@ -1,0 +1,42 @@
+# This is an example goreleaser.yaml file with some sane defaults.
+# Make sure to check the documentation at http://goreleaser.com
+builds:
+- env:
+  - CGO_ENABLED=0
+  goos:
+  - darwin
+  - windows
+  - linux
+  goarch:
+  - amd64
+  - arm
+  - arm64
+  ldflags:
+  - -X main.Version={{.Version}}
+archives:
+- name_template: >-
+    {{- .ProjectName }}_
+    {{- if eq .Os "darwin"}}macOS
+    {{- else if eq .Os "linux"}}Linux
+    {{- else if eq .Os "windows"}}Windows
+    {{- else }}{{ .Os }}{{ end }}_
+    {{- if eq .Arch "amd64" }}x86_64
+    {{- else if eq .Arch "386" }}i386
+    {{- else }}{{ .Arch }}{{ end }}
+    {{- if .Arm }}v{{ .Arm }}{{ end -}}
+universal_binaries:
+  - replace: false
+checksum:
+  name_template: 'checksums.txt'
+snapshot:
+  name_template: "{{ .Tag }}"
+changelog:
+  sort: asc
+  filters:
+    exclude:
+    - '^docs:'
+    - '^test:'
+release:
+  github:
+    owner: matryer
+    name: moq
