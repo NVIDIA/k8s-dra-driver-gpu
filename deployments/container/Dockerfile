@@ -60,6 +60,7 @@ LABEL release="N/A"
 LABEL summary="NVIDIA DRA driver for Kubernetes"
 LABEL description="See summary"
 LABEL org.opencontainers.image.description "NVIDIA GPU DRA driver for Kubernetes"
+LABEL org.opencontainers.image.source "https://github.com/NVIDIA/k8s-dra-driver"
 
 RUN mkdir /licenses && mv /NGC-DL-CONTAINER-LICENSE /licenses/NGC-DL-CONTAINER-LICENSE
 

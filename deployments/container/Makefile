@@ -82,7 +82,6 @@ $(IMAGE_TARGETS): image-%:
 		--build-arg GOLANG_VERSION="$(GOLANG_VERSION)" \
 		--build-arg VERSION="$(VERSION)" \
 		--build-arg GIT_COMMIT="$(GIT_COMMIT)" \
-		$(if $(LABEL_IMAGE_SOURCE),--label "org.opencontainers.image.source=$(LABEL_IMAGE_SOURCE)",) \
 		-f $(DOCKERFILE) \
 		$(CURDIR)
 
