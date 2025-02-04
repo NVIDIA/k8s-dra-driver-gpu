@@ -323,15 +323,19 @@ func (m *DeploymentManager) onAddOrUpdate(ctx context.Context, obj any) error {
 		return nil
 	}
 
-	if err := m.createOrUpdatePool(d); err != nil {
+	if err := m.createOrUpdatePool(ctx, d.Labels[computeDomainLabelKey]); err != nil {
 		return fmt.Errorf("error creating or updating pool: %w", err)
+	}
+
+	if err := m.setComputeDomainStatus(ctx, d.Labels[computeDomainLabelKey]); err != nil {
+		return fmt.Errorf("error setting ComputeDomain status: %w", err)
 	}
 
 	return nil
 }
 
-func (m *DeploymentManager) createOrUpdatePool(d *appsv1.Deployment) error {
-	cd, err := m.getComputeDomain(d.Labels[computeDomainLabelKey])
+func (m *DeploymentManager) createOrUpdatePool(ctx context.Context, cdUID string) error {
+	cd, err := m.getComputeDomain(cdUID)
 	if err != nil {
 		return fmt.Errorf("error getting ComputeDomain: %w", err)
 	}
@@ -358,9 +362,25 @@ func (m *DeploymentManager) createOrUpdatePool(d *appsv1.Deployment) error {
 		},
 	}
 
-	computeDomainLabel := d.Spec.Selector.MatchLabels[computeDomainLabelKey]
-	if err := m.imexChannelManager.CreateOrUpdatePool(computeDomainLabel, &nodeSelector); err != nil {
+	if err := m.imexChannelManager.CreateOrUpdatePool(cdUID, &nodeSelector); err != nil {
 		return fmt.Errorf("failed to create or update IMEX channel pool: %w", err)
+	}
+
+	return nil
+}
+
+func (m *DeploymentManager) setComputeDomainStatus(ctx context.Context, cdUID string) error {
+	cd, err := m.getComputeDomain(cdUID)
+	if err != nil {
+		return fmt.Errorf("error getting ComputeDomain: %w", err)
+	}
+	if cd == nil {
+		return nil
+	}
+
+	cd.Status.Status = nvapi.ComputeDomainStatusReady
+	if _, err = m.config.clientsets.Nvidia.ResourceV1beta1().ComputeDomains(cd.Namespace).UpdateStatus(ctx, cd, metav1.UpdateOptions{}); err != nil {
+		return fmt.Errorf("error updating nodes in ComputeDomain status: %w", err)
 	}
 
 	return nil

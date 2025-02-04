@@ -166,6 +166,7 @@ func (m *DeploymentPodManager) onPodAddOrUpdate(ctx context.Context, obj any) er
 	}
 
 	cd.Status.Nodes = m.computeDomainNodes
+	cd.Status.Status = nvapi.ComputeDomainStatusNotReady
 	if _, err = m.config.clientsets.Nvidia.ResourceV1beta1().ComputeDomains(cd.Namespace).UpdateStatus(ctx, cd, metav1.UpdateOptions{}); err != nil {
 		return fmt.Errorf("error updating nodes in ComputeDomain status: %w", err)
 	}
