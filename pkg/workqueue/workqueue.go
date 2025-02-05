@@ -58,6 +58,14 @@ func (q *WorkQueue) Run(ctx context.Context) {
 	}
 }
 
+func (q *WorkQueue) EnqueueRaw(obj any, callback func(ctx context.Context, obj any) error) {
+	workItem := &WorkItem{
+		Object:   obj,
+		Callback: callback,
+	}
+	q.queue.AddRateLimited(workItem)
+}
+
 func (q *WorkQueue) Enqueue(obj any, callback func(ctx context.Context, obj any) error) {
 	runtimeObj, ok := obj.(runtime.Object)
 	if !ok {

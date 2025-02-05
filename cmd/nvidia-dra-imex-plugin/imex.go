@@ -28,9 +28,7 @@ import (
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
 	"k8s.io/utils/ptr"
@@ -232,69 +230,35 @@ func (s *ImexDaemonSettings) WriteNodesConfigFile(ctx context.Context) error {
 	return nil
 }
 
-func (m *ImexManager) WaitForComputeDomainReady(ctx context.Context, cdUID string) error {
+func (m *ImexManager) AssertComputeDomainReady(ctx context.Context, cdUID string) error {
 	if err := m.UpdateComputeDomainDeployment(ctx, cdUID); err != nil {
 		return fmt.Errorf("error updating Deployment for ComputeDomain: %w", err)
 	}
 
-	// TODO: Move away from a retry solution and instead register a callback
-	// and react immediately when the desired ComputeDomain has its
-	// Status.Status field populated.
-	backoff := wait.Backoff{
-		Duration: time.Second,      // Initial delay
-		Factor:   1,                // Factor to multiply duration each iteration
-		Jitter:   0.2,              // Jitter factor for randomness
-		Steps:    45,               // Maximum number of steps
-		Cap:      45 * time.Second, // Maximum backoff duration
+	cd, err := m.GetComputeDomain(ctx, cdUID)
+	if err != nil || cd == nil {
+		return fmt.Errorf("error getting ComputeDomain: %w", err)
 	}
 
-	err := wait.ExponentialBackoff(backoff, func() (bool, error) {
-		cd, err := m.GetComputeDomain(ctx, cdUID)
-		if err != nil {
-			return false, fmt.Errorf("error getting ComputeDomain: %w", err)
-		}
-		if cd == nil || cd.Status.Status != nvapi.ComputeDomainStatusReady {
-			return false, nil
-		}
-		return true, nil
-	})
-	if err != nil {
-		return fmt.Errorf("error getting status of ComputeDomain: %w", err)
+	if cd.Status.Status != nvapi.ComputeDomainStatusReady {
+		return fmt.Errorf("ComputeDomain not Ready")
 	}
 
 	return nil
 }
 
 func (m *ImexManager) GetNodeIPs(ctx context.Context, cdUID string) ([]string, error) {
-	// TODO: Move away from a retry solution and instead register a callback
-	// and react immediately when the desired ComputeDomain has its
-	// Status.Nodes field populated.
-	backoff := wait.Backoff{
-		Duration: time.Second,      // Initial delay
-		Factor:   2,                // Factor to multiply duration each iteration
-		Jitter:   0,                // Jitter factor for randomness
-		Steps:    18,               // Maximum number of steps
-		Cap:      45 * time.Second, // Maximum backoff duration
+	cd, err := m.GetComputeDomain(ctx, cdUID)
+	if err != nil || cd == nil {
+		return nil, fmt.Errorf("error getting ComputeDomain: %w", err)
 	}
 
-	var nodes []*nvapi.ComputeDomainNode
-	err := wait.ExponentialBackoff(backoff, func() (bool, error) {
-		cd, err := m.GetComputeDomain(ctx, cdUID)
-		if err != nil {
-			return false, fmt.Errorf("error getting ComputeDomain: %w", err)
-		}
-		if cd == nil || cd.Status.Nodes == nil {
-			return false, nil
-		}
-		nodes = cd.Status.Nodes
-		return true, nil
-	})
-	if err != nil {
+	if cd.Status.Nodes == nil {
 		return nil, fmt.Errorf("error getting status of nodes in ComputeDomain: %w", err)
 	}
 
 	var ips []string
-	for _, node := range nodes {
+	for _, node := range cd.Status.Nodes {
 		if m.cliqueID == node.CliqueID {
 			ips = append(ips, node.IPAddress)
 		}
@@ -303,81 +267,57 @@ func (m *ImexManager) GetNodeIPs(ctx context.Context, cdUID string) ([]string, e
 }
 
 func (m *ImexManager) UpdateComputeDomainDeployment(ctx context.Context, cdUID string) error {
-	backoff := wait.Backoff{
-		Duration: 100 * time.Millisecond, // Initial delay
-		Factor:   2,                      // Factor to multiply duration each iteration
-		Jitter:   0.5,                    // Jitter factor for randomness
-		Steps:    45,                     // Maximum number of steps
-		Cap:      45 * time.Second,       // Maximum backoff duration
+	cd, err := m.GetComputeDomain(ctx, cdUID)
+	if err != nil || cd == nil {
+		return fmt.Errorf("error getting ComputeDomain: %w", err)
 	}
 
-	err := wait.ExponentialBackoff(backoff, func() (bool, error) {
-		cd, err := m.GetComputeDomain(ctx, cdUID)
-		if err != nil {
-			return false, fmt.Errorf("error getting ComputeDomain: %w", err)
-		}
-		if cd == nil {
-			return false, nil
-		}
+	if cd.Spec.Mode == nvapi.ComputeDomainModeImmediate {
+		return nil
+	}
 
-		if cd.Spec.Mode == nvapi.ComputeDomainModeImmediate {
-			return true, nil
-		}
+	d, err := m.GetComputeDomainDeployment(ctx, cdUID)
+	if err != nil || d == nil {
+		return fmt.Errorf("error getting Deployment for ComputeDomain: %w", err)
+	}
 
-		d, err := m.GetComputeDomainDeployment(ctx, cdUID)
-		if err != nil {
-			return false, fmt.Errorf("error getting Deployment for ComputeDomain: %w", err)
-		}
-		if d == nil {
-			return false, nil
-		}
+	newD := d.DeepCopy()
 
-		newD := d.DeepCopy()
-
-		if newD.Spec.Template.Spec.Affinity == nil {
-			newD.Spec.Template.Spec.Affinity = &corev1.Affinity{
-				NodeAffinity: &corev1.NodeAffinity{
-					RequiredDuringSchedulingIgnoredDuringExecution: &corev1.NodeSelector{
-						NodeSelectorTerms: []corev1.NodeSelectorTerm{
-							{
-								MatchExpressions: []corev1.NodeSelectorRequirement{
-									{
-										Key:      "kubernetes.io/hostname",
-										Operator: corev1.NodeSelectorOpIn,
-										Values:   []string{},
-									},
+	if newD.Spec.Template.Spec.Affinity == nil {
+		newD.Spec.Template.Spec.Affinity = &corev1.Affinity{
+			NodeAffinity: &corev1.NodeAffinity{
+				RequiredDuringSchedulingIgnoredDuringExecution: &corev1.NodeSelector{
+					NodeSelectorTerms: []corev1.NodeSelectorTerm{
+						{
+							MatchExpressions: []corev1.NodeSelectorRequirement{
+								{
+									Key:      "kubernetes.io/hostname",
+									Operator: corev1.NodeSelectorOpIn,
+									Values:   []string{},
 								},
 							},
 						},
 					},
 				},
-			}
+			},
 		}
+	}
 
-		values := []string{m.config.flags.nodeName}
-		for _, value := range newD.Spec.Template.Spec.Affinity.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms[0].MatchExpressions[0].Values {
-			if value == m.config.flags.nodeName {
-				return true, nil
-			}
-			values = append(values, value)
+	values := []string{m.config.flags.nodeName}
+	for _, value := range newD.Spec.Template.Spec.Affinity.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms[0].MatchExpressions[0].Values {
+		if value == m.config.flags.nodeName {
+			return nil
 		}
-		newD.Spec.Template.Spec.Affinity.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms[0].MatchExpressions[0].Values = values
+		values = append(values, value)
+	}
+	newD.Spec.Template.Spec.Affinity.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms[0].MatchExpressions[0].Values = values
 
-		if len(values) == cd.Spec.NumNodes {
-			newD.Spec.Replicas = ptr.To(int32(len(values)))
-		}
+	if len(values) == cd.Spec.NumNodes {
+		newD.Spec.Replicas = ptr.To(int32(len(values)))
+	}
 
-		if _, err := m.config.clientsets.Core.AppsV1().Deployments(newD.Namespace).Update(ctx, newD, metav1.UpdateOptions{}); err != nil {
-			if errors.IsConflict(err) {
-				return false, nil
-			}
-			return false, fmt.Errorf("error updating Deployment for ComputeDomain: %w", err)
-		}
-
-		return true, nil
-	})
-	if err != nil {
-		return fmt.Errorf("error setting NodeSelector for Deployment in ComputeDomain: %w", err)
+	if _, err := m.config.clientsets.Core.AppsV1().Deployments(newD.Namespace).Update(ctx, newD, metav1.UpdateOptions{}); err != nil {
+		return fmt.Errorf("error updating Deployment for ComputeDomain: %w", err)
 	}
 
 	return nil

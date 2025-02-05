@@ -375,8 +375,8 @@ func (s *DeviceState) applyImexChannelConfig(ctx context.Context, config *config
 	// Create any necessary IMEX channels and gather their CDI container edits.
 	for _, r := range results {
 		imexChannel := s.allocatable[r.Device].ImexChannel
-		if err := s.imexManager.WaitForComputeDomainReady(ctx, r.Pool); err != nil {
-			return nil, fmt.Errorf("error waiting for ComputeDomain to become Ready: %w", err)
+		if err := s.imexManager.AssertComputeDomainReady(ctx, r.Pool); err != nil {
+			return nil, fmt.Errorf("error asserting ComputeDomain Ready: %w", err)
 		}
 		if err := s.nvdevlib.createImexChannelDevice(imexChannel.Channel); err != nil {
 			return nil, fmt.Errorf("error creating IMEX channel device: %w", err)

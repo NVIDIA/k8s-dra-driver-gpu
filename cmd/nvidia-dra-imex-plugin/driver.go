@@ -20,12 +20,15 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	coreclientset "k8s.io/client-go/kubernetes"
 	"k8s.io/dynamic-resource-allocation/kubeletplugin"
 	"k8s.io/klog/v2"
 	drapbv1 "k8s.io/kubelet/pkg/apis/dra/v1beta1"
+
+	"github.com/NVIDIA/k8s-dra-driver/pkg/workqueue"
 )
 
 var _ drapbv1.DRAPluginServer = &driver{}
@@ -99,9 +102,29 @@ func (d *driver) NodePrepareResources(ctx context.Context, req *drapbv1.NodePrep
 	klog.Infof("NodePrepareResource is called: number of claims: %d", len(req.Claims))
 	preparedResources := &drapbv1.NodePrepareResourcesResponse{Claims: map[string]*drapbv1.NodePrepareResourceResponse{}}
 
+	var wg sync.WaitGroup
+	ctx, cancel := context.WithTimeout(ctx, 45*time.Second)
+	workQueue := workqueue.New(workqueue.DefaultControllerRateLimiter())
+
 	for _, claim := range req.Claims {
-		preparedResources.Claims[claim.UID] = d.nodePrepareResource(ctx, claim)
+		wg.Add(1)
+		workQueue.EnqueueRaw(claim, func(ctx context.Context, obj any) error {
+			prepared := d.nodePrepareResource(ctx, claim)
+			if prepared.Error != "" {
+				return fmt.Errorf("%s", prepared.Error)
+			}
+			preparedResources.Claims[claim.UID] = prepared
+			wg.Done()
+			return nil
+		})
 	}
+
+	go func() {
+		wg.Wait()
+		cancel()
+	}()
+
+	workQueue.Run(ctx)
 
 	return preparedResources, nil
 }
@@ -110,9 +133,29 @@ func (d *driver) NodeUnprepareResources(ctx context.Context, req *drapbv1.NodeUn
 	klog.Infof("NodeUnprepareResource is called: number of claims: %d", len(req.Claims))
 	unpreparedResources := &drapbv1.NodeUnprepareResourcesResponse{Claims: map[string]*drapbv1.NodeUnprepareResourceResponse{}}
 
+	var wg sync.WaitGroup
+	ctx, cancel := context.WithTimeout(ctx, 45*time.Second)
+	workQueue := workqueue.New(workqueue.DefaultControllerRateLimiter())
+
 	for _, claim := range req.Claims {
-		unpreparedResources.Claims[claim.UID] = d.nodeUnprepareResource(ctx, claim)
+		wg.Add(1)
+		workQueue.EnqueueRaw(claim, func(ctx context.Context, obj any) error {
+			unprepared := d.nodeUnprepareResource(ctx, claim)
+			if unprepared.Error != "" {
+				return fmt.Errorf("%s", unprepared.Error)
+			}
+			unpreparedResources.Claims[claim.UID] = unprepared
+			wg.Done()
+			return nil
+		})
 	}
+
+	go func() {
+		wg.Wait()
+		cancel()
+	}()
+
+	workQueue.Run(ctx)
 
 	return unpreparedResources, nil
 }
