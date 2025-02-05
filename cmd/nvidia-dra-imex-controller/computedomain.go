@@ -22,6 +22,7 @@ import (
 	"sync"
 	"time"
 
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
@@ -50,6 +51,7 @@ type ComputeDomainManager struct {
 	deploymentManager    *DeploymentManager
 	deviceClassManager   *DeviceClassManager
 	resourceClaimManager *ResourceClaimManager
+	imexChannelManager   *ImexChannelManager
 }
 
 // NewComputeDomainManager creates a new ComputeDomainManager.
@@ -65,6 +67,7 @@ func NewComputeDomainManager(config *ManagerConfig) *ComputeDomainManager {
 	m.deploymentManager = NewDeploymentManager(config, m.Get)
 	m.deviceClassManager = NewDeviceClassManager(config)
 	m.resourceClaimManager = NewResourceClaimManager(config)
+	m.imexChannelManager = NewImexChannelManager(config)
 
 	return m
 }
@@ -123,6 +126,10 @@ func (m *ComputeDomainManager) Start(ctx context.Context) (rerr error) {
 		return fmt.Errorf("error creating ResourceClaim manager: %w", err)
 	}
 
+	if err := m.imexChannelManager.Start(ctx); err != nil {
+		return fmt.Errorf("error starting IMEX channel manager: %w", err)
+	}
+
 	return nil
 }
 
@@ -135,6 +142,9 @@ func (m *ComputeDomainManager) Stop() error {
 	}
 	if err := m.deviceClassManager.Stop(); err != nil {
 		return fmt.Errorf("error stopping DeviceClass manager: %w", err)
+	}
+	if err := m.imexChannelManager.Stop(); err != nil {
+		return fmt.Errorf("error stopping IMEX channel manager: %w", err)
 	}
 	m.cancelContext()
 	m.waitGroup.Wait()
@@ -214,6 +224,10 @@ func (m *ComputeDomainManager) onAddOrUpdate(ctx context.Context, obj any) error
 	klog.Infof("Processing added or updated ComputeDomain: %s/%s", cd.Namespace, cd.Name)
 
 	if cd.GetDeletionTimestamp() != nil {
+		if err := m.imexChannelManager.DeletePool(string(cd.UID)); err != nil {
+			return fmt.Errorf("error deleting IMEX channel pool: %w", err)
+		}
+
 		if err := m.resourceClaimManager.Delete(ctx, string(cd.UID)); err != nil {
 			return fmt.Errorf("error deleting ResourceClaim: %w", err)
 		}
@@ -269,6 +283,41 @@ func (m *ComputeDomainManager) onAddOrUpdate(ctx context.Context, obj any) error
 		if _, err := m.resourceClaimManager.Create(ctx, cd.Namespace, name, dc.Name, cd); err != nil {
 			return fmt.Errorf("error creating ResourceClaim '%s/%s': %w", cd.Namespace, name, err)
 		}
+	}
+
+	if cd.Status.Status != nvapi.ComputeDomainStatusReady {
+		return nil
+	}
+
+	if err := m.createOrUpdatePool(ctx, cd); err != nil {
+		return fmt.Errorf("error creating or updating pool: %w", err)
+	}
+
+	return nil
+}
+
+func (m *ComputeDomainManager) createOrUpdatePool(ctx context.Context, cd *nvapi.ComputeDomain) error {
+	var nodeNames []string
+	for _, node := range cd.Status.Nodes {
+		nodeNames = append(nodeNames, node.Name)
+	}
+
+	nodeSelector := corev1.NodeSelector{
+		NodeSelectorTerms: []corev1.NodeSelectorTerm{
+			{
+				MatchExpressions: []corev1.NodeSelectorRequirement{
+					{
+						Key:      "kubernetes.io/hostname",
+						Operator: corev1.NodeSelectorOpIn,
+						Values:   nodeNames,
+					},
+				},
+			},
+		},
+	}
+
+	if err := m.imexChannelManager.CreateOrUpdatePool(string(cd.UID), &nodeSelector); err != nil {
+		return fmt.Errorf("failed to create or update IMEX channel pool: %w", err)
 	}
 
 	return nil

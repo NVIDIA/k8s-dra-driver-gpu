@@ -64,7 +64,6 @@ type DeploymentManager struct {
 	informer cache.SharedIndexInformer
 
 	resourceClaimTemplateManager *ResourceClaimTemplateManager
-	imexChannelManager           *ImexChannelManager
 	podManagers                  map[string]*DeploymentPodManager
 }
 
@@ -96,7 +95,6 @@ func NewDeploymentManager(config *ManagerConfig, getComputeDomain GetComputeDoma
 		informer:         informer,
 		podManagers:      make(map[string]*DeploymentPodManager),
 	}
-	m.imexChannelManager = NewImexChannelManager(config)
 	m.resourceClaimTemplateManager = NewResourceClaimTemplateManager(config)
 
 	return m
@@ -144,19 +142,12 @@ func (m *DeploymentManager) Start(ctx context.Context) (rerr error) {
 		return fmt.Errorf("error starting ResourceClaimTemplate manager: %w", err)
 	}
 
-	if err := m.imexChannelManager.Start(ctx); err != nil {
-		return fmt.Errorf("error starting IMEX channel manager: %w", err)
-	}
-
 	return nil
 }
 
 func (m *DeploymentManager) Stop() error {
 	if err := m.removeAllPodManagers(); err != nil {
 		return fmt.Errorf("error removing all Pod managers: %w", err)
-	}
-	if err := m.imexChannelManager.Stop(); err != nil {
-		return fmt.Errorf("error stopping IMEX channel manager: %w", err)
 	}
 	m.cancelContext()
 	m.waitGroup.Wait()
@@ -245,10 +236,6 @@ func (m *DeploymentManager) Delete(ctx context.Context, cdUID string) error {
 		return fmt.Errorf("error removing Pod manager: %w", err)
 	}
 
-	if err := m.imexChannelManager.DeletePool(key); err != nil {
-		return fmt.Errorf("error deleting IMEX channel pool: %w", err)
-	}
-
 	if d.GetDeletionTimestamp() != nil {
 		return nil
 	}
@@ -323,47 +310,8 @@ func (m *DeploymentManager) onAddOrUpdate(ctx context.Context, obj any) error {
 		return nil
 	}
 
-	if err := m.createOrUpdatePool(ctx, d.Labels[computeDomainLabelKey]); err != nil {
-		return fmt.Errorf("error creating or updating pool: %w", err)
-	}
-
 	if err := m.setComputeDomainStatus(ctx, d.Labels[computeDomainLabelKey]); err != nil {
 		return fmt.Errorf("error setting ComputeDomain status: %w", err)
-	}
-
-	return nil
-}
-
-func (m *DeploymentManager) createOrUpdatePool(ctx context.Context, cdUID string) error {
-	cd, err := m.getComputeDomain(cdUID)
-	if err != nil {
-		return fmt.Errorf("error getting ComputeDomain: %w", err)
-	}
-	if cd == nil {
-		return nil
-	}
-
-	var nodeNames []string
-	for _, node := range cd.Status.Nodes {
-		nodeNames = append(nodeNames, node.Name)
-	}
-
-	nodeSelector := corev1.NodeSelector{
-		NodeSelectorTerms: []corev1.NodeSelectorTerm{
-			{
-				MatchExpressions: []corev1.NodeSelectorRequirement{
-					{
-						Key:      "kubernetes.io/hostname",
-						Operator: corev1.NodeSelectorOpIn,
-						Values:   nodeNames,
-					},
-				},
-			},
-		},
-	}
-
-	if err := m.imexChannelManager.CreateOrUpdatePool(cdUID, &nodeSelector); err != nil {
-		return fmt.Errorf("failed to create or update IMEX channel pool: %w", err)
 	}
 
 	return nil
