@@ -171,6 +171,10 @@ func (m *DeploymentManager) Create(ctx context.Context, namespace string, replic
 		return nil, fmt.Errorf("error creating ResourceClaimTemplate: %w", err)
 	}
 
+	if cd.Spec.Mode == nvapi.ComputeDomainModeDelayed {
+		replicas = 0
+	}
+
 	templateData := DeploymentTemplateData{
 		Namespace:                 m.config.driverNamespace,
 		GenerateName:              fmt.Sprintf("%s-", cd.Name),
@@ -203,7 +207,9 @@ func (m *DeploymentManager) Create(ctx context.Context, namespace string, replic
 		return nil, fmt.Errorf("failed to convert unstructured data to typed object: %w", err)
 	}
 
-	m.applyAffinities(&deployment, cd)
+	if cd.Spec.Mode == nvapi.ComputeDomainModeImmediate {
+		m.applyImmediateModeAffinities(&deployment, cd)
+	}
 
 	d, err := m.config.clientsets.Core.AppsV1().Deployments(deployment.Namespace).Create(ctx, &deployment, metav1.CreateOptions{})
 	if err != nil {
@@ -302,27 +308,19 @@ func (m *DeploymentManager) onAddOrUpdate(ctx context.Context, obj any) error {
 
 	klog.Infof("Processing added or updated Deployment: %s/%s", d.Namespace, d.Name)
 
-	if err := m.addPodManager(ctx, d.Spec.Selector, int(*d.Spec.Replicas)); err != nil {
-		return fmt.Errorf("error adding Pod manager '%s/%s': %w", d.Namespace, d.Name, err)
-	}
-
-	if d.Status.AvailableReplicas != *d.Spec.Replicas {
-		return nil
-	}
-
-	if err := m.setComputeDomainStatus(ctx, d.Labels[computeDomainLabelKey]); err != nil {
-		return fmt.Errorf("error setting ComputeDomain status: %w", err)
-	}
-
-	return nil
-}
-
-func (m *DeploymentManager) setComputeDomainStatus(ctx context.Context, cdUID string) error {
-	cd, err := m.getComputeDomain(cdUID)
+	cd, err := m.getComputeDomain(d.Labels[computeDomainLabelKey])
 	if err != nil {
 		return fmt.Errorf("error getting ComputeDomain: %w", err)
 	}
 	if cd == nil {
+		return nil
+	}
+
+	if err := m.addPodManager(ctx, d.Spec.Selector, cd.Spec.NumNodes); err != nil {
+		return fmt.Errorf("error adding Pod manager '%s/%s': %w", d.Namespace, d.Name, err)
+	}
+
+	if int(d.Status.AvailableReplicas) != cd.Spec.NumNodes {
 		return nil
 	}
 
@@ -388,7 +386,7 @@ func (m *DeploymentManager) removeAllPodManagers() error {
 	return nil
 }
 
-func (m *DeploymentManager) applyAffinities(d *appsv1.Deployment, cd *nvapi.ComputeDomain) {
+func (m *DeploymentManager) applyImmediateModeAffinities(d *appsv1.Deployment, cd *nvapi.ComputeDomain) {
 	labelSelector := &metav1.LabelSelector{
 		MatchExpressions: []metav1.LabelSelectorRequirement{
 			{

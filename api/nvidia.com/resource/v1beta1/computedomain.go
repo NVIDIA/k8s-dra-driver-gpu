@@ -55,7 +55,6 @@ type ComputeDomainList struct {
 }
 
 // +kubebuilder:validation:XValidation:rule="has(self.deviceClassName) || size(self.resourceClaimNames) > 0",message="At least one name must be specified in 'resourceClaimNames' if 'deviceClassName' is not specified."
-// +kubebuilder:validation:XValidation:rule="self.mode != 'Delayed'",message="'Delayed' mode is not yet supported."
 // +kubebuilder:validation:XValidation:rule="self.mode == 'Immediate' || (self.mode == 'Delayed' && size(self.resourceClaimNames) == 1)",message="When 'mode' is 'Delayed', 'resourceClaimNames' must have exactly one entry."
 // +kubebuilder:validation:XValidation:rule="self.mode == 'Immediate' || (self.mode == 'Delayed' && !has(self.nodeSelector))",message="When 'mode' is 'Delayed', 'NodeSelector' must not be set."
 // +kubebuilder:validation:XValidation:rule="self.mode == 'Immediate' || (self.mode == 'Delayed' && !has(self.topologyAlignment))",message="When 'mode' is 'Delayed', 'TopologyAlignment' must not be set."

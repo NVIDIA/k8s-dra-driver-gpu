@@ -285,18 +285,26 @@ func (m *ComputeDomainManager) onAddOrUpdate(ctx context.Context, obj any) error
 		}
 	}
 
-	if cd.Status.Status != nvapi.ComputeDomainStatusReady {
-		return nil
+	if cd.Spec.Mode == nvapi.ComputeDomainModeImmediate {
+		if cd.Status.Status != nvapi.ComputeDomainStatusReady {
+			return nil
+		}
+
+		if err := m.createOrUpdatePoolImmediateMode(ctx, cd); err != nil {
+			return fmt.Errorf("error creating or updating pool: %w", err)
+		}
 	}
 
-	if err := m.createOrUpdatePool(ctx, cd); err != nil {
-		return fmt.Errorf("error creating or updating pool: %w", err)
+	if cd.Spec.Mode == nvapi.ComputeDomainModeDelayed {
+		if err := m.createOrUpdatePoolDelayedMode(ctx, cd); err != nil {
+			return fmt.Errorf("error creating or updating pool: %w", err)
+		}
 	}
 
 	return nil
 }
 
-func (m *ComputeDomainManager) createOrUpdatePool(ctx context.Context, cd *nvapi.ComputeDomain) error {
+func (m *ComputeDomainManager) createOrUpdatePoolImmediateMode(ctx context.Context, cd *nvapi.ComputeDomain) error {
 	var nodeNames []string
 	for _, node := range cd.Status.Nodes {
 		nodeNames = append(nodeNames, node.Name)
@@ -320,5 +328,16 @@ func (m *ComputeDomainManager) createOrUpdatePool(ctx context.Context, cd *nvapi
 		return fmt.Errorf("failed to create or update IMEX channel pool: %w", err)
 	}
 
+	return nil
+}
+
+func (m *ComputeDomainManager) createOrUpdatePoolDelayedMode(ctx context.Context, cd *nvapi.ComputeDomain) error {
+	var nodeSelector *corev1.NodeSelector
+	if cd.Spec.NodeAffinity != nil && cd.Spec.NodeAffinity.Required != nil {
+		nodeSelector = cd.Spec.NodeAffinity.Required
+	}
+	if err := m.imexChannelManager.CreateOrUpdatePool(string(cd.UID), nodeSelector); err != nil {
+		return fmt.Errorf("failed to create or update IMEX channel pool: %w", err)
+	}
 	return nil
 }

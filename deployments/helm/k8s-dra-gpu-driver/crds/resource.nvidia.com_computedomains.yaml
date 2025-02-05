@@ -314,8 +314,6 @@ spec:
             - message: At least one name must be specified in 'resourceClaimNames'
                 if 'deviceClassName' is not specified.
               rule: has(self.deviceClassName) || size(self.resourceClaimNames) > 0
-            - message: '''Delayed'' mode is not yet supported.'
-              rule: self.mode != 'Delayed'
             - message: When 'mode' is 'Delayed', 'resourceClaimNames' must have exactly
                 one entry.
               rule: self.mode == 'Immediate' || (self.mode == 'Delayed' && size(self.resourceClaimNames)
@@ -324,6 +322,10 @@ spec:
               rule: self.mode == 'Immediate' || (self.mode == 'Delayed' && !has(self.nodeSelector))
             - message: When 'mode' is 'Delayed', 'TopologyAlignment' must not be set.
               rule: self.mode == 'Immediate' || (self.mode == 'Delayed' && !has(self.topologyAlignment))
+            - message: When mode is 'Delayed', 'nodeAffinity.preferred' must not be
+                set; only 'nodeAffinity.required' is allowed.
+              rule: self.mode == 'Immediate' || (self.mode == 'Delayed' && (!has(self.nodeAffinity)
+                || !has(self.nodeAffinity.preferred)))
             - message: When 'mode' is 'Delayed', 'TopologyAntiAlignment' must not
                 be set.
               rule: self.mode == 'Immediate' || (self.mode == 'Delayed' && !has(self.topologyAntiAlignment))
