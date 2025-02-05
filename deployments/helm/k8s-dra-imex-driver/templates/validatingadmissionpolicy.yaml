@@ -23,11 +23,14 @@ spec:
       (request.operation == "DELETE" ? oldObject : object).spec.?nodeName.orValue("")
   - name: nodeSelectorValue
     expression: >-
-      (request.operation == "DELETE" ? oldObject : object).spec.nodeSelector.nodeSelectorTerms[0].matchExpressions[0].values[0].orValue("")
+      (request.operation == "DELETE" ? oldObject : object).spec.?nodeSelector.orValue(null)
+  - name: allNodesValue
+    expression: >-
+      (request.operation == "DELETE" ? oldObject : object).spec.?allNodes.orValue(false)
   validations:
   - expression: variables.userNodeName != ""
     message: >-
       no node association found for user, this user must run in a pod on a node and ServiceAccountTokenPodNodeInfo must be enabled
-  - expression: variables.userNodeName == variables.objectNodeName || variables.nodeSelectorValue != ""
+  - expression: variables.userNodeName == variables.objectNodeName || variables.allNodesValue == true || variables.nodeSelectorValue != null
     messageExpression: >-
       "this user running on node '"+variables.userNodeName+"' may not modify cluster or node resourceslices"
