@@ -1,7 +1,7 @@
 {{/*
 Expand the name of the chart.
 */}}
-{{- define "k8s-dra-driver-gpu.name" -}}
+{{- define "nvidia-dra-driver-gpu.name" -}}
 {{- default .Chart.Name .Values.nameOverride | trunc 63 | trimSuffix "-" }}
 {{- end }}
 
@@ -10,7 +10,7 @@ Create a default fully qualified app name.
 We truncate at 63 chars because some Kubernetes name fields are limited to this (by the DNS naming spec).
 If release name contains chart name it will be used as a full name.
 */}}
-{{- define "k8s-dra-driver-gpu.fullname" -}}
+{{- define "nvidia-dra-driver-gpu.fullname" -}}
 {{- if .Values.fullnameOverride -}}
 {{- .Values.fullnameOverride | trunc 63 | trimSuffix "-" -}}
 {{- else -}}
@@ -26,7 +26,7 @@ If release name contains chart name it will be used as a full name.
 {{/*
 Allow the release namespace to be overridden for multi-namespace deployments in combined charts
 */}}
-{{- define "k8s-dra-driver-gpu.namespace" -}}
+{{- define "nvidia-dra-driver-gpu.namespace" -}}
   {{- if .Values.namespaceOverride -}}
     {{- .Values.namespaceOverride -}}
   {{- else -}}
@@ -37,7 +37,7 @@ Allow the release namespace to be overridden for multi-namespace deployments in 
 {{/*
 Create chart name and version as used by the chart label.
 */}}
-{{- define "k8s-dra-driver-gpu.chart" -}}
+{{- define "nvidia-dra-driver-gpu.chart" -}}
 {{- $name := default .Chart.Name .Values.nameOverride -}}
 {{- printf "%s-%s" $name .Chart.Version | replace "+" "_" | trunc 63 | trimSuffix "-" }}
 {{- end }}
@@ -45,9 +45,9 @@ Create chart name and version as used by the chart label.
 {{/*
 Common labels
 */}}
-{{- define "k8s-dra-driver-gpu.labels" -}}
-helm.sh/chart: {{ include "k8s-dra-driver-gpu.chart" . }}
-{{ include "k8s-dra-driver-gpu.templateLabels" . }}
+{{- define "nvidia-dra-driver-gpu.labels" -}}
+helm.sh/chart: {{ include "nvidia-dra-driver-gpu.chart" . }}
+{{ include "nvidia-dra-driver-gpu.templateLabels" . }}
 {{- if .Chart.AppVersion }}
 app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
 {{- end }}
@@ -57,8 +57,8 @@ app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{/*
 Template labels
 */}}
-{{- define "k8s-dra-driver-gpu.templateLabels" -}}
-app.kubernetes.io/name: {{ include "k8s-dra-driver-gpu.name" . }}
+{{- define "nvidia-dra-driver-gpu.templateLabels" -}}
+app.kubernetes.io/name: {{ include "nvidia-dra-driver-gpu.name" . }}
 app.kubernetes.io/instance: {{ .Release.Name }}
 {{- if .Values.selectorLabelsOverride }}
 {{ toYaml .Values.selectorLabelsOverride }}
@@ -68,18 +68,18 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{/*
 Selector labels
 */}}
-{{- define "k8s-dra-driver-gpu.selectorLabels" -}}
+{{- define "nvidia-dra-driver-gpu.selectorLabels" -}}
 {{- if .Values.selectorLabelsOverride -}}
 {{ toYaml .Values.selectorLabelsOverride }}
 {{- else -}}
-{{ include "k8s-dra-driver-gpu.templateLabels" . }}
+{{ include "nvidia-dra-driver-gpu.templateLabels" . }}
 {{- end }}
 {{- end }}
 
 {{/*
 Full image name with tag
 */}}
-{{- define "k8s-dra-driver-gpu.fullimage" -}}
+{{- define "nvidia-dra-driver-gpu.fullimage" -}}
 {{- $tag := printf "v%s" .Chart.AppVersion }}
 {{- .Values.image.repository -}}:{{- .Values.image.tag | default $tag -}}
 {{- end }}
@@ -87,8 +87,8 @@ Full image name with tag
 {{/*
 Create the name of the service account to use
 */}}
-{{- define "k8s-dra-driver-gpu.serviceAccountName" -}}
-{{- $name := printf "%s-service-account" (include "k8s-dra-driver-gpu.fullname" .) }}
+{{- define "nvidia-dra-driver-gpu.serviceAccountName" -}}
+{{- $name := printf "%s-service-account" (include "nvidia-dra-driver-gpu.fullname" .) }}
 {{- if .Values.serviceAccount.create }}
 {{- default $name .Values.serviceAccount.name }}
 {{- else }}
@@ -99,7 +99,7 @@ Create the name of the service account to use
 {{/*
 Check for the existence of an element in a list
 */}}
-{{- define "k8s-dra-driver-gpu.listHas" -}}
+{{- define "nvidia-dra-driver-gpu.listHas" -}}
   {{- $listToCheck := index . 0 }}
   {{- $valueToCheck := index . 1 }}
 
@@ -115,13 +115,13 @@ Check for the existence of an element in a list
 {{/*
 Filter a list by a set of valid values
 */}}
-{{- define "k8s-dra-driver-gpu.filterList" -}}
+{{- define "nvidia-dra-driver-gpu.filterList" -}}
   {{- $listToFilter := index . 0 }}
   {{- $validValues := index . 1 }}
 
   {{- $result := list -}}
   {{- range $validValues}}
-    {{- if include "k8s-dra-driver-gpu.listHas" (list $listToFilter .) }}
+    {{- if include "nvidia-dra-driver-gpu.listHas" (list $listToFilter .) }}
       {{- $result = append $result . }}
     {{- end }}
   {{- end }}

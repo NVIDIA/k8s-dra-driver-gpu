@@ -1,7 +1,7 @@
 apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingAdmissionPolicy
 metadata:
-  name: resourceslices-policy-{{ include "k8s-dra-driver-gpu.name" . }}
+  name: resourceslices-policy-{{ include "nvidia-dra-driver-gpu.name" . }}
 spec:
   failurePolicy: Fail
   matchConstraints:
@@ -13,7 +13,7 @@ spec:
   matchConditions:
   - name: isRestrictedUser
     expression: >-
-      request.userInfo.username == "system:serviceaccount:{{ include "k8s-dra-driver-gpu.namespace" . }}:{{ include "k8s-dra-driver-gpu.serviceAccountName" . }}"
+      request.userInfo.username == "system:serviceaccount:{{ include "nvidia-dra-driver-gpu.namespace" . }}:{{ include "nvidia-dra-driver-gpu.serviceAccountName" . }}"
   variables:
   - name: userNodeName
     expression: >-
