@@ -13,8 +13,7 @@
 # limitations under the License.
 
 DRIVER_NAME := k8s-dra-driver-gpu
-GPU_DRIVER_NAME := k8s-dra-gpu-driver
-IMEX_DRIVER_NAME := k8s-dra-imex-driver
+HELM_DRIVER_NAME := nvidia-dra-driver-gpu
 MODULE := github.com/NVIDIA/$(DRIVER_NAME)
 
 REGISTRY ?= nvcr.io/nvidia/cloud-native
