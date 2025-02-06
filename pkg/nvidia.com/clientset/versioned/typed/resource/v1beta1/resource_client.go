@@ -21,8 +21,8 @@ package v1beta1
 import (
 	"net/http"
 
-	v1beta1 "github.com/NVIDIA/k8s-dra-driver/api/nvidia.com/resource/v1beta1"
-	"github.com/NVIDIA/k8s-dra-driver/pkg/nvidia.com/clientset/versioned/scheme"
+	v1beta1 "github.com/NVIDIA/k8s-dra-driver-gpu/api/nvidia.com/resource/v1beta1"
+	"github.com/NVIDIA/k8s-dra-driver-gpu/pkg/nvidia.com/clientset/versioned/scheme"
 	rest "k8s.io/client-go/rest"
 )
 

@@ -16,15 +16,15 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "k8s-dra-driver.fullname" . }}-controller
-  namespace: {{ include "k8s-dra-driver.namespace" . }}
+  name: {{ include "k8s-dra-driver-gpu.fullname" . }}-controller
+  namespace: {{ include "k8s-dra-driver-gpu.namespace" . }}
   labels:
-    {{- include "k8s-dra-driver.labels" . | nindent 4 }}
+    {{- include "k8s-dra-driver-gpu.labels" . | nindent 4 }}
 spec:
   replicas: 1
   selector:
     matchLabels:
-      {{- include "k8s-dra-driver.selectorLabels" . | nindent 6 }}
+      {{- include "k8s-dra-driver-gpu.selectorLabels" . | nindent 6 }}
   template:
     metadata:
       {{- with .Values.controller.podAnnotations }}
@@ -32,7 +32,7 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       labels:
-        {{- include "k8s-dra-driver.templateLabels" . | nindent 8 }}
+        {{- include "k8s-dra-driver-gpu.templateLabels" . | nindent 8 }}
     spec:
       {{- if .Values.controller.priorityClassName }}
       priorityClassName: {{ .Values.controller.priorityClassName }}
@@ -41,14 +41,14 @@ spec:
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      serviceAccountName: {{ include "k8s-dra-driver.serviceAccountName" . }}
+      serviceAccountName: {{ include "k8s-dra-driver-gpu.serviceAccountName" . }}
       securityContext:
         {{- toYaml .Values.controller.podSecurityContext | nindent 8 }}
       containers:
       - name: controller
         securityContext:
           {{- toYaml .Values.controller.containers.controller.securityContext | nindent 10 }}
-        image: {{ include "k8s-dra-driver.fullimage" . }}
+        image: {{ include "k8s-dra-driver-gpu.fullimage" . }}
         imagePullPolicy: {{ .Values.image.pullPolicy }}
         command: ["nvidia-dra-imex-controller", "-v", "6"]
         resources:

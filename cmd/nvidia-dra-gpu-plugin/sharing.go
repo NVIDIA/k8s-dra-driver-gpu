@@ -46,7 +46,7 @@ import (
 	cdiapi "tags.cncf.io/container-device-interface/pkg/cdi"
 	cdispec "tags.cncf.io/container-device-interface/specs-go"
 
-	configapi "github.com/NVIDIA/k8s-dra-driver/api/nvidia.com/resource/v1beta1"
+	configapi "github.com/NVIDIA/k8s-dra-driver-gpu/api/nvidia.com/resource/v1beta1"
 )
 
 const (

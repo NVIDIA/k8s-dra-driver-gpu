@@ -16,14 +16,14 @@
 apiVersion: apps/v1
 kind: DaemonSet
 metadata:
-  name: {{ include "k8s-dra-driver.fullname" . }}-gpu-kubelet-plugin
-  namespace: {{ include "k8s-dra-driver.namespace" . }}
+  name: {{ include "k8s-dra-driver-gpu.fullname" . }}-gpu-kubelet-plugin
+  namespace: {{ include "k8s-dra-driver-gpu.namespace" . }}
   labels:
-    {{- include "k8s-dra-driver.labels" . | nindent 4 }}
+    {{- include "k8s-dra-driver-gpu.labels" . | nindent 4 }}
 spec:
   selector:
     matchLabels:
-      {{- include "k8s-dra-driver.selectorLabels" . | nindent 6 }}
+      {{- include "k8s-dra-driver-gpu.selectorLabels" . | nindent 6 }}
   {{- with .Values.kubeletPlugin.updateStrategy }}
   updateStrategy:
     {{- toYaml . | nindent 4 }}
@@ -35,7 +35,7 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       labels:
-        {{- include "k8s-dra-driver.templateLabels" . | nindent 8 }}
+        {{- include "k8s-dra-driver-gpu.templateLabels" . | nindent 8 }}
     spec:
       {{- if .Values.kubeletPlugin.priorityClassName }}
       priorityClassName: {{ .Values.kubeletPlugin.priorityClassName }}
@@ -44,14 +44,14 @@ spec:
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      serviceAccountName: {{ include "k8s-dra-driver.serviceAccountName" . }}
+      serviceAccountName: {{ include "k8s-dra-driver-gpu.serviceAccountName" . }}
       securityContext:
         {{- toYaml .Values.kubeletPlugin.podSecurityContext | nindent 8 }}
       containers:
       - name: plugin
         securityContext:
           {{- toYaml .Values.kubeletPlugin.containers.plugin.securityContext | nindent 10 }}
-        image: {{ include "k8s-dra-driver.fullimage" . }}
+        image: {{ include "k8s-dra-driver-gpu.fullimage" . }}
         imagePullPolicy: {{ .Values.image.pullPolicy }}
         command: ["bash", "-c"]
         args:

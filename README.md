@@ -46,10 +46,10 @@ subdirectory, so take a moment to browse through the various files and see
 what's available:
 
 ```console
-git clone https://github.com/NVIDIA/k8s-dra-driver.git
+git clone https://github.com/NVIDIA/k8s-dra-driver-gpu.git
 ```
 ```console
-cd k8s-dra-driver
+cd k8s-dra-driver-gpu
 ```
 
 ### Setting up the infrastructure
@@ -76,8 +76,8 @@ This should show two pods running in the `nvidia` namespace:
 kubectl get pods -n nvidia
 ```
 ```
-NAME                                                              READY   STATUS    RESTARTS   AGE
-nvidia-dra-driver-k8s-dra-driver-gpu-kubelet-plugin-5vfp9         1/1     Running   0          69s
+NAME                                            READY   STATUS    RESTARTS   AGE
+k8s-dra-driver-gpu-kubelet-plugin-5vfp9         1/1     Running   0          69s
 ```
 
 ### Run the examples by following the steps in the demo script
@@ -146,7 +146,7 @@ set -e
 export VERSION=v0.1.0
 
 REGISTRY=nvcr.io/nvidia/cloud-native
-IMAGE=k8s-dra-driver
+IMAGE=k8s-dra-driver-gpu
 PLATFORM=ubi8
 
 sudo true

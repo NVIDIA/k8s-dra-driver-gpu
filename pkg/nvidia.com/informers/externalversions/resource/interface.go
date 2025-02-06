@@ -19,8 +19,8 @@
 package resource
 
 import (
-	internalinterfaces "github.com/NVIDIA/k8s-dra-driver/pkg/nvidia.com/informers/externalversions/internalinterfaces"
-	v1beta1 "github.com/NVIDIA/k8s-dra-driver/pkg/nvidia.com/informers/externalversions/resource/v1beta1"
+	internalinterfaces "github.com/NVIDIA/k8s-dra-driver-gpu/pkg/nvidia.com/informers/externalversions/internalinterfaces"
+	v1beta1 "github.com/NVIDIA/k8s-dra-driver-gpu/pkg/nvidia.com/informers/externalversions/resource/v1beta1"
 )
 
 // Interface provides access to each of this group's versions.

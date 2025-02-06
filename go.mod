@@ -1,4 +1,4 @@
-module github.com/NVIDIA/k8s-dra-driver
+module github.com/NVIDIA/k8s-dra-driver-gpu
 
 go 1.23.1
 

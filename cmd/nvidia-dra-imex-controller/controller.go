@@ -21,8 +21,8 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/NVIDIA/k8s-dra-driver/pkg/flags"
-	"github.com/NVIDIA/k8s-dra-driver/pkg/workqueue"
+	"github.com/NVIDIA/k8s-dra-driver-gpu/pkg/flags"
+	"github.com/NVIDIA/k8s-dra-driver-gpu/pkg/workqueue"
 )
 
 // ManagerConfig defines the common configuration options shared across all managers.

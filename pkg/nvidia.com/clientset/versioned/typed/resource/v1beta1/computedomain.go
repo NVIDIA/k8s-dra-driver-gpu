@@ -22,8 +22,8 @@ import (
 	"context"
 	"time"
 
-	v1beta1 "github.com/NVIDIA/k8s-dra-driver/api/nvidia.com/resource/v1beta1"
-	scheme "github.com/NVIDIA/k8s-dra-driver/pkg/nvidia.com/clientset/versioned/scheme"
+	v1beta1 "github.com/NVIDIA/k8s-dra-driver-gpu/api/nvidia.com/resource/v1beta1"
+	scheme "github.com/NVIDIA/k8s-dra-driver-gpu/pkg/nvidia.com/clientset/versioned/scheme"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	types "k8s.io/apimachinery/pkg/types"
 	watch "k8s.io/apimachinery/pkg/watch"

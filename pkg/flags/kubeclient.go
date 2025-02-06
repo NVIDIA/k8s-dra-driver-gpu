@@ -26,7 +26,7 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 
-	nvclientset "github.com/NVIDIA/k8s-dra-driver/pkg/nvidia.com/clientset/versioned"
+	nvclientset "github.com/NVIDIA/k8s-dra-driver-gpu/pkg/nvidia.com/clientset/versioned"
 )
 
 type KubeClientConfig struct {

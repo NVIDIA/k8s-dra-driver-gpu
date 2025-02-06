@@ -28,7 +28,7 @@ import (
 	"k8s.io/klog/v2"
 	drapbv1 "k8s.io/kubelet/pkg/apis/dra/v1beta1"
 
-	"github.com/NVIDIA/k8s-dra-driver/pkg/workqueue"
+	"github.com/NVIDIA/k8s-dra-driver-gpu/pkg/workqueue"
 )
 
 var _ drapbv1.DRAPluginServer = &driver{}

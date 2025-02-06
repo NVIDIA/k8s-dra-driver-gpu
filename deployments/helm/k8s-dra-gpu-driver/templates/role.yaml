@@ -2,8 +2,8 @@
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
-  name: {{ include "k8s-dra-driver.fullname" . }}-role
-  namespace: {{ include "k8s-dra-driver.namespace" . }}
+  name: {{ include "k8s-dra-driver-gpu.fullname" . }}-role
+  namespace: {{ include "k8s-dra-driver-gpu.namespace" . }}
 rules:
 - apiGroups: [""]
   resources: ["pods"]

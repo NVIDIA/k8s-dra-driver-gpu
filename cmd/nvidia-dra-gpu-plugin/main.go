@@ -27,8 +27,8 @@ import (
 
 	"k8s.io/klog/v2"
 
-	"github.com/NVIDIA/k8s-dra-driver/internal/info"
-	"github.com/NVIDIA/k8s-dra-driver/pkg/flags"
+	"github.com/NVIDIA/k8s-dra-driver-gpu/internal/info"
+	"github.com/NVIDIA/k8s-dra-driver-gpu/pkg/flags"
 )
 
 const (

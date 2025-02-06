@@ -2,8 +2,8 @@
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: {{ include "k8s-dra-driver.fullname" . }}-cluster-role
-  namespace: {{ include "k8s-dra-driver.namespace" . }}
+  name: {{ include "k8s-dra-driver-gpu.fullname" . }}-cluster-role
+  namespace: {{ include "k8s-dra-driver-gpu.namespace" . }}
 rules:
 - apiGroups: ["resource.k8s.io"]
   resources: ["resourceslices"]

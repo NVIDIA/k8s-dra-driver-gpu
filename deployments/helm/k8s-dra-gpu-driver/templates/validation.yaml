@@ -21,7 +21,7 @@
 {{- fail $error }}
 {{- end }}
 
-{{- if and (eq (include "k8s-dra-driver.namespace" .) "default") ( eq .Values.namespaceOverride "") (not .Values.allowDefaultNamespace) }}
+{{- if and (eq (include "k8s-dra-driver-gpu.namespace" .) "default") ( eq .Values.namespaceOverride "") (not .Values.allowDefaultNamespace) }}
 {{- $error := "" }}
 {{- $error = printf "%s\nRunning in the 'default' namespace is not recommended." $error }}
 {{- $error = printf "%s\nSet 'allowDefaultNamespace=true' to bypass this error." $error }}

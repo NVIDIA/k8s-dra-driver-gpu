@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Default values for k8s-dra-driver.
+# Default values for k8s-dra-driver-gpu.
 # This is a YAML-formatted file.
 # Declare variables to be passed into your templates.
 
@@ -47,7 +47,7 @@ maskNvidiaDriverParams: false
 
 imagePullSecrets: []
 image:
-  repository: nvcr.io/nvidia/cloud-native/k8s-dra-driver
+  repository: nvcr.io/nvidia/cloud-native/k8s-dra-driver-gpu
   pullPolicy: IfNotPresent
   # Overrides the image tag whose default is the chart appVersion.
   tag: ""

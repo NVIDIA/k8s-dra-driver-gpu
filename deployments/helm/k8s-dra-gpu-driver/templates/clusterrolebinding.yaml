@@ -2,13 +2,13 @@
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: {{ include "k8s-dra-driver.fullname" . }}-cluster-role-binding
-  namespace: {{ include "k8s-dra-driver.namespace" . }}
+  name: {{ include "k8s-dra-driver-gpu.fullname" . }}-cluster-role-binding
+  namespace: {{ include "k8s-dra-driver-gpu.namespace" . }}
 subjects:
 - kind: ServiceAccount
-  name: {{ include "k8s-dra-driver.serviceAccountName" . }}
-  namespace: {{ include "k8s-dra-driver.namespace" . }}
+  name: {{ include "k8s-dra-driver-gpu.serviceAccountName" . }}
+  namespace: {{ include "k8s-dra-driver-gpu.namespace" . }}
 roleRef:
   kind: ClusterRole
-  name: {{ include "k8s-dra-driver.fullname" . }}-cluster-role
+  name: {{ include "k8s-dra-driver-gpu.fullname" . }}-cluster-role
   apiGroup: rbac.authorization.k8s.io

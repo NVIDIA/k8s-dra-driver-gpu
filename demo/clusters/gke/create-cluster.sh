@@ -139,4 +139,4 @@ kubectl apply -f https://raw.githubusercontent.com/GoogleCloudPlatform/container
 kubectl create namespace nvidia
 
 ## Deploy a custom daemonset that prepares a node for use with DRA
-kubectl apply -f https://raw.githubusercontent.com/NVIDIA/k8s-dra-driver/3498c9a91cb594af94c9e8d65177b131e380e116/demo/prepare-gke-nodes-for-dra.yaml
+kubectl apply -f https://raw.githubusercontent.com/NVIDIA/k8s-dra-driver-gpu/3498c9a91cb594af94c9e8d65177b131e380e116/demo/prepare-gke-nodes-for-dra.yaml

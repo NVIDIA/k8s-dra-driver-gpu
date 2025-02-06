@@ -22,7 +22,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"k8s.io/apimachinery/pkg/api/resource"
 
-	configapi "github.com/NVIDIA/k8s-dra-driver/api/nvidia.com/resource/v1beta1"
+	configapi "github.com/NVIDIA/k8s-dra-driver-gpu/api/nvidia.com/resource/v1beta1"
 )
 
 func TestMpsPerDevicePinnedMemoryLimitNormalize(t *testing.T) {

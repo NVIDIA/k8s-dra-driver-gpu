@@ -23,9 +23,9 @@ import (
 	sync "sync"
 	time "time"
 
-	versioned "github.com/NVIDIA/k8s-dra-driver/pkg/nvidia.com/clientset/versioned"
-	internalinterfaces "github.com/NVIDIA/k8s-dra-driver/pkg/nvidia.com/informers/externalversions/internalinterfaces"
-	resource "github.com/NVIDIA/k8s-dra-driver/pkg/nvidia.com/informers/externalversions/resource"
+	versioned "github.com/NVIDIA/k8s-dra-driver-gpu/pkg/nvidia.com/clientset/versioned"
+	internalinterfaces "github.com/NVIDIA/k8s-dra-driver-gpu/pkg/nvidia.com/informers/externalversions/internalinterfaces"
+	resource "github.com/NVIDIA/k8s-dra-driver-gpu/pkg/nvidia.com/informers/externalversions/resource"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	runtime "k8s.io/apimachinery/pkg/runtime"
 	schema "k8s.io/apimachinery/pkg/runtime/schema"
