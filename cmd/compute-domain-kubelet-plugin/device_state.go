@@ -43,16 +43,16 @@ type OpaqueDeviceConfig struct {
 }
 
 type DeviceConfigState struct {
-	ImexDomain     string
+	ComputeDomain  string
 	containerEdits *cdiapi.ContainerEdits
 }
 
 type DeviceState struct {
 	sync.Mutex
-	cdi         *CDIHandler
-	imexManager *ImexManager
-	allocatable AllocatableDevices
-	config      *Config
+	cdi                  *CDIHandler
+	computeDomainManager *ComputeDomainManager
+	allocatable          AllocatableDevices
+	config               *Config
 
 	nvdevlib          *deviceLib
 	checkpointManager checkpointmanager.CheckpointManager
@@ -94,7 +94,7 @@ func NewDeviceState(ctx context.Context, config *Config) (*DeviceState, error) {
 	}
 
 	cliqueID := node.Labels[CliqueIDLabelKey]
-	imexManager := NewImexManager(config, ImexDaemonSettingsRoot, cliqueID)
+	computeDomainManager := NewComputeDomainManager(config, ComputeDomainDaemonSettingsRoot, cliqueID)
 
 	if err := cdi.CreateStandardDeviceSpecFile(allocatable); err != nil {
 		return nil, fmt.Errorf("unable to create base CDI spec file: %v", err)
@@ -106,12 +106,12 @@ func NewDeviceState(ctx context.Context, config *Config) (*DeviceState, error) {
 	}
 
 	state := &DeviceState{
-		cdi:               cdi,
-		imexManager:       imexManager,
-		allocatable:       allocatable,
-		config:            config,
-		nvdevlib:          nvdevlib,
-		checkpointManager: checkpointManager,
+		cdi:                  cdi,
+		computeDomainManager: computeDomainManager,
+		allocatable:          allocatable,
+		config:               config,
+		nvdevlib:             nvdevlib,
+		checkpointManager:    checkpointManager,
 	}
 
 	checkpoints, err := state.checkpointManager.ListCheckpoints()
@@ -212,16 +212,16 @@ func (s *DeviceState) prepareDevices(ctx context.Context, claim *resourceapi.Res
 		return nil, fmt.Errorf("error getting opaque device configs: %v", err)
 	}
 
-	// Add the default IMEX Config to the front of the config list with the
+	// Add the default ComputeDomainConfig to the front of the config list with the
 	// lowest precedence. This guarantees there will be at least one of each
 	// config in the list with len(Requests) == 0 for the lookup below.
 	configs = slices.Insert(configs, 0, &OpaqueDeviceConfig{
 		Requests: []string{},
-		Config:   configapi.DefaultImexChannelConfig(),
+		Config:   configapi.DefaultComputeDomainChannelConfig(),
 	})
 	configs = slices.Insert(configs, 0, &OpaqueDeviceConfig{
 		Requests: []string{},
-		Config:   configapi.DefaultImexDaemonConfig(),
+		Config:   configapi.DefaultComputeDomainDaemonConfig(),
 	})
 
 	// Look through the configs and figure out which one will be applied to
@@ -234,20 +234,20 @@ func (s *DeviceState) prepareDevices(ctx context.Context, claim *resourceapi.Res
 		}
 		for _, c := range slices.Backward(configs) {
 			if slices.Contains(c.Requests, result.Request) {
-				if _, ok := c.Config.(*configapi.ImexChannelConfig); ok && device.Type() != ImexChannelType {
-					return nil, fmt.Errorf("cannot apply Imex Channel config to request: %v", result.Request)
+				if _, ok := c.Config.(*configapi.ComputeDomainChannelConfig); ok && device.Type() != ComputeDomainChannelType {
+					return nil, fmt.Errorf("cannot apply ComputeDomainChannelConfig to request: %v", result.Request)
 				}
-				if _, ok := c.Config.(*configapi.ImexDaemonConfig); ok && device.Type() != ImexDaemonType {
-					return nil, fmt.Errorf("cannot apply Imex Daemon config to request: %v", result.Request)
+				if _, ok := c.Config.(*configapi.ComputeDomainDaemonConfig); ok && device.Type() != ComputeDomainDaemonType {
+					return nil, fmt.Errorf("cannot apply ComputeDomainDaemonConfig to request: %v", result.Request)
 				}
 				configResultsMap[c.Config] = append(configResultsMap[c.Config], &result)
 				break
 			}
 			if len(c.Requests) == 0 {
-				if _, ok := c.Config.(*configapi.ImexChannelConfig); ok && device.Type() != ImexChannelType {
+				if _, ok := c.Config.(*configapi.ComputeDomainChannelConfig); ok && device.Type() != ComputeDomainChannelType {
 					continue
 				}
-				if _, ok := c.Config.(*configapi.ImexDaemonConfig); ok && device.Type() != ImexDaemonType {
+				if _, ok := c.Config.(*configapi.ComputeDomainDaemonConfig); ok && device.Type() != ComputeDomainDaemonType {
 					continue
 				}
 				configResultsMap[c.Config] = append(configResultsMap[c.Config], &result)
@@ -264,9 +264,9 @@ func (s *DeviceState) prepareDevices(ctx context.Context, claim *resourceapi.Res
 		// Cast the opaque config to a configapi.Interface type
 		var config configapi.Interface
 		switch castConfig := c.(type) {
-		case *configapi.ImexChannelConfig:
+		case *configapi.ComputeDomainChannelConfig:
 			config = castConfig
-		case *configapi.ImexDaemonConfig:
+		case *configapi.ComputeDomainDaemonConfig:
 			config = castConfig
 		default:
 			return nil, fmt.Errorf("runtime object is not a recognized configuration")
@@ -318,14 +318,14 @@ func (s *DeviceState) prepareDevices(ctx context.Context, claim *resourceapi.Res
 
 			var preparedDevice PreparedDevice
 			switch s.allocatable[result.Device].Type() {
-			case ImexChannelType:
-				preparedDevice.ImexChannel = &PreparedImexChannel{
-					Info:   s.allocatable[result.Device].ImexChannel,
+			case ComputeDomainChannelType:
+				preparedDevice.Channel = &PreparedComputeDomainChannel{
+					Info:   s.allocatable[result.Device].Channel,
 					Device: device,
 				}
-			case ImexDaemonType:
-				preparedDevice.ImexDaemon = &PreparedImexDaemon{
-					Info:   s.allocatable[result.Device].ImexDaemon,
+			case ComputeDomainDaemonType:
+				preparedDevice.Daemon = &PreparedComputeDomainDaemon{
+					Info:   s.allocatable[result.Device].Daemon,
 					Device: device,
 				}
 			}
@@ -339,19 +339,19 @@ func (s *DeviceState) prepareDevices(ctx context.Context, claim *resourceapi.Res
 }
 
 func (s *DeviceState) unprepareDevices(ctx context.Context, claimUID string, devices PreparedDevices) error {
-	// Unprepare any IMEX daemons prepared for each group of prepared devices.
+	// Unprepare any ComputeDomain daemons prepared for each group of prepared devices.
 	for _, group := range devices {
-		// Skip if no ImexDaemon configured for this device.
-		if group.ConfigState.ImexDomain == "" {
+		// Skip if no ComputeDomain daemon configured for this device.
+		if group.ConfigState.ComputeDomain == "" {
 			continue
 		}
 
-		// Create new IMEX daemon settings from the IMEX manager.
-		imexDaemonSettings := s.imexManager.NewSettings(group.ConfigState.ImexDomain)
+		// Create new ComputeDomain daemon settings from the ComputeDomainManager.
+		computeDomainDaemonSettings := s.computeDomainManager.NewSettings(group.ConfigState.ComputeDomain)
 
-		// Unprepare the new IMEX Daemon.
-		if err := imexDaemonSettings.Unprepare(ctx); err != nil {
-			return fmt.Errorf("error unpreparing IMEX daemon settings: %w", err)
+		// Unprepare the new ComputeDomain daemon.
+		if err := computeDomainDaemonSettings.Unprepare(ctx); err != nil {
+			return fmt.Errorf("error unpreparing ComputeDomain daemon settings: %w", err)
 		}
 	}
 	return nil
@@ -359,35 +359,35 @@ func (s *DeviceState) unprepareDevices(ctx context.Context, claimUID string, dev
 
 func (s *DeviceState) applyConfig(ctx context.Context, config configapi.Interface, claim *resourceapi.ResourceClaim, results []*resourceapi.DeviceRequestAllocationResult) (*DeviceConfigState, error) {
 	switch castConfig := config.(type) {
-	case *configapi.ImexChannelConfig:
-		return s.applyImexChannelConfig(ctx, castConfig, claim, results)
-	case *configapi.ImexDaemonConfig:
-		return s.applyImexDaemonConfig(ctx, castConfig, claim, results)
+	case *configapi.ComputeDomainChannelConfig:
+		return s.applyComputeDomainChannelConfig(ctx, castConfig, claim, results)
+	case *configapi.ComputeDomainDaemonConfig:
+		return s.applyComputeDomainDaemonConfig(ctx, castConfig, claim, results)
 	default:
 		return nil, fmt.Errorf("unknown config type: %T", castConfig)
 	}
 }
 
-func (s *DeviceState) applyImexChannelConfig(ctx context.Context, config *configapi.ImexChannelConfig, claim *resourceapi.ResourceClaim, results []*resourceapi.DeviceRequestAllocationResult) (*DeviceConfigState, error) {
+func (s *DeviceState) applyComputeDomainChannelConfig(ctx context.Context, config *configapi.ComputeDomainChannelConfig, claim *resourceapi.ResourceClaim, results []*resourceapi.DeviceRequestAllocationResult) (*DeviceConfigState, error) {
 	// Declare a device group state object to populate.
 	var configState DeviceConfigState
 
-	// Create any necessary IMEX channels and gather their CDI container edits.
+	// Create any necessary ComputeDomain channels and gather their CDI container edits.
 	for _, r := range results {
-		imexChannel := s.allocatable[r.Device].ImexChannel
-		if err := s.imexManager.AssertComputeDomainReady(ctx, r.Pool); err != nil {
+		channel := s.allocatable[r.Device].Channel
+		if err := s.computeDomainManager.AssertComputeDomainReady(ctx, r.Pool); err != nil {
 			return nil, fmt.Errorf("error asserting ComputeDomain Ready: %w", err)
 		}
-		if err := s.nvdevlib.createImexChannelDevice(imexChannel.Channel); err != nil {
-			return nil, fmt.Errorf("error creating IMEX channel device: %w", err)
+		if err := s.nvdevlib.createComputeDomainChannelDevice(channel.ID); err != nil {
+			return nil, fmt.Errorf("error creating ComputeDomain channel device: %w", err)
 		}
-		configState.containerEdits = configState.containerEdits.Append(s.imexManager.GetImexChannelContainerEdits(s.cdi.devRoot, imexChannel))
+		configState.containerEdits = configState.containerEdits.Append(s.computeDomainManager.GetComputeDomainChannelContainerEdits(s.cdi.devRoot, channel))
 	}
 
 	return &configState, nil
 }
 
-func (s *DeviceState) applyImexDaemonConfig(ctx context.Context, config *configapi.ImexDaemonConfig, claim *resourceapi.ResourceClaim, results []*resourceapi.DeviceRequestAllocationResult) (*DeviceConfigState, error) {
+func (s *DeviceState) applyComputeDomainDaemonConfig(ctx context.Context, config *configapi.ComputeDomainDaemonConfig, claim *resourceapi.ResourceClaim, results []*resourceapi.DeviceRequestAllocationResult) (*DeviceConfigState, error) {
 	// Get the list of claim requests this config is being applied over.
 	var requests []string
 	for _, r := range results {
@@ -407,17 +407,17 @@ func (s *DeviceState) applyImexDaemonConfig(ctx context.Context, config *configa
 	// Declare a device group state object to populate.
 	var configState DeviceConfigState
 
-	// Create new IMEX daemon settings from the IMEX manager.
-	imexDaemonSettings := s.imexManager.NewSettings(config.DomainID)
+	// Create new ComputeDomain daemon settings from the ComputeDomainManager.
+	computeDomainDaemonSettings := s.computeDomainManager.NewSettings(config.DomainID)
 
-	// Prepare the new IMEX Daemon.
-	if err := imexDaemonSettings.Prepare(ctx); err != nil {
-		return nil, fmt.Errorf("error preparing IMEX daemon settings for requests '%v' in claim '%v': %w", requests, claim.UID, err)
+	// Prepare the new ComputeDomain daemon.
+	if err := computeDomainDaemonSettings.Prepare(ctx); err != nil {
+		return nil, fmt.Errorf("error preparing ComputeDomain daemon settings for requests '%v' in claim '%v': %w", requests, claim.UID, err)
 	}
 
-	// Store information about the IMEX Daemon in the configState.
-	configState.ImexDomain = imexDaemonSettings.GetDomain()
-	configState.containerEdits = imexDaemonSettings.GetCDIContainerEdits()
+	// Store information about the ComputeDomain daemon in the configState.
+	configState.ComputeDomain = computeDomainDaemonSettings.GetDomain()
+	configState.containerEdits = computeDomainDaemonSettings.GetCDIContainerEdits()
 
 	return &configState, nil
 }

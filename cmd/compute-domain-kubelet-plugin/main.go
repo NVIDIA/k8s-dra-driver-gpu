@@ -32,7 +32,7 @@ import (
 )
 
 const (
-	DriverName = "imex.nvidia.com"
+	DriverName = "compute-domain.nvidia.com"
 
 	PluginRegistrationPath     = "/var/lib/kubelet/plugins_registry/" + DriverName + ".sock"
 	DriverPluginPath           = "/var/lib/kubelet/plugins/" + DriverName

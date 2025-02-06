@@ -28,46 +28,46 @@ import (
 )
 
 const (
-	ResourceSliceImexChannelLimit = 128
-	DriverImexChannelLimit        = 128 // 2048
+	ResourceSliceComputeDomainChannelLimit = 128
+	DriverComputeDomainChannelLimit        = 128 // 2048
 )
 
-type ImexChannelManager struct {
+type ComputeDomainChannelManager struct {
 	config        *ManagerConfig
 	cancelContext context.CancelFunc
 
-	resourceSliceImexChannelLimit int
-	driverImexChannelLimit        int
-	driverResources               *resourceslice.DriverResources
+	resourceSliceComputeDomainChannelLimit int
+	driverComputeDomainChannelLimit        int
+	driverResources                        *resourceslice.DriverResources
 
 	controller *resourceslice.Controller
 }
 
-func NewImexChannelManager(config *ManagerConfig) *ImexChannelManager {
+func NewComputeDomainChannelManager(config *ManagerConfig) *ComputeDomainChannelManager {
 	driverResources := &resourceslice.DriverResources{
 		Pools: make(map[string]resourceslice.Pool),
 	}
 
-	m := &ImexChannelManager{
-		config:                        config,
-		resourceSliceImexChannelLimit: ResourceSliceImexChannelLimit,
-		driverImexChannelLimit:        DriverImexChannelLimit,
-		driverResources:               driverResources,
-		controller:                    nil, // OK, because controller.Stop() checks for nil
+	m := &ComputeDomainChannelManager{
+		config:                                 config,
+		resourceSliceComputeDomainChannelLimit: ResourceSliceComputeDomainChannelLimit,
+		driverComputeDomainChannelLimit:        DriverComputeDomainChannelLimit,
+		driverResources:                        driverResources,
+		controller:                             nil, // OK, because controller.Stop() checks for nil
 	}
 
 	return m
 }
 
-// Start starts an ImexChannelManager.
-func (m *ImexChannelManager) Start(ctx context.Context) (rerr error) {
+// Start starts an ComputeDomainChannelManager.
+func (m *ComputeDomainChannelManager) Start(ctx context.Context) (rerr error) {
 	ctx, cancel := context.WithCancel(ctx)
 	m.cancelContext = cancel
 
 	defer func() {
 		if rerr != nil {
 			if err := m.Stop(); err != nil {
-				klog.Errorf("error stopping ImexChannel manager: %v", err)
+				klog.Errorf("error stopping ComputeDomainChannelManager: %v", err)
 			}
 		}
 	}()
@@ -88,18 +88,18 @@ func (m *ImexChannelManager) Start(ctx context.Context) (rerr error) {
 	return nil
 }
 
-// Stop stops an ImexChannelManager.
-func (m *ImexChannelManager) Stop() error {
+// Stop stops an ComputeDomainChannelManager.
+func (m *ComputeDomainChannelManager) Stop() error {
 	m.cancelContext()
 	m.controller.Stop()
 	return nil
 }
 
-// CreateOrUpdatePool creates or updates a pool of IMEX channels for the given IMEX domain.
-func (m *ImexChannelManager) CreateOrUpdatePool(imexDomainName string, nodeSelector *v1.NodeSelector) error {
+// CreateOrUpdatePool creates or updates a pool of ComputeDomain channels for the given ComputeDomain.
+func (m *ComputeDomainChannelManager) CreateOrUpdatePool(computeDomainName string, nodeSelector *v1.NodeSelector) error {
 	var slices []resourceslice.Slice
-	for i := 0; i < m.driverImexChannelLimit; i += m.resourceSliceImexChannelLimit {
-		slice := m.generatePoolSlice(imexDomainName, i, m.resourceSliceImexChannelLimit)
+	for i := 0; i < m.driverComputeDomainChannelLimit; i += m.resourceSliceComputeDomainChannelLimit {
+		slice := m.generatePoolSlice(computeDomainName, i, m.resourceSliceComputeDomainChannelLimit)
 		slices = append(slices, slice)
 	}
 
@@ -108,34 +108,34 @@ func (m *ImexChannelManager) CreateOrUpdatePool(imexDomainName string, nodeSelec
 		Slices:       slices,
 	}
 
-	m.driverResources.Pools[imexDomainName] = pool
+	m.driverResources.Pools[computeDomainName] = pool
 	m.controller.Update(m.driverResources)
 
 	return nil
 }
 
-// DeletePool deletes a pool of IMEX channels for the given IMEX domain.
-func (m *ImexChannelManager) DeletePool(imexDomainName string) error {
-	delete(m.driverResources.Pools, imexDomainName)
+// DeletePool deletes a pool of ComnputeDomain channels for the given ComputeDomain.
+func (m *ComputeDomainChannelManager) DeletePool(computeDomainName string) error {
+	delete(m.driverResources.Pools, computeDomainName)
 	m.controller.Update(m.driverResources)
 	return nil
 }
 
-// generatePoolSlice generates the contents of a single ResourceSlice of IMEX channels in the given range.
-func (m *ImexChannelManager) generatePoolSlice(imexDomainName string, startChannel, numChannels int) resourceslice.Slice {
+// generatePoolSlice generates the contents of a single ResourceSlice of ComputeDomain channels in the given range.
+func (m *ComputeDomainChannelManager) generatePoolSlice(computeDomainName string, startChannel, numChannels int) resourceslice.Slice {
 	var devices []resourceapi.Device
 	for i := startChannel; i < (startChannel + numChannels); i++ {
 		d := resourceapi.Device{
-			Name: fmt.Sprintf("imex-channel-%d", i),
+			Name: fmt.Sprintf("channel-%d", i),
 			Basic: &resourceapi.BasicDevice{
 				Attributes: map[resourceapi.QualifiedName]resourceapi.DeviceAttribute{
 					"type": {
-						StringValue: ptr.To("imex-channel"),
+						StringValue: ptr.To("channel"),
 					},
 					"domain": {
-						StringValue: ptr.To(imexDomainName),
+						StringValue: ptr.To(computeDomainName),
 					},
-					"channel": {
+					"id": {
 						IntValue: ptr.To(int64(i)),
 					},
 				},

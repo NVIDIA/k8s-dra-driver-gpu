@@ -23,40 +23,40 @@ import (
 	"k8s.io/utils/ptr"
 )
 
-type ImexChannelInfo struct {
-	Channel int `json:"channel"`
+type ComputeDomainChannelInfo struct {
+	ID int `json:"id"`
 }
 
-type ImexDaemonInfo struct {
-	ID int `json:"domain"`
+type ComputeDomainDaemonInfo struct {
+	ID int `json:"id"`
 }
 
-func (d *ImexChannelInfo) CanonicalName() string {
-	return fmt.Sprintf("imex-channel-%d", d.Channel)
+func (d *ComputeDomainChannelInfo) CanonicalName() string {
+	return fmt.Sprintf("%s-%d", ComputeDomainChannelType, d.ID)
 }
 
-func (d *ImexDaemonInfo) CanonicalName() string {
-	return fmt.Sprintf("imex-daemon-%d", d.ID)
+func (d *ComputeDomainDaemonInfo) CanonicalName() string {
+	return fmt.Sprintf("%s-%d", ComputeDomainDaemonType, d.ID)
 }
 
-func (d *ImexChannelInfo) CanonicalIndex() string {
-	return fmt.Sprintf("%d", d.Channel)
-}
-
-func (d *ImexDaemonInfo) CanonicalIndex() string {
+func (d *ComputeDomainChannelInfo) CanonicalIndex() string {
 	return fmt.Sprintf("%d", d.ID)
 }
 
-func (d *ImexChannelInfo) GetDevice() resourceapi.Device {
+func (d *ComputeDomainDaemonInfo) CanonicalIndex() string {
+	return fmt.Sprintf("%d", d.ID)
+}
+
+func (d *ComputeDomainChannelInfo) GetDevice() resourceapi.Device {
 	device := resourceapi.Device{
 		Name: d.CanonicalName(),
 		Basic: &resourceapi.BasicDevice{
 			Attributes: map[resourceapi.QualifiedName]resourceapi.DeviceAttribute{
 				"type": {
-					StringValue: ptr.To(ImexChannelType),
+					StringValue: ptr.To(ComputeDomainChannelType),
 				},
-				"channel": {
-					IntValue: ptr.To(int64(d.Channel)),
+				"id": {
+					IntValue: ptr.To(int64(d.ID)),
 				},
 			},
 		},
@@ -64,13 +64,13 @@ func (d *ImexChannelInfo) GetDevice() resourceapi.Device {
 	return device
 }
 
-func (d *ImexDaemonInfo) GetDevice() resourceapi.Device {
+func (d *ComputeDomainDaemonInfo) GetDevice() resourceapi.Device {
 	device := resourceapi.Device{
 		Name: d.CanonicalName(),
 		Basic: &resourceapi.BasicDevice{
 			Attributes: map[resourceapi.QualifiedName]resourceapi.DeviceAttribute{
 				"type": {
-					StringValue: ptr.To(ImexDaemonType),
+					StringValue: ptr.To(ComputeDomainDaemonType),
 				},
 				"id": {
 					IntValue: ptr.To(int64(d.ID)),

@@ -45,11 +45,11 @@ const (
 
 	informerResyncPeriod = 10 * time.Minute
 
-	ImexDaemonSettingsRoot       = DriverPluginPath + "/imex"
-	ImexDaemonConfigTemplatePath = "/templates/imex-daemon-config.tmpl.cfg"
+	ComputeDomainDaemonSettingsRoot       = DriverPluginPath + "/domains"
+	ComputeDomainDaemonConfigTemplatePath = "/templates/compute-domain-daemon-config.tmpl.cfg"
 )
 
-type ImexManager struct {
+type ComputeDomainManager struct {
 	config        *Config
 	waitGroup     sync.WaitGroup
 	cancelContext context.CancelFunc
@@ -61,19 +61,19 @@ type ImexManager struct {
 	cliqueID        string
 }
 
-type ImexDaemonSettings struct {
-	manager         *ImexManager
+type ComputeDomainDaemonSettings struct {
+	manager         *ComputeDomainManager
 	domain          string
 	rootDir         string
 	configPath      string
 	nodesConfigPath string
 }
 
-func NewImexManager(config *Config, configFilesRoot, cliqueID string) *ImexManager {
+func NewComputeDomainManager(config *Config, configFilesRoot, cliqueID string) *ComputeDomainManager {
 	factory := nvinformers.NewSharedInformerFactory(config.clientsets.Nvidia, informerResyncPeriod)
 	informer := factory.Resource().V1beta1().ComputeDomains().Informer()
 
-	m := &ImexManager{
+	m := &ComputeDomainManager{
 		config:          config,
 		factory:         factory,
 		informer:        informer,
@@ -84,14 +84,14 @@ func NewImexManager(config *Config, configFilesRoot, cliqueID string) *ImexManag
 	return m
 }
 
-func (m *ImexManager) Start(ctx context.Context) (rerr error) {
+func (m *ComputeDomainManager) Start(ctx context.Context) (rerr error) {
 	ctx, cancel := context.WithCancel(ctx)
 	m.cancelContext = cancel
 
 	defer func() {
 		if rerr != nil {
 			if err := m.Stop(); err != nil {
-				klog.Errorf("error stopping ImexDaemonSettings manager: %v", err)
+				klog.Errorf("error stopping ComputeDomainManager: %v", err)
 			}
 		}
 	}()
@@ -116,14 +116,14 @@ func (m *ImexManager) Start(ctx context.Context) (rerr error) {
 	return nil
 }
 
-func (m *ImexManager) Stop() error {
+func (m *ComputeDomainManager) Stop() error {
 	m.cancelContext()
 	m.waitGroup.Wait()
 	return nil
 }
 
-func (m *ImexManager) NewSettings(domain string) *ImexDaemonSettings {
-	return &ImexDaemonSettings{
+func (m *ComputeDomainManager) NewSettings(domain string) *ComputeDomainDaemonSettings {
+	return &ComputeDomainDaemonSettings{
 		manager:         m,
 		domain:          domain,
 		rootDir:         fmt.Sprintf("%s/%s", m.configFilesRoot, domain),
@@ -132,12 +132,12 @@ func (m *ImexManager) NewSettings(domain string) *ImexDaemonSettings {
 	}
 }
 
-func (m *ImexManager) GetImexChannelContainerEdits(devRoot string, info *ImexChannelInfo) *cdiapi.ContainerEdits {
+func (m *ComputeDomainManager) GetComputeDomainChannelContainerEdits(devRoot string, info *ComputeDomainChannelInfo) *cdiapi.ContainerEdits {
 	if m.cliqueID == "" {
 		return nil
 	}
 
-	channelPath := fmt.Sprintf("/dev/nvidia-caps-imex-channels/channel%d", info.Channel)
+	channelPath := fmt.Sprintf("/dev/nvidia-caps-imex-channels/channel%d", info.ID)
 
 	return &cdiapi.ContainerEdits{
 		ContainerEdits: &cdispec.ContainerEdits{
@@ -151,11 +151,11 @@ func (m *ImexManager) GetImexChannelContainerEdits(devRoot string, info *ImexCha
 	}
 }
 
-func (s *ImexDaemonSettings) GetDomain() string {
+func (s *ComputeDomainDaemonSettings) GetDomain() string {
 	return s.domain
 }
 
-func (s *ImexDaemonSettings) GetCDIContainerEdits() *cdiapi.ContainerEdits {
+func (s *ComputeDomainDaemonSettings) GetCDIContainerEdits() *cdiapi.ContainerEdits {
 	return &cdiapi.ContainerEdits{
 		ContainerEdits: &cdispec.ContainerEdits{
 			Mounts: []*cdispec.Mount{
@@ -169,7 +169,7 @@ func (s *ImexDaemonSettings) GetCDIContainerEdits() *cdiapi.ContainerEdits {
 	}
 }
 
-func (s *ImexDaemonSettings) Prepare(ctx context.Context) error {
+func (s *ComputeDomainDaemonSettings) Prepare(ctx context.Context) error {
 	if err := os.MkdirAll(s.rootDir, 0755); err != nil {
 		return fmt.Errorf("error creating directory %v: %w", s.rootDir, err)
 	}
@@ -185,17 +185,17 @@ func (s *ImexDaemonSettings) Prepare(ctx context.Context) error {
 	return nil
 }
 
-func (s *ImexDaemonSettings) Unprepare(ctx context.Context) error {
+func (s *ComputeDomainDaemonSettings) Unprepare(ctx context.Context) error {
 	if err := os.RemoveAll(s.rootDir); err != nil {
 		return fmt.Errorf("error removing directory %v: %w", s.rootDir, err)
 	}
 	return nil
 }
 
-func (s *ImexDaemonSettings) WriteConfigFile(ctx context.Context) error {
+func (s *ComputeDomainDaemonSettings) WriteConfigFile(ctx context.Context) error {
 	configTemplateData := struct{}{}
 
-	tmpl, err := template.ParseFiles(ImexDaemonConfigTemplatePath)
+	tmpl, err := template.ParseFiles(ComputeDomainDaemonConfigTemplatePath)
 	if err != nil {
 		return fmt.Errorf("error parsing template file: %w", err)
 	}
@@ -212,7 +212,7 @@ func (s *ImexDaemonSettings) WriteConfigFile(ctx context.Context) error {
 	return nil
 }
 
-func (s *ImexDaemonSettings) WriteNodesConfigFile(ctx context.Context) error {
+func (s *ComputeDomainDaemonSettings) WriteNodesConfigFile(ctx context.Context) error {
 	nodeIPs, err := s.manager.GetNodeIPs(ctx, s.domain)
 	if err != nil {
 		return fmt.Errorf("error getting node IPs: %w", err)
@@ -230,7 +230,7 @@ func (s *ImexDaemonSettings) WriteNodesConfigFile(ctx context.Context) error {
 	return nil
 }
 
-func (m *ImexManager) AssertComputeDomainReady(ctx context.Context, cdUID string) error {
+func (m *ComputeDomainManager) AssertComputeDomainReady(ctx context.Context, cdUID string) error {
 	if err := m.UpdateComputeDomainDeployment(ctx, cdUID); err != nil {
 		return fmt.Errorf("error updating Deployment for ComputeDomain: %w", err)
 	}
@@ -247,7 +247,7 @@ func (m *ImexManager) AssertComputeDomainReady(ctx context.Context, cdUID string
 	return nil
 }
 
-func (m *ImexManager) GetNodeIPs(ctx context.Context, cdUID string) ([]string, error) {
+func (m *ComputeDomainManager) GetNodeIPs(ctx context.Context, cdUID string) ([]string, error) {
 	cd, err := m.GetComputeDomain(ctx, cdUID)
 	if err != nil || cd == nil {
 		return nil, fmt.Errorf("error getting ComputeDomain: %w", err)
@@ -266,7 +266,7 @@ func (m *ImexManager) GetNodeIPs(ctx context.Context, cdUID string) ([]string, e
 	return ips, nil
 }
 
-func (m *ImexManager) UpdateComputeDomainDeployment(ctx context.Context, cdUID string) error {
+func (m *ComputeDomainManager) UpdateComputeDomainDeployment(ctx context.Context, cdUID string) error {
 	cd, err := m.GetComputeDomain(ctx, cdUID)
 	if err != nil || cd == nil {
 		return fmt.Errorf("error getting ComputeDomain: %w", err)
@@ -323,7 +323,7 @@ func (m *ImexManager) UpdateComputeDomainDeployment(ctx context.Context, cdUID s
 	return nil
 }
 
-func (m *ImexManager) GetComputeDomain(ctx context.Context, cdUID string) (*nvapi.ComputeDomain, error) {
+func (m *ComputeDomainManager) GetComputeDomain(ctx context.Context, cdUID string) (*nvapi.ComputeDomain, error) {
 	cds, err := m.informer.GetIndexer().ByIndex("computeDomainUID", cdUID)
 	if err != nil {
 		return nil, fmt.Errorf("error retrieving ComputeDomain by UID: %w", err)
@@ -341,7 +341,7 @@ func (m *ImexManager) GetComputeDomain(ctx context.Context, cdUID string) (*nvap
 	return cd, nil
 }
 
-func (m *ImexManager) GetComputeDomainDeployment(ctx context.Context, cdUID string) (*appsv1.Deployment, error) {
+func (m *ComputeDomainManager) GetComputeDomainDeployment(ctx context.Context, cdUID string) (*appsv1.Deployment, error) {
 	labelSelector := &metav1.LabelSelector{
 		MatchExpressions: []metav1.LabelSelectorRequirement{
 			{

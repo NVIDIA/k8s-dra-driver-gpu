@@ -72,26 +72,26 @@ func newDeviceLib(driverRoot root) (*deviceLib, error) {
 func (l deviceLib) enumerateAllPossibleDevices(config *Config) (AllocatableDevices, error) {
 	alldevices := make(AllocatableDevices)
 
-	imexChannels, err := l.enumerateImexChannels(config)
+	computeDomainChannels, err := l.enumerateComputeDomainChannels(config)
 	if err != nil {
-		return nil, fmt.Errorf("error enumerating IMEX channel devices: %w", err)
+		return nil, fmt.Errorf("error enumerating ComputeDomain channel devices: %w", err)
 	}
-	for k, v := range imexChannels {
+	for k, v := range computeDomainChannels {
 		alldevices[k] = v
 	}
 
-	imexDaemons, err := l.enumerateImexDaemons(config)
+	computeDomainDaemons, err := l.enumerateComputeDomainDaemons(config)
 	if err != nil {
-		return nil, fmt.Errorf("error enumerating IMEX daemon devices: %w", err)
+		return nil, fmt.Errorf("error enumerating ComputeDomain daemon devices: %w", err)
 	}
-	for k, v := range imexDaemons {
+	for k, v := range computeDomainDaemons {
 		alldevices[k] = v
 	}
 
 	return alldevices, nil
 }
 
-func (l deviceLib) enumerateImexChannels(config *Config) (AllocatableDevices, error) {
+func (l deviceLib) enumerateComputeDomainChannels(config *Config) (AllocatableDevices, error) {
 	devices := make(AllocatableDevices)
 
 	imexChannelCount, err := l.getImexChannelCount()
@@ -99,27 +99,27 @@ func (l deviceLib) enumerateImexChannels(config *Config) (AllocatableDevices, er
 		return nil, fmt.Errorf("error getting IMEX channel count: %w", err)
 	}
 	for i := 0; i < imexChannelCount; i++ {
-		imexChannelInfo := &ImexChannelInfo{
-			Channel: i,
+		computeDomainChannelInfo := &ComputeDomainChannelInfo{
+			ID: i,
 		}
 		deviceInfo := &AllocatableDevice{
-			ImexChannel: imexChannelInfo,
+			Channel: computeDomainChannelInfo,
 		}
-		devices[imexChannelInfo.CanonicalName()] = deviceInfo
+		devices[computeDomainChannelInfo.CanonicalName()] = deviceInfo
 	}
 
 	return devices, nil
 }
 
-func (l deviceLib) enumerateImexDaemons(config *Config) (AllocatableDevices, error) {
+func (l deviceLib) enumerateComputeDomainDaemons(config *Config) (AllocatableDevices, error) {
 	devices := make(AllocatableDevices)
-	imexDaemonInfo := &ImexDaemonInfo{
+	computeDomainDaemonInfo := &ComputeDomainDaemonInfo{
 		ID: 0,
 	}
 	deviceInfo := &AllocatableDevice{
-		ImexDaemon: imexDaemonInfo,
+		Daemon: computeDomainDaemonInfo,
 	}
-	devices[imexDaemonInfo.CanonicalName()] = deviceInfo
+	devices[computeDomainDaemonInfo.CanonicalName()] = deviceInfo
 	return devices, nil
 }
 
@@ -172,7 +172,7 @@ func (l deviceLib) getImexChannelMajor() (int, error) {
 	return -1, scanner.Err()
 }
 
-func (l deviceLib) createImexChannelDevice(channel int) error {
+func (l deviceLib) createComputeDomainChannelDevice(channel int) error {
 	// Construct the properties of the device node to create.
 	path := fmt.Sprintf("/dev/nvidia-caps-imex-channels/channel%d", channel)
 	path = filepath.Join(l.devRoot, path)

@@ -43,7 +43,7 @@ import (
 )
 
 const (
-	DriverName = "imex.nvidia.com"
+	DriverName = "compute-domain.nvidia.com"
 )
 
 type Flags struct {

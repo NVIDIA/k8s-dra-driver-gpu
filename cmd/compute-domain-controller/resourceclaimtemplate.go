@@ -38,19 +38,19 @@ import (
 )
 
 const (
-	ImexDaemonDeviceClass             = "imex-daemon.nvidia.com"
-	ResourceClaimTemplateTemplatePath = "/templates/imex-daemon-claim-template.tmpl.yaml"
+	ComputeDomainDaemonDeviceClass    = "compute-domain-daemon.nvidia.com"
+	ResourceClaimTemplateTemplatePath = "/templates/compute-domain-daemon-claim-template.tmpl.yaml"
 )
 
 type ResourceClaimTemplateTemplateData struct {
-	Namespace               string
-	GenerateName            string
-	Finalizer               string
-	ComputeDomainLabelKey   string
-	ComputeDomainLabelValue types.UID
-	DeviceClassName         string
-	DriverName              string
-	ImexDaemonConfig        *nvapi.ImexDaemonConfig
+	Namespace                 string
+	GenerateName              string
+	Finalizer                 string
+	ComputeDomainLabelKey     string
+	ComputeDomainLabelValue   types.UID
+	DeviceClassName           string
+	DriverName                string
+	ComputeDomainDaemonConfig *nvapi.ComputeDomainDaemonConfig
 }
 
 type ResourceClaimTemplateManager struct {
@@ -138,19 +138,19 @@ func (m *ResourceClaimTemplateManager) Create(ctx context.Context, namespace str
 		return rcts[0], nil
 	}
 
-	imexDaemonConfig := nvapi.DefaultImexDaemonConfig()
-	imexDaemonConfig.NumNodes = cd.Spec.NumNodes
-	imexDaemonConfig.DomainID = string(cd.UID)
+	computeDomainDaemonConfig := nvapi.DefaultComputeDomainDaemonConfig()
+	computeDomainDaemonConfig.NumNodes = cd.Spec.NumNodes
+	computeDomainDaemonConfig.DomainID = string(cd.UID)
 
 	templateData := ResourceClaimTemplateTemplateData{
-		Namespace:               m.config.driverNamespace,
-		GenerateName:            fmt.Sprintf("%s-claim-template-", cd.Name),
-		Finalizer:               computeDomainFinalizer,
-		ComputeDomainLabelKey:   computeDomainLabelKey,
-		ComputeDomainLabelValue: cd.UID,
-		DeviceClassName:         ImexDaemonDeviceClass,
-		DriverName:              DriverName,
-		ImexDaemonConfig:        imexDaemonConfig,
+		Namespace:                 m.config.driverNamespace,
+		GenerateName:              fmt.Sprintf("%s-claim-template-", cd.Name),
+		Finalizer:                 computeDomainFinalizer,
+		ComputeDomainLabelKey:     computeDomainLabelKey,
+		ComputeDomainLabelValue:   cd.UID,
+		DeviceClassName:           ComputeDomainDaemonDeviceClass,
+		DriverName:                DriverName,
+		ComputeDomainDaemonConfig: computeDomainDaemonConfig,
 	}
 
 	tmpl, err := template.ParseFiles(ResourceClaimTemplateTemplatePath)

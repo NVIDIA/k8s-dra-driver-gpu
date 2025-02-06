@@ -65,18 +65,18 @@ func NewDriver(ctx context.Context, config *Config) (*driver, error) {
 	}
 	driver.plugin = plugin
 
-	// Enumerate the set of IMEX daemon devices and publish them
+	// Enumerate the set of ComputeDomain daemon devices and publish them
 	var resources kubeletplugin.Resources
 	for _, device := range state.allocatable {
-		// Explicitly exclude IMEX channels from being advertised here. They
+		// Explicitly exclude ComputeDomain channels from being advertised here. They
 		// are instead advertised in as a network resource from the control plane.
-		if device.Type() == ImexChannelType {
+		if device.Type() == ComputeDomainChannelType {
 			continue
 		}
 		resources.Devices = append(resources.Devices, device.GetDevice())
 	}
 
-	if err := state.imexManager.Start(ctx); err != nil {
+	if err := state.computeDomainManager.Start(ctx); err != nil {
 		return nil, err
 	}
 
@@ -91,8 +91,8 @@ func (d *driver) Shutdown() error {
 	if d == nil {
 		return nil
 	}
-	if err := d.state.imexManager.Stop(); err != nil {
-		return fmt.Errorf("error stopping IMEX manager: %w", err)
+	if err := d.state.computeDomainManager.Stop(); err != nil {
+		return fmt.Errorf("error stopping ComputeDomainManager: %w", err)
 	}
 	d.plugin.Stop()
 	return nil

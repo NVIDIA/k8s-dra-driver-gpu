@@ -25,18 +25,18 @@ type PreparedDevices []*PreparedDeviceGroup
 type PreparedClaims map[string]PreparedDevices
 
 type PreparedDevice struct {
-	ImexChannel *PreparedImexChannel `json:"imexChannel"`
-	ImexDaemon  *PreparedImexDaemon  `json:"imexDaemon"`
+	Channel *PreparedComputeDomainChannel `json:"channel"`
+	Daemon  *PreparedComputeDomainDaemon  `json:"daemon"`
 }
 
-type PreparedImexChannel struct {
-	Info   *ImexChannelInfo `json:"info"`
-	Device *drapbv1.Device  `json:"device"`
+type PreparedComputeDomainChannel struct {
+	Info   *ComputeDomainChannelInfo `json:"info"`
+	Device *drapbv1.Device           `json:"device"`
 }
 
-type PreparedImexDaemon struct {
-	Info   *ImexDaemonInfo `json:"info"`
-	Device *drapbv1.Device `json:"device"`
+type PreparedComputeDomainDaemon struct {
+	Info   *ComputeDomainDaemonInfo `json:"info"`
+	Device *drapbv1.Device          `json:"device"`
 }
 
 type PreparedDeviceGroup struct {
@@ -45,49 +45,49 @@ type PreparedDeviceGroup struct {
 }
 
 func (d PreparedDevice) Type() string {
-	if d.ImexChannel != nil {
-		return ImexChannelType
+	if d.Channel != nil {
+		return ComputeDomainChannelType
 	}
-	if d.ImexDaemon != nil {
-		return ImexDaemonType
+	if d.Daemon != nil {
+		return ComputeDomainDaemonType
 	}
 	return UnknownDeviceType
 }
 
 func (d *PreparedDevice) CanonicalName() string {
 	switch d.Type() {
-	case ImexChannelType:
-		return d.ImexChannel.Info.CanonicalName()
-	case ImexDaemonType:
-		return d.ImexDaemon.Info.CanonicalName()
+	case ComputeDomainChannelType:
+		return d.Channel.Info.CanonicalName()
+	case ComputeDomainDaemonType:
+		return d.Daemon.Info.CanonicalName()
 	}
 	panic("unexpected type for AllocatableDevice")
 }
 
 func (d *PreparedDevice) CanonicalIndex() string {
 	switch d.Type() {
-	case ImexChannelType:
-		return d.ImexChannel.Info.CanonicalIndex()
-	case ImexDaemonType:
-		return d.ImexDaemon.Info.CanonicalIndex()
+	case ComputeDomainChannelType:
+		return d.Channel.Info.CanonicalIndex()
+	case ComputeDomainDaemonType:
+		return d.Daemon.Info.CanonicalIndex()
 	}
 	panic("unexpected type for AllocatableDevice")
 }
 
-func (l PreparedDeviceList) ImexChannels() PreparedDeviceList {
+func (l PreparedDeviceList) ComputeDomainChannels() PreparedDeviceList {
 	var devices PreparedDeviceList
 	for _, device := range l {
-		if device.Type() == ImexChannelType {
+		if device.Type() == ComputeDomainChannelType {
 			devices = append(devices, device)
 		}
 	}
 	return devices
 }
 
-func (l PreparedDeviceList) ImexDaemons() PreparedDeviceList {
+func (l PreparedDeviceList) ComputeDomainDaemons() PreparedDeviceList {
 	var devices PreparedDeviceList
 	for _, device := range l {
-		if device.Type() == ImexDaemonType {
+		if device.Type() == ComputeDomainDaemonType {
 			devices = append(devices, device)
 		}
 	}
@@ -106,10 +106,10 @@ func (g *PreparedDeviceGroup) GetDevices() []*drapbv1.Device {
 	var devices []*drapbv1.Device
 	for _, device := range g.Devices {
 		switch device.Type() {
-		case ImexChannelType:
-			devices = append(devices, device.ImexChannel.Device)
-		case ImexDaemonType:
-			devices = append(devices, device.ImexDaemon.Device)
+		case ComputeDomainChannelType:
+			devices = append(devices, device.Channel.Device)
+		case ComputeDomainDaemonType:
+			devices = append(devices, device.Daemon.Device)
 		}
 	}
 	return devices

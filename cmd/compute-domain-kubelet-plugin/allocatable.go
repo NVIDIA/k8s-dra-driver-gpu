@@ -23,46 +23,46 @@ import (
 type AllocatableDevices map[string]*AllocatableDevice
 
 type AllocatableDevice struct {
-	ImexChannel *ImexChannelInfo
-	ImexDaemon  *ImexDaemonInfo
+	Channel *ComputeDomainChannelInfo
+	Daemon  *ComputeDomainDaemonInfo
 }
 
 func (d AllocatableDevice) Type() string {
-	if d.ImexChannel != nil {
-		return ImexChannelType
+	if d.Channel != nil {
+		return ComputeDomainChannelType
 	}
-	if d.ImexDaemon != nil {
-		return ImexDaemonType
+	if d.Daemon != nil {
+		return ComputeDomainDaemonType
 	}
 	return UnknownDeviceType
 }
 
 func (d *AllocatableDevice) CanonicalName() string {
 	switch d.Type() {
-	case ImexChannelType:
-		return d.ImexChannel.CanonicalName()
-	case ImexDaemonType:
-		return d.ImexDaemon.CanonicalName()
+	case ComputeDomainChannelType:
+		return d.Channel.CanonicalName()
+	case ComputeDomainDaemonType:
+		return d.Daemon.CanonicalName()
 	}
 	panic("unexpected type for AllocatableDevice")
 }
 
 func (d *AllocatableDevice) CanonicalIndex() string {
 	switch d.Type() {
-	case ImexChannelType:
-		return d.ImexChannel.CanonicalIndex()
-	case ImexDaemonType:
-		return d.ImexDaemon.CanonicalIndex()
+	case ComputeDomainChannelType:
+		return d.Channel.CanonicalIndex()
+	case ComputeDomainDaemonType:
+		return d.Daemon.CanonicalIndex()
 	}
 	panic("unexpected type for AllocatableDevice")
 }
 
 func (d *AllocatableDevice) GetDevice() resourceapi.Device {
 	switch d.Type() {
-	case ImexChannelType:
-		return d.ImexChannel.GetDevice()
-	case ImexDaemonType:
-		return d.ImexDaemon.GetDevice()
+	case ComputeDomainChannelType:
+		return d.Channel.GetDevice()
+	case ComputeDomainDaemonType:
+		return d.Daemon.GetDevice()
 	}
 	panic("unexpected type for AllocatableDevice")
 }

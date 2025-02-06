@@ -260,7 +260,7 @@ func (cdi *CDIHandler) DeleteClaimSpecFile(claimUID string) error {
 }
 
 func (cdi *CDIHandler) GetStandardDevice(device *AllocatableDevice) string {
-	if device.Type() == ImexChannelType {
+	if device.Type() == ComputeDomainChannelType {
 		return ""
 	}
 	return cdiparser.QualifiedName(cdiVendor, cdiDeviceClass, "all")

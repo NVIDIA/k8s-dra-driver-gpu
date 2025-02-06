@@ -39,7 +39,7 @@ import (
 )
 
 const (
-	DeploymentTemplatePath = "/templates/imex-daemon.tmpl.yaml"
+	DeploymentTemplatePath = "/templates/compute-domain-daemon.tmpl.yaml"
 )
 
 type DeploymentTemplateData struct {

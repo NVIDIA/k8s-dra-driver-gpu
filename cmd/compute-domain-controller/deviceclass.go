@@ -132,7 +132,7 @@ func (m *DeviceClassManager) Create(ctx context.Context, name string, cd *nvapi.
 				},
 				{
 					CEL: &resourceapi.CELDeviceSelector{
-						Expression: fmt.Sprintf("device.attributes['%s'].type == 'imex-channel'", DriverName),
+						Expression: fmt.Sprintf("device.attributes['%s'].type == 'channel'", DriverName),
 					},
 				},
 				{
@@ -145,7 +145,7 @@ func (m *DeviceClassManager) Create(ctx context.Context, name string, cd *nvapi.
 	}
 
 	if name == "" {
-		deviceClass.GenerateName = cd.Name
+		deviceClass.GenerateName = fmt.Sprintf("%s-channel-", cd.Name)
 	} else {
 		deviceClass.Name = name
 	}

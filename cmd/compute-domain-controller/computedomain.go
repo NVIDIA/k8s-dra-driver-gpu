@@ -48,10 +48,10 @@ type ComputeDomainManager struct {
 	factory  nvinformers.SharedInformerFactory
 	informer cache.SharedIndexInformer
 
-	deploymentManager    *DeploymentManager
-	deviceClassManager   *DeviceClassManager
-	resourceClaimManager *ResourceClaimManager
-	imexChannelManager   *ImexChannelManager
+	deploymentManager           *DeploymentManager
+	deviceClassManager          *DeviceClassManager
+	resourceClaimManager        *ResourceClaimManager
+	computeDomainChannelManager *ComputeDomainChannelManager
 }
 
 // NewComputeDomainManager creates a new ComputeDomainManager.
@@ -67,7 +67,7 @@ func NewComputeDomainManager(config *ManagerConfig) *ComputeDomainManager {
 	m.deploymentManager = NewDeploymentManager(config, m.Get)
 	m.deviceClassManager = NewDeviceClassManager(config)
 	m.resourceClaimManager = NewResourceClaimManager(config)
-	m.imexChannelManager = NewImexChannelManager(config)
+	m.computeDomainChannelManager = NewComputeDomainChannelManager(config)
 
 	return m
 }
@@ -126,8 +126,8 @@ func (m *ComputeDomainManager) Start(ctx context.Context) (rerr error) {
 		return fmt.Errorf("error creating ResourceClaim manager: %w", err)
 	}
 
-	if err := m.imexChannelManager.Start(ctx); err != nil {
-		return fmt.Errorf("error starting IMEX channel manager: %w", err)
+	if err := m.computeDomainChannelManager.Start(ctx); err != nil {
+		return fmt.Errorf("error starting ComputeDomain channel manager: %w", err)
 	}
 
 	return nil
@@ -143,8 +143,8 @@ func (m *ComputeDomainManager) Stop() error {
 	if err := m.deviceClassManager.Stop(); err != nil {
 		return fmt.Errorf("error stopping DeviceClass manager: %w", err)
 	}
-	if err := m.imexChannelManager.Stop(); err != nil {
-		return fmt.Errorf("error stopping IMEX channel manager: %w", err)
+	if err := m.computeDomainChannelManager.Stop(); err != nil {
+		return fmt.Errorf("error stopping ComputeDomain channel manager: %w", err)
 	}
 	m.cancelContext()
 	m.waitGroup.Wait()
@@ -224,8 +224,8 @@ func (m *ComputeDomainManager) onAddOrUpdate(ctx context.Context, obj any) error
 	klog.Infof("Processing added or updated ComputeDomain: %s/%s", cd.Namespace, cd.Name)
 
 	if cd.GetDeletionTimestamp() != nil {
-		if err := m.imexChannelManager.DeletePool(string(cd.UID)); err != nil {
-			return fmt.Errorf("error deleting IMEX channel pool: %w", err)
+		if err := m.computeDomainChannelManager.DeletePool(string(cd.UID)); err != nil {
+			return fmt.Errorf("error deleting ComputeDomain channel pool: %w", err)
 		}
 
 		if err := m.resourceClaimManager.Delete(ctx, string(cd.UID)); err != nil {
@@ -324,8 +324,8 @@ func (m *ComputeDomainManager) createOrUpdatePoolImmediateMode(ctx context.Conte
 		},
 	}
 
-	if err := m.imexChannelManager.CreateOrUpdatePool(string(cd.UID), &nodeSelector); err != nil {
-		return fmt.Errorf("failed to create or update IMEX channel pool: %w", err)
+	if err := m.computeDomainChannelManager.CreateOrUpdatePool(string(cd.UID), &nodeSelector); err != nil {
+		return fmt.Errorf("failed to create or update ComputeDomain channel pool: %w", err)
 	}
 
 	return nil
@@ -336,8 +336,8 @@ func (m *ComputeDomainManager) createOrUpdatePoolDelayedMode(ctx context.Context
 	if cd.Spec.NodeAffinity != nil && cd.Spec.NodeAffinity.Required != nil {
 		nodeSelector = cd.Spec.NodeAffinity.Required
 	}
-	if err := m.imexChannelManager.CreateOrUpdatePool(string(cd.UID), nodeSelector); err != nil {
-		return fmt.Errorf("failed to create or update IMEX channel pool: %w", err)
+	if err := m.computeDomainChannelManager.CreateOrUpdatePool(string(cd.UID), nodeSelector); err != nil {
+		return fmt.Errorf("failed to create or update ComputeDomain channel pool: %w", err)
 	}
 	return nil
 }

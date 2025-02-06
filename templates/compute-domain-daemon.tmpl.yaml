@@ -20,7 +20,7 @@ spec:
     spec:
       hostNetwork: true
       containers:
-      - name: imex-daemon
+      - name: compute-domain-daemon
         image: ubuntu:22.04
         command: [sh, -c]
         args:
@@ -38,7 +38,7 @@ spec:
           tail -n +1 -f /var/log/nvidia-imex.log & wait
         resources:
           claims:
-          - name: imex-daemon
+          - name: compute-domain-daemon
         startupProbe:
           exec:
             command:
@@ -52,5 +52,5 @@ spec:
           initialDelaySeconds: 1
           periodSeconds: 1
       resourceClaims:
-      - name: imex-daemon
+      - name: compute-domain-daemon
         resourceClaimTemplateName: {{ .ResourceClaimTemplateName }}

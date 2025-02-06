@@ -12,14 +12,14 @@ spec:
   spec:
     devices:
       requests:
-      - name: imex-daemon
+      - name: daemon
         deviceClassName: {{ .DeviceClassName }}
       config:
-      - requests: ["imex-daemon"]
+      - requests: ["daemon"]
         opaque:
           driver: {{ .DriverName }}
           parameters:
-            apiVersion: {{ .ImexDaemonConfig.APIVersion }}
-            kind: {{ .ImexDaemonConfig.Kind }}
-            numNodes: {{ .ImexDaemonConfig.NumNodes }}
-            domainID: {{ .ImexDaemonConfig.DomainID }}
+            apiVersion: {{ .ComputeDomainDaemonConfig.APIVersion }}
+            kind: {{ .ComputeDomainDaemonConfig.Kind }}
+            numNodes: {{ .ComputeDomainDaemonConfig.NumNodes }}
+            domainID: {{ .ComputeDomainDaemonConfig.DomainID }}
