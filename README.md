@@ -143,7 +143,7 @@ This may include the following content from the original scripts:
 ```
 set -e
 
-export VERSION=v0.1.0
+export VERSION=v25.2.0
 
 REGISTRY=nvcr.io/nvidia/cloud-native
 IMAGE=k8s-dra-driver-gpu
