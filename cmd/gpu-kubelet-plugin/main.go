@@ -32,7 +32,7 @@ import (
 )
 
 const (
-	DriverName = "imex.nvidia.com"
+	DriverName = "gpu.nvidia.com"
 
 	PluginRegistrationPath     = "/var/lib/kubelet/plugins_registry/" + DriverName + ".sock"
 	DriverPluginPath           = "/var/lib/kubelet/plugins/" + DriverName
@@ -117,8 +117,8 @@ func newApp() *cli.App {
 	cliFlags = append(cliFlags, flags.loggingConfig.Flags()...)
 
 	app := &cli.App{
-		Name:            "nvidia-dra-imex-plugin",
-		Usage:           "nvidia-dra-imex-plugin implements a DRA driver plugin for NVIDIA IMEX daemons.",
+		Name:            "gpu-kubelet-plugin",
+		Usage:           "gpu-kubelet-plugin implements a DRA driver plugin for NVIDIA GPUs.",
 		ArgsUsage:       " ",
 		HideHelpCommand: true,
 		Flags:           cliFlags,

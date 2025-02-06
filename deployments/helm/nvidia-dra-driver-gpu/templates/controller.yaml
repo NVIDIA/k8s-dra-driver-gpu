@@ -45,14 +45,14 @@ spec:
       securityContext:
         {{- toYaml .Values.controller.podSecurityContext | nindent 8 }}
       containers:
-      - name: controller
+      - name: compute-domain
         securityContext:
-          {{- toYaml .Values.controller.containers.controller.securityContext | nindent 10 }}
+          {{- toYaml .Values.controller.containers.computeDomain.securityContext | nindent 10 }}
         image: {{ include "nvidia-dra-driver-gpu.fullimage" . }}
         imagePullPolicy: {{ .Values.image.pullPolicy }}
-        command: ["nvidia-dra-imex-controller", "-v", "6"]
+        command: ["compute-domain-controller", "-v", "6"]
         resources:
-          {{- toYaml .Values.controller.containers.controller.resources | nindent 10 }}
+          {{- toYaml .Values.controller.containers.computeDomain.resources | nindent 10 }}
         env:
         - name: POD_NAME
           valueFrom:

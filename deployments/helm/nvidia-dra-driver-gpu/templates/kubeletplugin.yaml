@@ -48,15 +48,15 @@ spec:
       securityContext:
         {{- toYaml .Values.kubeletPlugin.podSecurityContext | nindent 8 }}
       containers:
-      - name: plugin
+      - name: compute-domain
         securityContext:
-          {{- toYaml .Values.kubeletPlugin.containers.plugin.securityContext | nindent 10 }}
+          {{- toYaml .Values.kubeletPlugin.containers.computeDomain.securityContext | nindent 10 }}
         image: {{ include "nvidia-dra-driver-gpu.fullimage" . }}
         imagePullPolicy: {{ .Values.image.pullPolicy }}
         command:
-        - nvidia-dra-imex-plugin
+        - compute-domain-kubelet-plugin
         resources:
-          {{- toYaml .Values.kubeletPlugin.containers.plugin.resources | nindent 10 }}
+          {{- toYaml .Values.kubeletPlugin.containers.computeDomain.resources | nindent 10 }}
         env:
         - name: CDI_ROOT
           value: /var/run/cdi

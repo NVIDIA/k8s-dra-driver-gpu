@@ -60,7 +60,7 @@ controller:
     operator: Exists
     effect: NoSchedule
   containers:
-    controller:
+    computeDomain:
       securityContext: {}
       resources: {}
   affinity:
@@ -83,7 +83,7 @@ kubeletPlugin:
     init:
       securityContext: {}
       resources: {}
-    plugin:
+    computeDomain:
       securityContext:
         privileged: true
       resources: {}
