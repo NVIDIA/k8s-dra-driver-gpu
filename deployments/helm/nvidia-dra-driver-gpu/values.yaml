@@ -50,6 +50,12 @@ serviceAccount:
   # If not set and create is true, a name is generated using the fullname template
   name: ""
 
+resources:
+  gpus:
+    enabled: true
+  computeDomains:
+    enabled: true
+
 controller:
   priorityClassName: "system-node-critical"
   podAnnotations: {}

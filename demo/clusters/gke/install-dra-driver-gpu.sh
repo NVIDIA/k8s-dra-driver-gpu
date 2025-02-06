@@ -36,6 +36,7 @@ helm upgrade -i --create-namespace --namespace nvidia nvidia-dra-driver-gpu ${PR
   --set controller.priorityClassName="" \
   --set kubeletPlugin.priorityClassName="" \
   --set nvidiaDriverRoot="/opt/nvidia" \
+  --set resources.gpus.enabled=false \
   --set kubeletPlugin.tolerations[0].key=nvidia.com/gpu \
   --set kubeletPlugin.tolerations[0].operator=Exists \
   --set kubeletPlugin.tolerations[0].effect=NoSchedule \

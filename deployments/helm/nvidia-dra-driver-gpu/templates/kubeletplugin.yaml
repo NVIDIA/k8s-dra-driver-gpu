@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+{{- if or .Values.resources.computeDomains.enabled .Values.resources.gpus.enabled }}
 ---
 apiVersion: apps/v1
 kind: DaemonSet
@@ -48,6 +49,7 @@ spec:
       securityContext:
         {{- toYaml .Values.kubeletPlugin.podSecurityContext | nindent 8 }}
       containers:
+      {{- if .Values.resources.computeDomains.enabled }}
       - name: compute-domain
         securityContext:
           {{- toYaml .Values.kubeletPlugin.containers.computeDomain.securityContext | nindent 10 }}
@@ -80,6 +82,7 @@ spec:
         - name: driver-root
           mountPath: /driver-root
           readOnly: true
+      {{- end }}
       volumes:
       - name: plugins-registry
         hostPath:
@@ -105,3 +108,4 @@ spec:
       tolerations:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+{{- end }}
