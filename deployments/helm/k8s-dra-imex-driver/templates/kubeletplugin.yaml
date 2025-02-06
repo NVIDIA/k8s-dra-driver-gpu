@@ -16,7 +16,7 @@
 apiVersion: apps/v1
 kind: DaemonSet
 metadata:
-  name: {{ include "k8s-dra-driver-gpu.fullname" . }}-kubelet-plugin
+  name: {{ include "k8s-dra-driver-gpu.name" . }}-kubelet-plugin
   namespace: {{ include "k8s-dra-driver-gpu.namespace" . }}
   labels:
     {{- include "k8s-dra-driver-gpu.labels" . | nindent 4 }}

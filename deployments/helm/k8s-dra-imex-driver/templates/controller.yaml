@@ -16,7 +16,7 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "k8s-dra-driver-gpu.fullname" . }}-controller
+  name: {{ include "k8s-dra-driver-gpu.name" . }}-controller
   namespace: {{ include "k8s-dra-driver-gpu.namespace" . }}
   labels:
     {{- include "k8s-dra-driver-gpu.labels" . | nindent 4 }}
