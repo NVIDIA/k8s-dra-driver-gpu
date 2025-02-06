@@ -54,14 +54,6 @@ cd k8s-dra-driver
 
 ### Setting up the infrastructure
 
-Here's a demo showing how to install and configure DRA, and run a pod in a `kind` cluster on a Linux workstation.
-
-<p align="center">
-<img width="800" src="./demo/specs/quickstart/basic-demo.svg">
-</p>
-
-Below are the detailed, step-by-step instructions.
-
 First, create a `kind` cluster to run the demo:
 ```bash
 ./demo/clusters/kind/create-cluster.sh
