@@ -375,8 +375,10 @@ func (s *DeviceState) applyComputeDomainChannelConfig(ctx context.Context, confi
 	// Create any necessary ComputeDomain channels and gather their CDI container edits.
 	for _, r := range results {
 		channel := s.allocatable[r.Device].Channel
-		if err := s.computeDomainManager.AssertComputeDomainReady(ctx, r.Pool); err != nil {
-			return nil, fmt.Errorf("error asserting ComputeDomain Ready: %w", err)
+		if config.WaitForReady {
+			if err := s.computeDomainManager.AssertComputeDomainReady(ctx, config.DomainID); err != nil {
+				return nil, fmt.Errorf("error asserting ComputeDomain Ready: %w", err)
+			}
 		}
 		if err := s.nvdevlib.createComputeDomainChannelDevice(channel.ID); err != nil {
 			return nil, fmt.Errorf("error creating ComputeDomain channel device: %w", err)

@@ -38,19 +38,22 @@ import (
 )
 
 const (
-	ComputeDomainDaemonDeviceClass    = "compute-domain-daemon.nvidia.com"
-	ResourceClaimTemplateTemplatePath = "/templates/compute-domain-daemon-claim-template.tmpl.yaml"
+	ComputeDomainDaemonDeviceClass         = "compute-domain-daemon.nvidia.com"
+	ComputeDomainDefaultChannelDeviceClass = "compute-domain-default-channel.nvidia.com"
+	ResourceClaimTemplateTemplatePath      = "/templates/compute-domain-daemon-claim-template.tmpl.yaml"
 )
 
 type ResourceClaimTemplateTemplateData struct {
-	Namespace                 string
-	GenerateName              string
-	Finalizer                 string
-	ComputeDomainLabelKey     string
-	ComputeDomainLabelValue   types.UID
-	DeviceClassName           string
-	DriverName                string
-	ComputeDomainDaemonConfig *nvapi.ComputeDomainDaemonConfig
+	Namespace               string
+	GenerateName            string
+	Finalizer               string
+	ComputeDomainLabelKey   string
+	ComputeDomainLabelValue types.UID
+	DaemonDeviceClassName   string
+	ChannelDeviceClassName  string
+	DriverName              string
+	DaemonConfig            *nvapi.ComputeDomainDaemonConfig
+	ChannelConfig           *nvapi.ComputeDomainChannelConfig
 }
 
 type ResourceClaimTemplateManager struct {
@@ -138,19 +141,32 @@ func (m *ResourceClaimTemplateManager) Create(ctx context.Context, namespace str
 		return rcts[0], nil
 	}
 
-	computeDomainDaemonConfig := nvapi.DefaultComputeDomainDaemonConfig()
-	computeDomainDaemonConfig.NumNodes = cd.Spec.NumNodes
-	computeDomainDaemonConfig.DomainID = string(cd.UID)
+	daemonConfig := nvapi.DefaultComputeDomainDaemonConfig()
+	daemonConfig.NumNodes = cd.Spec.NumNodes
+	daemonConfig.DomainID = string(cd.UID)
+
+	channelConfig := nvapi.DefaultComputeDomainChannelConfig()
+	channelConfig.WaitForReady = false
+	channelConfig.DomainID = string(cd.UID)
 
 	templateData := ResourceClaimTemplateTemplateData{
-		Namespace:                 m.config.driverNamespace,
-		GenerateName:              fmt.Sprintf("%s-claim-template-", cd.Name),
-		Finalizer:                 computeDomainFinalizer,
-		ComputeDomainLabelKey:     computeDomainLabelKey,
-		ComputeDomainLabelValue:   cd.UID,
-		DeviceClassName:           ComputeDomainDaemonDeviceClass,
-		DriverName:                DriverName,
-		ComputeDomainDaemonConfig: computeDomainDaemonConfig,
+		Namespace:               namespace,
+		GenerateName:            fmt.Sprintf("%s-claim-template-", cd.Name),
+		Finalizer:               computeDomainFinalizer,
+		ComputeDomainLabelKey:   computeDomainLabelKey,
+		ComputeDomainLabelValue: cd.UID,
+		DaemonDeviceClassName:   ComputeDomainDaemonDeviceClass,
+		DriverName:              DriverName,
+		DaemonConfig:            daemonConfig,
+	}
+
+	// TODO: Add the commented conditional once we have a way for workloads to
+	// directly consume the node-advertised channel 0 via a global
+	// ResourceClaim in delayed mode.
+	//if cd.Spec.Mode == nvapi.ComputeDomainModeImmediate {
+	if true {
+		templateData.ChannelDeviceClassName = ComputeDomainDefaultChannelDeviceClass
+		templateData.ChannelConfig = channelConfig
 	}
 
 	tmpl, err := template.ParseFiles(ResourceClaimTemplateTemplatePath)

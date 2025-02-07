@@ -28,14 +28,16 @@ import (
 )
 
 const (
-	ResourceSliceComputeDomainChannelLimit = 128
-	DriverComputeDomainChannelLimit        = 128 // 2048
+	ResourceSliceComputeDomainChannelStart = 1   // Channel 0 is reserved, and advertised by the node itself
+	ResourceSliceComputeDomainChannelLimit = 128 // There is a limit of 128 per ResourceSlice
+	DriverComputeDomainChannelLimit        = 128 // The acual limit is 2048, but keep things to a single slice for now
 )
 
 type ComputeDomainChannelManager struct {
 	config        *ManagerConfig
 	cancelContext context.CancelFunc
 
+	resourceSliceComputeDomainChannelStart int
 	resourceSliceComputeDomainChannelLimit int
 	driverComputeDomainChannelLimit        int
 	driverResources                        *resourceslice.DriverResources
@@ -50,6 +52,7 @@ func NewComputeDomainChannelManager(config *ManagerConfig) *ComputeDomainChannel
 
 	m := &ComputeDomainChannelManager{
 		config:                                 config,
+		resourceSliceComputeDomainChannelStart: ResourceSliceComputeDomainChannelStart,
 		resourceSliceComputeDomainChannelLimit: ResourceSliceComputeDomainChannelLimit,
 		driverComputeDomainChannelLimit:        DriverComputeDomainChannelLimit,
 		driverResources:                        driverResources,
@@ -98,7 +101,7 @@ func (m *ComputeDomainChannelManager) Stop() error {
 // CreateOrUpdatePool creates or updates a pool of ComputeDomain channels for the given ComputeDomain.
 func (m *ComputeDomainChannelManager) CreateOrUpdatePool(computeDomainName string, nodeSelector *v1.NodeSelector) error {
 	var slices []resourceslice.Slice
-	for i := 0; i < m.driverComputeDomainChannelLimit; i += m.resourceSliceComputeDomainChannelLimit {
+	for i := m.resourceSliceComputeDomainChannelStart; i < m.driverComputeDomainChannelLimit; i += m.resourceSliceComputeDomainChannelLimit {
 		slice := m.generatePoolSlice(computeDomainName, i, m.resourceSliceComputeDomainChannelLimit)
 		slices = append(slices, slice)
 	}

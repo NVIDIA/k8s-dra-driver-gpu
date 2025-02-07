@@ -27,6 +27,8 @@ import (
 // ComputeDomainChannelConfig holds the set of parameters for configuring an ComputeDomainChannel.
 type ComputeDomainChannelConfig struct {
 	metav1.TypeMeta `json:",inline"`
+	WaitForReady    bool   `json:"waitForReady"`
+	DomainID        string `json:"domainID"`
 }
 
 // DefaultComputeDomainChannelConfig provides the default ComputeDomainChannel configuration.
@@ -44,8 +46,11 @@ func (c *ComputeDomainChannelConfig) Normalize() error {
 	return nil
 }
 
-// Validate ensures that ComputeDomainChannelConfig has a valid set of values.
+// Validate ensures that ComputeDomainDaemonConfig has a valid set of values.
 func (c *ComputeDomainChannelConfig) Validate() error {
+	if c.DomainID == "" {
+		return fmt.Errorf("domainID cannot be empty")
+	}
 	return nil
 }
 

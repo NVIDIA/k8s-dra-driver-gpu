@@ -70,7 +70,7 @@ func NewDriver(ctx context.Context, config *Config) (*driver, error) {
 	for _, device := range state.allocatable {
 		// Explicitly exclude ComputeDomain channels from being advertised here. They
 		// are instead advertised in as a network resource from the control plane.
-		if device.Type() == ComputeDomainChannelType {
+		if device.Type() == ComputeDomainChannelType && device.Channel.ID != 0 {
 			continue
 		}
 		resources.Devices = append(resources.Devices, device.GetDevice())
