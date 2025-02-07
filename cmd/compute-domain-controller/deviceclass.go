@@ -137,6 +137,11 @@ func (m *DeviceClassManager) Create(ctx context.Context, name string, cd *nvapi.
 				},
 				{
 					CEL: &resourceapi.CELDeviceSelector{
+						Expression: fmt.Sprintf("'domain' in device.attributes['%s']", DriverName),
+					},
+				},
+				{
+					CEL: &resourceapi.CELDeviceSelector{
 						Expression: fmt.Sprintf("device.attributes['%s'].domain == '%v'", DriverName, cd.UID),
 					},
 				},

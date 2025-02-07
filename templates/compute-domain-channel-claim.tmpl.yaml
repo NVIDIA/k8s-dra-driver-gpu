@@ -1,0 +1,24 @@
+---
+apiVersion: resource.k8s.io/v1beta1
+kind: ResourceClaim
+metadata:
+  namespace: {{ .Namespace }}
+  name: {{ .Name }}
+  finalizers:
+    - {{ .Finalizer }}
+  labels:
+    {{ .ComputeDomainLabelKey }}: {{ .ComputeDomainLabelValue }}
+spec:
+  devices:
+    requests:
+    - name: channel
+      deviceClassName: {{ .DeviceClassName }}
+    config:
+    - requests: ["channel"]
+      opaque:
+        driver: {{ .DriverName }}
+        parameters:
+          apiVersion: {{ .ChannelConfig.APIVersion }}
+          kind: {{ .ChannelConfig.Kind }}
+          waitForReady: {{ .ChannelConfig.WaitForReady }}
+          domainID: {{ .ChannelConfig.DomainID }}

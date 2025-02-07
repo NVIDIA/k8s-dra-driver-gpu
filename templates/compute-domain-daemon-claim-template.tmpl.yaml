@@ -13,13 +13,27 @@ spec:
     devices:
       requests:
       - name: daemon
-        deviceClassName: {{ .DeviceClassName }}
+        deviceClassName: {{ .DaemonDeviceClassName }}
+      {{ if .ChannelDeviceClassName  }}
+      - name: channel
+        deviceClassName: {{ .ChannelDeviceClassName }}
+      {{- end }}
       config:
       - requests: ["daemon"]
         opaque:
           driver: {{ .DriverName }}
           parameters:
-            apiVersion: {{ .ComputeDomainDaemonConfig.APIVersion }}
-            kind: {{ .ComputeDomainDaemonConfig.Kind }}
-            numNodes: {{ .ComputeDomainDaemonConfig.NumNodes }}
-            domainID: {{ .ComputeDomainDaemonConfig.DomainID }}
+            apiVersion: {{ .DaemonConfig.APIVersion }}
+            kind: {{ .DaemonConfig.Kind }}
+            numNodes: {{ .DaemonConfig.NumNodes }}
+            domainID: {{ .DaemonConfig.DomainID }}
+      {{ if .ChannelConfig }}
+      - requests: ["channel"]
+        opaque:
+          driver: {{ .DriverName }}
+          parameters:
+            apiVersion: {{ .ChannelConfig.APIVersion }}
+            kind: {{ .ChannelConfig.Kind }}
+            waitForReady: {{ .ChannelConfig.WaitForReady }}
+            domainID: {{ .ChannelConfig.DomainID }}
+      {{- end }}

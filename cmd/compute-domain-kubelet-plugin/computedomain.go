@@ -236,8 +236,11 @@ func (m *ComputeDomainManager) AssertComputeDomainReady(ctx context.Context, cdU
 	}
 
 	cd, err := m.GetComputeDomain(ctx, cdUID)
-	if err != nil || cd == nil {
+	if err != nil {
 		return fmt.Errorf("error getting ComputeDomain: %w", err)
+	}
+	if cd == nil {
+		return fmt.Errorf("ComputeDomain not found: %s", cdUID)
 	}
 
 	if cd.Status.Status != nvapi.ComputeDomainStatusReady {
@@ -249,8 +252,11 @@ func (m *ComputeDomainManager) AssertComputeDomainReady(ctx context.Context, cdU
 
 func (m *ComputeDomainManager) GetNodeIPs(ctx context.Context, cdUID string) ([]string, error) {
 	cd, err := m.GetComputeDomain(ctx, cdUID)
-	if err != nil || cd == nil {
+	if err != nil {
 		return nil, fmt.Errorf("error getting ComputeDomain: %w", err)
+	}
+	if cd == nil {
+		return nil, fmt.Errorf("ComputeDomain not found: %s", cdUID)
 	}
 
 	if cd.Status.Nodes == nil {
@@ -268,8 +274,11 @@ func (m *ComputeDomainManager) GetNodeIPs(ctx context.Context, cdUID string) ([]
 
 func (m *ComputeDomainManager) UpdateComputeDomainDeployment(ctx context.Context, cdUID string) error {
 	cd, err := m.GetComputeDomain(ctx, cdUID)
-	if err != nil || cd == nil {
+	if err != nil {
 		return fmt.Errorf("error getting ComputeDomain: %w", err)
+	}
+	if cd == nil {
+		return fmt.Errorf("ComputeDomain not found: %s", cdUID)
 	}
 
 	if cd.Spec.Mode == nvapi.ComputeDomainModeImmediate {

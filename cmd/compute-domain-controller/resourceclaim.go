@@ -17,19 +17,40 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"sync"
+	"text/template"
 
 	resourceapi "k8s.io/api/resource/v1beta1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/yaml"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
 
 	nvapi "github.com/NVIDIA/k8s-dra-driver-gpu/api/nvidia.com/resource/v1beta1"
 )
+
+const (
+	ResourceClaimTemplatePath = "/templates/compute-domain-channel-claim.tmpl.yaml"
+)
+
+type ResourceClaimTemplateData struct {
+	Namespace               string
+	Name                    string
+	Finalizer               string
+	ComputeDomainLabelKey   string
+	ComputeDomainLabelValue types.UID
+	DeviceClassName         string
+	DriverName              string
+	ChannelConfig           *nvapi.ComputeDomainChannelConfig
+}
 
 type ResourceClaimManager struct {
 	config        *ManagerConfig
@@ -116,25 +137,42 @@ func (m *ResourceClaimManager) Create(ctx context.Context, namespace, name, devi
 		return rc, nil
 	}
 
-	resourceClaim := &resourceapi.ResourceClaim{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:       name,
-			Namespace:  namespace,
-			Finalizers: []string{computeDomainFinalizer},
-			Labels: map[string]string{
-				computeDomainLabelKey: string(cd.UID),
-			},
-		},
-		Spec: resourceapi.ResourceClaimSpec{
-			Devices: resourceapi.DeviceClaim{
-				Requests: []resourceapi.DeviceRequest{{
-					Name: "device", DeviceClassName: deviceClassName,
-				}},
-			},
-		},
+	channelConfig := nvapi.DefaultComputeDomainChannelConfig()
+	channelConfig.WaitForReady = true
+	channelConfig.DomainID = string(cd.UID)
+
+	templateData := ResourceClaimTemplateData{
+		Namespace:               namespace,
+		Name:                    name,
+		Finalizer:               computeDomainFinalizer,
+		ComputeDomainLabelKey:   computeDomainLabelKey,
+		ComputeDomainLabelValue: cd.UID,
+		DeviceClassName:         deviceClassName,
+		DriverName:              DriverName,
+		ChannelConfig:           channelConfig,
 	}
 
-	rc, err = m.config.clientsets.Core.ResourceV1beta1().ResourceClaims(resourceClaim.Namespace).Create(ctx, resourceClaim, metav1.CreateOptions{})
+	tmpl, err := template.ParseFiles(ResourceClaimTemplatePath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse template file: %w", err)
+	}
+
+	var resourceClaimYaml bytes.Buffer
+	if err := tmpl.Execute(&resourceClaimYaml, templateData); err != nil {
+		return nil, fmt.Errorf("failed to execute template: %w", err)
+	}
+
+	var unstructuredObj unstructured.Unstructured
+	if err := yaml.Unmarshal(resourceClaimYaml.Bytes(), &unstructuredObj); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal yaml: %w", err)
+	}
+
+	var resourceClaim resourceapi.ResourceClaim
+	if err := runtime.DefaultUnstructuredConverter.FromUnstructured(unstructuredObj.UnstructuredContent(), &resourceClaim); err != nil {
+		return nil, fmt.Errorf("failed to convert unstructured data to typed object: %w", err)
+	}
+
+	rc, err = m.config.clientsets.Core.ResourceV1beta1().ResourceClaims(namespace).Create(ctx, &resourceClaim, metav1.CreateOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("error creating ResourceClaim: %w", err)
 	}
