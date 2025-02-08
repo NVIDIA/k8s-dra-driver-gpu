@@ -240,9 +240,14 @@ spec:
                 type: object
               numNodes:
                 type: integer
-              resourceClaimNames:
+              resourceClaims:
                 items:
-                  type: string
+                  properties:
+                    name:
+                      type: string
+                  required:
+                  - name
+                  type: object
                 type: array
               topologyAlignment:
                 properties:
@@ -307,13 +312,14 @@ spec:
             required:
             - mode
             - numNodes
+            - resourceClaims
             type: object
             x-kubernetes-validations:
             - message: A computeDomain.spec is immutable
               rule: self == oldSelf
-            - message: When 'mode' is 'Delayed', 'resourceClaimNames' must have exactly
+            - message: When 'mode' is 'Delayed', 'resourceClaims' must have exactly
                 one entry.
-              rule: self.mode == 'Immediate' || (self.mode == 'Delayed' && size(self.resourceClaimNames)
+              rule: self.mode == 'Immediate' || (self.mode == 'Delayed' && size(self.resourceClaims)
                 == 1)
             - message: When 'mode' is 'Delayed', 'NodeSelector' must not be set.
               rule: self.mode == 'Immediate' || (self.mode == 'Delayed' && !has(self.nodeSelector))
