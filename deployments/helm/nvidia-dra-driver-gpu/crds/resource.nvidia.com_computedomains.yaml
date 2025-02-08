@@ -40,8 +40,6 @@ spec:
           spec:
             description: ComputeDomainSpec provides the spec for a ComputeDomain.
             properties:
-              deviceClassName:
-                type: string
               mode:
                 default: Immediate
                 enum:
@@ -311,9 +309,6 @@ spec:
             - numNodes
             type: object
             x-kubernetes-validations:
-            - message: At least one name must be specified in 'resourceClaimNames'
-                if 'deviceClassName' is not specified.
-              rule: has(self.deviceClassName) || size(self.resourceClaimNames) > 0
             - message: When 'mode' is 'Delayed', 'resourceClaimNames' must have exactly
                 one entry.
               rule: self.mode == 'Immediate' || (self.mode == 'Delayed' && size(self.resourceClaimNames)

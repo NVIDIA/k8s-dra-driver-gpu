@@ -274,7 +274,7 @@ func (m *ComputeDomainManager) onAddOrUpdate(ctx context.Context, obj any) error
 		return fmt.Errorf("error creating Deployment: %w", err)
 	}
 
-	dc, err := m.deviceClassManager.Create(ctx, cd.Spec.DeviceClassName, cd)
+	dc, err := m.deviceClassManager.Create(ctx, cd)
 	if err != nil {
 		return fmt.Errorf("error creating DeviceClass: %w", err)
 	}

@@ -104,7 +104,7 @@ func (m *DeviceClassManager) Stop() error {
 	return nil
 }
 
-func (m *DeviceClassManager) Create(ctx context.Context, name string, cd *nvapi.ComputeDomain) (*resourceapi.DeviceClass, error) {
+func (m *DeviceClassManager) Create(ctx context.Context, cd *nvapi.ComputeDomain) (*resourceapi.DeviceClass, error) {
 	dcs, err := getByComputeDomainUID[*resourceapi.DeviceClass](ctx, m.informer, string(cd.UID))
 	if err != nil {
 		return nil, fmt.Errorf("error retrieving DeviceClass: %w", err)
@@ -118,7 +118,8 @@ func (m *DeviceClassManager) Create(ctx context.Context, name string, cd *nvapi.
 
 	deviceClass := &resourceapi.DeviceClass{
 		ObjectMeta: metav1.ObjectMeta{
-			Finalizers: []string{computeDomainFinalizer},
+			GenerateName: fmt.Sprintf("%s-channel-", cd.Name),
+			Finalizers:   []string{computeDomainFinalizer},
 			Labels: map[string]string{
 				computeDomainLabelKey: string(cd.UID),
 			},
@@ -147,12 +148,6 @@ func (m *DeviceClassManager) Create(ctx context.Context, name string, cd *nvapi.
 				},
 			},
 		},
-	}
-
-	if name == "" {
-		deviceClass.GenerateName = fmt.Sprintf("%s-channel-", cd.Name)
-	} else {
-		deviceClass.Name = name
 	}
 
 	dc, err := m.config.clientsets.Core.ResourceV1beta1().DeviceClasses().Create(ctx, deviceClass, metav1.CreateOptions{})
