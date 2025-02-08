@@ -38,17 +38,19 @@ import (
 )
 
 const (
-	ComputeDomainDaemonDeviceClass         = "compute-domain-daemon.nvidia.com"
-	ComputeDomainDefaultChannelDeviceClass = "compute-domain-default-channel.nvidia.com"
-	ResourceClaimTemplateTemplatePath      = "/templates/compute-domain-daemon-claim-template.tmpl.yaml"
+	ComputeDomainDaemonDeviceClass              = "compute-domain-daemon.nvidia.com"
+	ComputeDomainDefaultChannelDeviceClass      = "compute-domain-default-channel.nvidia.com"
+	DeploymentResourceClaimTemplateTemplatePath = "/templates/compute-domain-daemon-claim-template.tmpl.yaml"
 )
 
-type ResourceClaimTemplateTemplateData struct {
+type DeploymentResourceClaimTemplateTemplateData struct {
 	Namespace               string
 	GenerateName            string
 	Finalizer               string
 	ComputeDomainLabelKey   string
 	ComputeDomainLabelValue types.UID
+	TargetLabelKey          string
+	TargetLabelValue        string
 	DaemonDeviceClassName   string
 	ChannelDeviceClassName  string
 	DriverName              string
@@ -56,7 +58,7 @@ type ResourceClaimTemplateTemplateData struct {
 	ChannelConfig           *nvapi.ComputeDomainChannelConfig
 }
 
-type ResourceClaimTemplateManager struct {
+type DeploymentResourceClaimTemplateManager struct {
 	config        *ManagerConfig
 	waitGroup     sync.WaitGroup
 	cancelContext context.CancelFunc
@@ -65,12 +67,17 @@ type ResourceClaimTemplateManager struct {
 	informer cache.SharedIndexInformer
 }
 
-func NewResourceClaimTemplateManager(config *ManagerConfig) *ResourceClaimTemplateManager {
+func NewDeploymentResourceClaimTemplateManager(config *ManagerConfig) *DeploymentResourceClaimTemplateManager {
 	labelSelector := &metav1.LabelSelector{
 		MatchExpressions: []metav1.LabelSelectorRequirement{
 			{
 				Key:      computeDomainLabelKey,
 				Operator: metav1.LabelSelectorOpExists,
+			},
+			{
+				Key:      computeDomainResourceClaimTemplateTargetLabelKey,
+				Operator: metav1.LabelSelectorOpIn,
+				Values:   []string{computeDomainResourceClaimTemplateTargetDaemon},
 			},
 		},
 	}
@@ -86,7 +93,7 @@ func NewResourceClaimTemplateManager(config *ManagerConfig) *ResourceClaimTempla
 
 	informer := factory.Resource().V1beta1().ResourceClaimTemplates().Informer()
 
-	m := &ResourceClaimTemplateManager{
+	m := &DeploymentResourceClaimTemplateManager{
 		config:   config,
 		factory:  factory,
 		informer: informer,
@@ -95,7 +102,7 @@ func NewResourceClaimTemplateManager(config *ManagerConfig) *ResourceClaimTempla
 	return m
 }
 
-func (m *ResourceClaimTemplateManager) Start(ctx context.Context) (rerr error) {
+func (m *DeploymentResourceClaimTemplateManager) Start(ctx context.Context) (rerr error) {
 	ctx, cancel := context.WithCancel(ctx)
 	m.cancelContext = cancel
 
@@ -124,13 +131,13 @@ func (m *ResourceClaimTemplateManager) Start(ctx context.Context) (rerr error) {
 	return nil
 }
 
-func (m *ResourceClaimTemplateManager) Stop() error {
+func (m *DeploymentResourceClaimTemplateManager) Stop() error {
 	m.cancelContext()
 	m.waitGroup.Wait()
 	return nil
 }
 
-func (m *ResourceClaimTemplateManager) Create(ctx context.Context, namespace string, cd *nvapi.ComputeDomain) (*resourceapi.ResourceClaimTemplate, error) {
+func (m *DeploymentResourceClaimTemplateManager) Create(ctx context.Context, namespace string, cd *nvapi.ComputeDomain) (*resourceapi.ResourceClaimTemplate, error) {
 	rcts, err := getByComputeDomainUID[*resourceapi.ResourceClaimTemplate](ctx, m.informer, string(cd.UID))
 	if err != nil {
 		return nil, fmt.Errorf("error retrieving ResourceClaimTemplate: %w", err)
@@ -150,12 +157,14 @@ func (m *ResourceClaimTemplateManager) Create(ctx context.Context, namespace str
 	channelConfig.WaitForReady = false
 	channelConfig.DomainID = string(cd.UID)
 
-	templateData := ResourceClaimTemplateTemplateData{
+	templateData := DeploymentResourceClaimTemplateTemplateData{
 		Namespace:               namespace,
 		GenerateName:            fmt.Sprintf("%s-claim-template-", cd.Name),
 		Finalizer:               computeDomainFinalizer,
 		ComputeDomainLabelKey:   computeDomainLabelKey,
 		ComputeDomainLabelValue: cd.UID,
+		TargetLabelKey:          computeDomainResourceClaimTemplateTargetLabelKey,
+		TargetLabelValue:        computeDomainResourceClaimTemplateTargetDaemon,
 		DaemonDeviceClassName:   ComputeDomainDaemonDeviceClass,
 		DriverName:              DriverName,
 		DaemonConfig:            daemonConfig,
@@ -170,7 +179,7 @@ func (m *ResourceClaimTemplateManager) Create(ctx context.Context, namespace str
 		templateData.ChannelConfig = channelConfig
 	}
 
-	tmpl, err := template.ParseFiles(ResourceClaimTemplateTemplatePath)
+	tmpl, err := template.ParseFiles(DeploymentResourceClaimTemplateTemplatePath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse template file: %w", err)
 	}
@@ -200,7 +209,7 @@ func (m *ResourceClaimTemplateManager) Create(ctx context.Context, namespace str
 	return rct, nil
 }
 
-func (m *ResourceClaimTemplateManager) Delete(ctx context.Context, cdUID string) error {
+func (m *DeploymentResourceClaimTemplateManager) Delete(ctx context.Context, cdUID string) error {
 	rcts, err := getByComputeDomainUID[*resourceapi.ResourceClaimTemplate](ctx, m.informer, cdUID)
 	if err != nil {
 		return fmt.Errorf("error retrieving ResourceClaimTemplate: %w", err)
@@ -226,7 +235,7 @@ func (m *ResourceClaimTemplateManager) Delete(ctx context.Context, cdUID string)
 	return nil
 }
 
-func (m *ResourceClaimTemplateManager) RemoveFinalizer(ctx context.Context, cdUID string) error {
+func (m *DeploymentResourceClaimTemplateManager) RemoveFinalizer(ctx context.Context, cdUID string) error {
 	rcts, err := getByComputeDomainUID[*resourceapi.ResourceClaimTemplate](ctx, m.informer, cdUID)
 	if err != nil {
 		return fmt.Errorf("error retrieving ResourceClaimTemplate: %w", err)

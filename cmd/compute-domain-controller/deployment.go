@@ -63,7 +63,7 @@ type DeploymentManager struct {
 	factory  informers.SharedInformerFactory
 	informer cache.SharedIndexInformer
 
-	resourceClaimTemplateManager *ResourceClaimTemplateManager
+	resourceClaimTemplateManager *DeploymentResourceClaimTemplateManager
 	podManagers                  map[string]*DeploymentPodManager
 }
 
@@ -95,7 +95,7 @@ func NewDeploymentManager(config *ManagerConfig, getComputeDomain GetComputeDoma
 		informer:         informer,
 		podManagers:      make(map[string]*DeploymentPodManager),
 	}
-	m.resourceClaimTemplateManager = NewResourceClaimTemplateManager(config)
+	m.resourceClaimTemplateManager = NewDeploymentResourceClaimTemplateManager(config)
 
 	return m
 }

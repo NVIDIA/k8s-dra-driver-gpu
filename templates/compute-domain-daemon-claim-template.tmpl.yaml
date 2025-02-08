@@ -8,6 +8,7 @@ metadata:
     - {{ .Finalizer }}
   labels:
     {{ .ComputeDomainLabelKey }}: {{ .ComputeDomainLabelValue }}
+    {{ .TargetLabelKey }}: {{ .TargetLabelValue }}
 spec:
   spec:
     devices:
