@@ -309,6 +309,8 @@ spec:
             - numNodes
             type: object
             x-kubernetes-validations:
+            - message: A computeDomain.spec is immutable
+              rule: self == oldSelf
             - message: When 'mode' is 'Delayed', 'resourceClaimNames' must have exactly
                 one entry.
               rule: self.mode == 'Immediate' || (self.mode == 'Delayed' && size(self.resourceClaimNames)
