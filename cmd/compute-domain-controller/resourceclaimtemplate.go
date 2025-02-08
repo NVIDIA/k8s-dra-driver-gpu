@@ -78,6 +78,7 @@ func NewResourceClaimTemplateManager(config *ManagerConfig) *ResourceClaimTempla
 	factory := informers.NewSharedInformerFactoryWithOptions(
 		config.clientsets.Core,
 		informerResyncPeriod,
+		informers.WithNamespace(config.driverNamespace),
 		informers.WithTweakListOptions(func(opts *metav1.ListOptions) {
 			opts.LabelSelector = metav1.FormatLabelSelector(labelSelector)
 		}),
