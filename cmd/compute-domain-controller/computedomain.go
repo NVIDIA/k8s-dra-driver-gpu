@@ -279,9 +279,9 @@ func (m *ComputeDomainManager) onAddOrUpdate(ctx context.Context, obj any) error
 		return fmt.Errorf("error creating DeviceClass: %w", err)
 	}
 
-	for _, name := range cd.Spec.ResourceClaimNames {
-		if _, err := m.resourceClaimManager.Create(ctx, cd.Namespace, name, dc.Name, cd); err != nil {
-			return fmt.Errorf("error creating ResourceClaim '%s/%s': %w", cd.Namespace, name, err)
+	for _, rc := range cd.Spec.ResourceClaims {
+		if _, err := m.resourceClaimManager.Create(ctx, cd.Namespace, rc.Name, dc.Name, cd); err != nil {
+			return fmt.Errorf("error creating ResourceClaim '%s/%s': %w", cd.Namespace, rc.Name, err)
 		}
 	}
 
