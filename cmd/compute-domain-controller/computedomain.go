@@ -38,6 +38,9 @@ const (
 
 	computeDomainLabelKey  = "resource.nvidia.com/computeDomain"
 	computeDomainFinalizer = computeDomainLabelKey
+
+	computeDomainResourceClaimTemplateTargetLabelKey = "resource.nvidia.com/computeDomainTarget"
+	computeDomainResourceClaimTemplateTargetDaemon   = "Daemon"
 )
 
 type ComputeDomainManager struct {
