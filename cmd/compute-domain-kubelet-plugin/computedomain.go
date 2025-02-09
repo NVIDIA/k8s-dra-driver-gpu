@@ -281,10 +281,6 @@ func (m *ComputeDomainManager) UpdateComputeDomainDeployment(ctx context.Context
 		return fmt.Errorf("ComputeDomain not found: %s", cdUID)
 	}
 
-	if cd.Spec.Mode == nvapi.ComputeDomainModeImmediate {
-		return nil
-	}
-
 	d, err := m.GetComputeDomainDeployment(ctx, cdUID)
 	if err != nil || d == nil {
 		return fmt.Errorf("error getting Deployment for ComputeDomain: %w", err)
