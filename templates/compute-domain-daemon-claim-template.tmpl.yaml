@@ -14,11 +14,7 @@ spec:
     devices:
       requests:
       - name: daemon
-        deviceClassName: {{ .DaemonDeviceClassName }}
-      {{ if .ChannelDeviceClassName  }}
-      - name: channel
-        deviceClassName: {{ .ChannelDeviceClassName }}
-      {{- end }}
+        deviceClassName: {{ .DeviceClassName }}
       config:
       - requests: ["daemon"]
         opaque:
@@ -28,13 +24,3 @@ spec:
             kind: {{ .DaemonConfig.Kind }}
             numNodes: {{ .DaemonConfig.NumNodes }}
             domainID: {{ .DaemonConfig.DomainID }}
-      {{ if .ChannelConfig }}
-      - requests: ["channel"]
-        opaque:
-          driver: {{ .DriverName }}
-          parameters:
-            apiVersion: {{ .ChannelConfig.APIVersion }}
-            kind: {{ .ChannelConfig.Kind }}
-            waitForReady: {{ .ChannelConfig.WaitForReady }}
-            domainID: {{ .ChannelConfig.DomainID }}
-      {{- end }}

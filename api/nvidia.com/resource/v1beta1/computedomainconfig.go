@@ -27,7 +27,6 @@ import (
 // ComputeDomainChannelConfig holds the set of parameters for configuring an ComputeDomainChannel.
 type ComputeDomainChannelConfig struct {
 	metav1.TypeMeta `json:",inline"`
-	WaitForReady    bool   `json:"waitForReady"`
 	DomainID        string `json:"domainID"`
 }
 
