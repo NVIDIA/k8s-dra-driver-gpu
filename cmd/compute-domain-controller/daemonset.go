@@ -2,7 +2,7 @@
  * Copyright (c) 2025 NVIDIA CORPORATION.  All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
+NumberReady * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
  *     http://www.apache.org/licenses/LICENSE-2.0
@@ -12,7 +12,7 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
- */
+*/
 
 package main
 
@@ -38,20 +38,19 @@ import (
 )
 
 const (
-	DeploymentTemplatePath = "/templates/compute-domain-daemon.tmpl.yaml"
+	DaemonSetTemplatePath = "/templates/compute-domain-daemon.tmpl.yaml"
 )
 
-type DeploymentTemplateData struct {
+type DaemonSetTemplateData struct {
 	Namespace                 string
 	GenerateName              string
 	Finalizer                 string
 	ComputeDomainLabelKey     string
 	ComputeDomainLabelValue   types.UID
-	Replicas                  int
 	ResourceClaimTemplateName string
 }
 
-type DeploymentManager struct {
+type DaemonSetManager struct {
 	sync.Mutex
 
 	config           *ManagerConfig
@@ -62,11 +61,11 @@ type DeploymentManager struct {
 	factory  informers.SharedInformerFactory
 	informer cache.SharedIndexInformer
 
-	resourceClaimTemplateManager *DeploymentResourceClaimTemplateManager
-	podManagers                  map[string]*DeploymentPodManager
+	resourceClaimTemplateManager *DaemonSetResourceClaimTemplateManager
+	podManagers                  map[string]*DaemonSetPodManager
 }
 
-func NewDeploymentManager(config *ManagerConfig, getComputeDomain GetComputeDomainFunc) *DeploymentManager {
+func NewDaemonSetManager(config *ManagerConfig, getComputeDomain GetComputeDomainFunc) *DaemonSetManager {
 	labelSelector := &metav1.LabelSelector{
 		MatchExpressions: []metav1.LabelSelectorRequirement{
 			{
@@ -85,33 +84,33 @@ func NewDeploymentManager(config *ManagerConfig, getComputeDomain GetComputeDoma
 		}),
 	)
 
-	informer := factory.Apps().V1().Deployments().Informer()
+	informer := factory.Apps().V1().DaemonSets().Informer()
 
-	m := &DeploymentManager{
+	m := &DaemonSetManager{
 		config:           config,
 		getComputeDomain: getComputeDomain,
 		factory:          factory,
 		informer:         informer,
-		podManagers:      make(map[string]*DeploymentPodManager),
+		podManagers:      make(map[string]*DaemonSetPodManager),
 	}
-	m.resourceClaimTemplateManager = NewDeploymentResourceClaimTemplateManager(config)
+	m.resourceClaimTemplateManager = NewDaemonSetResourceClaimTemplateManager(config)
 
 	return m
 }
 
-func (m *DeploymentManager) Start(ctx context.Context) (rerr error) {
+func (m *DaemonSetManager) Start(ctx context.Context) (rerr error) {
 	ctx, cancel := context.WithCancel(ctx)
 	m.cancelContext = cancel
 
 	defer func() {
 		if rerr != nil {
 			if err := m.Stop(); err != nil {
-				klog.Errorf("error stopping Deployment manager: %v", err)
+				klog.Errorf("error stopping DaemonSet manager: %v", err)
 			}
 		}
 	}()
 
-	if err := addComputeDomainLabelIndexer[*appsv1.Deployment](m.informer); err != nil {
+	if err := addComputeDomainLabelIndexer[*appsv1.DaemonSet](m.informer); err != nil {
 		return fmt.Errorf("error adding indexer for MulitNodeEnvironment label: %w", err)
 	}
 
@@ -124,7 +123,7 @@ func (m *DeploymentManager) Start(ctx context.Context) (rerr error) {
 		},
 	})
 	if err != nil {
-		return fmt.Errorf("error adding event handlers for Deployment informer: %w", err)
+		return fmt.Errorf("error adding event handlers for DaemonSet informer: %w", err)
 	}
 
 	m.waitGroup.Add(1)
@@ -134,7 +133,7 @@ func (m *DeploymentManager) Start(ctx context.Context) (rerr error) {
 	}()
 
 	if !cache.WaitForCacheSync(ctx.Done(), m.informer.HasSynced) {
-		return fmt.Errorf("informer cache sync for Deployment failed")
+		return fmt.Errorf("informer cache sync for DaemonSet failed")
 	}
 
 	if err := m.resourceClaimTemplateManager.Start(ctx); err != nil {
@@ -144,7 +143,7 @@ func (m *DeploymentManager) Start(ctx context.Context) (rerr error) {
 	return nil
 }
 
-func (m *DeploymentManager) Stop() error {
+func (m *DaemonSetManager) Stop() error {
 	if err := m.removeAllPodManagers(); err != nil {
 		return fmt.Errorf("error removing all Pod managers: %w", err)
 	}
@@ -153,13 +152,13 @@ func (m *DeploymentManager) Stop() error {
 	return nil
 }
 
-func (m *DeploymentManager) Create(ctx context.Context, namespace string, cd *nvapi.ComputeDomain) (*appsv1.Deployment, error) {
-	ds, err := getByComputeDomainUID[*appsv1.Deployment](ctx, m.informer, string(cd.UID))
+func (m *DaemonSetManager) Create(ctx context.Context, namespace string, cd *nvapi.ComputeDomain) (*appsv1.DaemonSet, error) {
+	ds, err := getByComputeDomainUID[*appsv1.DaemonSet](ctx, m.informer, string(cd.UID))
 	if err != nil {
-		return nil, fmt.Errorf("error retrieving Deployment: %w", err)
+		return nil, fmt.Errorf("error retrieving DaemonSet: %w", err)
 	}
 	if len(ds) > 1 {
-		return nil, fmt.Errorf("more than one Deployment found with same ComputeDomain UID")
+		return nil, fmt.Errorf("more than one DaemonSet found with same ComputeDomain UID")
 	}
 	if len(ds) == 1 {
 		return ds[0], nil
@@ -170,17 +169,16 @@ func (m *DeploymentManager) Create(ctx context.Context, namespace string, cd *nv
 		return nil, fmt.Errorf("error creating ResourceClaimTemplate: %w", err)
 	}
 
-	templateData := DeploymentTemplateData{
+	templateData := DaemonSetTemplateData{
 		Namespace:                 m.config.driverNamespace,
 		GenerateName:              fmt.Sprintf("%s-", cd.Name),
 		Finalizer:                 computeDomainFinalizer,
 		ComputeDomainLabelKey:     computeDomainLabelKey,
 		ComputeDomainLabelValue:   cd.UID,
-		Replicas:                  0,
 		ResourceClaimTemplateName: rct.Name,
 	}
 
-	tmpl, err := template.ParseFiles(DeploymentTemplatePath)
+	tmpl, err := template.ParseFiles(DaemonSetTemplatePath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse template file: %w", err)
 	}
@@ -196,27 +194,27 @@ func (m *DeploymentManager) Create(ctx context.Context, namespace string, cd *nv
 		return nil, fmt.Errorf("failed to unmarshal yaml: %w", err)
 	}
 
-	var deployment appsv1.Deployment
+	var deployment appsv1.DaemonSet
 	err = runtime.DefaultUnstructuredConverter.FromUnstructured(unstructuredObj.UnstructuredContent(), &deployment)
 	if err != nil {
 		return nil, fmt.Errorf("failed to convert unstructured data to typed object: %w", err)
 	}
 
-	d, err := m.config.clientsets.Core.AppsV1().Deployments(deployment.Namespace).Create(ctx, &deployment, metav1.CreateOptions{})
+	d, err := m.config.clientsets.Core.AppsV1().DaemonSets(deployment.Namespace).Create(ctx, &deployment, metav1.CreateOptions{})
 	if err != nil {
-		return nil, fmt.Errorf("error creating Deployment: %w", err)
+		return nil, fmt.Errorf("error creating DaemonSet: %w", err)
 	}
 
 	return d, nil
 }
 
-func (m *DeploymentManager) Delete(ctx context.Context, cdUID string) error {
-	ds, err := getByComputeDomainUID[*appsv1.Deployment](ctx, m.informer, cdUID)
+func (m *DaemonSetManager) Delete(ctx context.Context, cdUID string) error {
+	ds, err := getByComputeDomainUID[*appsv1.DaemonSet](ctx, m.informer, cdUID)
 	if err != nil {
-		return fmt.Errorf("error retrieving Deployment: %w", err)
+		return fmt.Errorf("error retrieving DaemonSet: %w", err)
 	}
 	if len(ds) > 1 {
-		return fmt.Errorf("more than one Deployment found with same ComputeDomain UID")
+		return fmt.Errorf("more than one DaemonSet found with same ComputeDomain UID")
 	}
 	if len(ds) == 0 {
 		return nil
@@ -237,41 +235,41 @@ func (m *DeploymentManager) Delete(ctx context.Context, cdUID string) error {
 		return nil
 	}
 
-	err = m.config.clientsets.Core.AppsV1().Deployments(d.Namespace).Delete(ctx, d.Name, metav1.DeleteOptions{})
+	err = m.config.clientsets.Core.AppsV1().DaemonSets(d.Namespace).Delete(ctx, d.Name, metav1.DeleteOptions{})
 	if err != nil && !errors.IsNotFound(err) {
-		return fmt.Errorf("erroring deleting Deployment: %w", err)
+		return fmt.Errorf("erroring deleting DaemonSet: %w", err)
 	}
 
 	return nil
 }
 
-func (m *DeploymentManager) RemoveFinalizer(ctx context.Context, cdUID string) error {
+func (m *DaemonSetManager) RemoveFinalizer(ctx context.Context, cdUID string) error {
 	if err := m.resourceClaimTemplateManager.RemoveFinalizer(ctx, cdUID); err != nil {
 		return fmt.Errorf("error removing finalizer on ResourceClaimTemplate: %w", err)
 	}
 	if err := m.removeFinalizer(ctx, cdUID); err != nil {
-		return fmt.Errorf("error removing finalizer on Deployment: %w", err)
+		return fmt.Errorf("error removing finalizer on DaemonSet: %w", err)
 	}
 	return nil
 }
 
-func (m *DeploymentManager) AssertRemoved(ctx context.Context, cdUID string) error {
+func (m *DaemonSetManager) AssertRemoved(ctx context.Context, cdUID string) error {
 	if err := m.resourceClaimTemplateManager.AssertRemoved(ctx, cdUID); err != nil {
 		return fmt.Errorf("error asserting ResourceClaimTemplate removed: %w", err)
 	}
 	if err := m.assertRemoved(ctx, cdUID); err != nil {
-		return fmt.Errorf("error asserting Deployment removal: %w", err)
+		return fmt.Errorf("error asserting DaemonSet removal: %w", err)
 	}
 	return nil
 }
 
-func (m *DeploymentManager) removeFinalizer(ctx context.Context, cdUID string) error {
-	ds, err := getByComputeDomainUID[*appsv1.Deployment](ctx, m.informer, cdUID)
+func (m *DaemonSetManager) removeFinalizer(ctx context.Context, cdUID string) error {
+	ds, err := getByComputeDomainUID[*appsv1.DaemonSet](ctx, m.informer, cdUID)
 	if err != nil {
-		return fmt.Errorf("error retrieving Deployment: %w", err)
+		return fmt.Errorf("error retrieving DaemonSet: %w", err)
 	}
 	if len(ds) > 1 {
-		return fmt.Errorf("more than one Deployment found with same ComputeDomain UID")
+		return fmt.Errorf("more than one DaemonSet found with same ComputeDomain UID")
 	}
 	if len(ds) == 0 {
 		return nil
@@ -280,7 +278,7 @@ func (m *DeploymentManager) removeFinalizer(ctx context.Context, cdUID string) e
 	d := ds[0]
 
 	if d.GetDeletionTimestamp() == nil {
-		return fmt.Errorf("attempting to remove finalizer before Deployment marked for deletion")
+		return fmt.Errorf("attempting to remove finalizer before DaemonSet marked for deletion")
 	}
 
 	newD := d.DeepCopy()
@@ -294,17 +292,17 @@ func (m *DeploymentManager) removeFinalizer(ctx context.Context, cdUID string) e
 		return nil
 	}
 
-	if _, err := m.config.clientsets.Core.AppsV1().Deployments(d.Namespace).Update(ctx, newD, metav1.UpdateOptions{}); err != nil {
-		return fmt.Errorf("error updating Deployment: %w", err)
+	if _, err := m.config.clientsets.Core.AppsV1().DaemonSets(d.Namespace).Update(ctx, newD, metav1.UpdateOptions{}); err != nil {
+		return fmt.Errorf("error updating DaemonSet: %w", err)
 	}
 
 	return nil
 }
 
-func (m *DeploymentManager) assertRemoved(ctx context.Context, cdUID string) error {
-	ds, err := getByComputeDomainUID[*appsv1.Deployment](ctx, m.informer, cdUID)
+func (m *DaemonSetManager) assertRemoved(ctx context.Context, cdUID string) error {
+	ds, err := getByComputeDomainUID[*appsv1.DaemonSet](ctx, m.informer, cdUID)
 	if err != nil {
-		return fmt.Errorf("error retrieving Deployment: %w", err)
+		return fmt.Errorf("error retrieving DaemonSet: %w", err)
 	}
 	if len(ds) != 0 {
 		return fmt.Errorf("still exists")
@@ -312,13 +310,13 @@ func (m *DeploymentManager) assertRemoved(ctx context.Context, cdUID string) err
 	return nil
 }
 
-func (m *DeploymentManager) onAddOrUpdate(ctx context.Context, obj any) error {
-	d, ok := obj.(*appsv1.Deployment)
+func (m *DaemonSetManager) onAddOrUpdate(ctx context.Context, obj any) error {
+	d, ok := obj.(*appsv1.DaemonSet)
 	if !ok {
-		return fmt.Errorf("failed to cast to Deployment")
+		return fmt.Errorf("failed to cast to DaemonSet")
 	}
 
-	klog.Infof("Processing added or updated Deployment: %s/%s", d.Namespace, d.Name)
+	klog.Infof("Processing added or updated DaemonSet: %s/%s", d.Namespace, d.Name)
 
 	cd, err := m.getComputeDomain(d.Labels[computeDomainLabelKey])
 	if err != nil {
@@ -332,7 +330,7 @@ func (m *DeploymentManager) onAddOrUpdate(ctx context.Context, obj any) error {
 		return fmt.Errorf("error adding Pod manager '%s/%s': %w", d.Namespace, d.Name, err)
 	}
 
-	if int(d.Status.AvailableReplicas) != cd.Spec.NumNodes {
+	if int(d.Status.NumberReady) != cd.Spec.NumNodes {
 		return nil
 	}
 
@@ -345,14 +343,14 @@ func (m *DeploymentManager) onAddOrUpdate(ctx context.Context, obj any) error {
 	return nil
 }
 
-func (m *DeploymentManager) addPodManager(ctx context.Context, labelSelector *metav1.LabelSelector, numPods int) error {
+func (m *DaemonSetManager) addPodManager(ctx context.Context, labelSelector *metav1.LabelSelector, numPods int) error {
 	key := labelSelector.MatchLabels[computeDomainLabelKey]
 
 	if _, exists := m.podManagers[key]; exists {
 		return nil
 	}
 
-	podManager := NewDeploymentPodManager(m.config, labelSelector, numPods, m.getComputeDomain)
+	podManager := NewDaemonSetPodManager(m.config, labelSelector, numPods, m.getComputeDomain)
 
 	if err := podManager.Start(ctx); err != nil {
 		return fmt.Errorf("error creating Pod manager: %w", err)
@@ -365,7 +363,7 @@ func (m *DeploymentManager) addPodManager(ctx context.Context, labelSelector *me
 	return nil
 }
 
-func (m *DeploymentManager) removePodManager(key string) error {
+func (m *DaemonSetManager) removePodManager(key string) error {
 	if _, exists := m.podManagers[key]; !exists {
 		return nil
 	}
@@ -385,7 +383,7 @@ func (m *DeploymentManager) removePodManager(key string) error {
 	return nil
 }
 
-func (m *DeploymentManager) removeAllPodManagers() error {
+func (m *DaemonSetManager) removeAllPodManagers() error {
 	m.Lock()
 	for key, pm := range m.podManagers {
 		m.Unlock()

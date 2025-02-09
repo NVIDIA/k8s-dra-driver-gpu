@@ -1,6 +1,6 @@
 ---
 apiVersion: apps/v1
-kind: Deployment
+kind: Daemonset
 metadata:
   namespace: {{ .Namespace }}
   generateName: {{ .GenerateName }}
@@ -9,7 +9,6 @@ metadata:
   labels:
     {{ .ComputeDomainLabelKey }}: {{ .ComputeDomainLabelValue }}
 spec:
-  replicas: {{ .Replicas }}
   selector:
     matchLabels:
       {{ .ComputeDomainLabelKey }}: {{ .ComputeDomainLabelValue }}
@@ -19,6 +18,8 @@ spec:
         {{ .ComputeDomainLabelKey }}: {{ .ComputeDomainLabelValue }}
     spec:
       hostNetwork: true
+      nodeSelector:
+        {{ .ComputeDomainLabelKey }}: {{ .ComputeDomainLabelValue }}
       containers:
       - name: compute-domain-daemon
         image: ubuntu:22.04

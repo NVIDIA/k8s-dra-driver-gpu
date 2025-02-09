@@ -38,8 +38,8 @@ import (
 )
 
 const (
-	DeploymentResourceClaimTemplateTemplatePath = "/templates/compute-domain-daemon-claim-template.tmpl.yaml"
-	WorkloadResourceClaimTemplateTemplatePath   = "/templates/compute-domain-workload-claim-template.tmpl.yaml"
+	DaemonSetResourceClaimTemplateTemplatePath = "/templates/compute-domain-daemon-claim-template.tmpl.yaml"
+	WorkloadResourceClaimTemplateTemplatePath  = "/templates/compute-domain-workload-claim-template.tmpl.yaml"
 )
 
 type ResourceClaimTemplateTemplateData struct {
@@ -66,7 +66,7 @@ type BaseResourceClaimTemplateManager struct {
 	informer cache.SharedIndexInformer
 }
 
-type DeploymentResourceClaimTemplateManager struct {
+type DaemonSetResourceClaimTemplateManager struct {
 	*BaseResourceClaimTemplateManager
 }
 
@@ -234,7 +234,7 @@ func (m *BaseResourceClaimTemplateManager) AssertRemoved(ctx context.Context, cd
 	return nil
 }
 
-func NewDeploymentResourceClaimTemplateManager(config *ManagerConfig) *DeploymentResourceClaimTemplateManager {
+func NewDaemonSetResourceClaimTemplateManager(config *ManagerConfig) *DaemonSetResourceClaimTemplateManager {
 	labelSelector := &metav1.LabelSelector{
 		MatchExpressions: []metav1.LabelSelectorRequirement{
 			{
@@ -251,14 +251,14 @@ func NewDeploymentResourceClaimTemplateManager(config *ManagerConfig) *Deploymen
 
 	base := newBaseResourceClaimTemplateManager(config, labelSelector, config.driverNamespace)
 
-	m := &DeploymentResourceClaimTemplateManager{
+	m := &DaemonSetResourceClaimTemplateManager{
 		BaseResourceClaimTemplateManager: base,
 	}
 
 	return m
 }
 
-func (m *DeploymentResourceClaimTemplateManager) Create(ctx context.Context, namespace string, cd *nvapi.ComputeDomain) (*resourceapi.ResourceClaimTemplate, error) {
+func (m *DaemonSetResourceClaimTemplateManager) Create(ctx context.Context, namespace string, cd *nvapi.ComputeDomain) (*resourceapi.ResourceClaimTemplate, error) {
 	rcts, err := getByComputeDomainUID[*resourceapi.ResourceClaimTemplate](ctx, m.informer, string(cd.UID))
 	if err != nil {
 		return nil, fmt.Errorf("error retrieving ResourceClaimTemplate: %w", err)
@@ -287,7 +287,7 @@ func (m *DeploymentResourceClaimTemplateManager) Create(ctx context.Context, nam
 		DaemonConfig:            daemonConfig,
 	}
 
-	rct, err := m.BaseResourceClaimTemplateManager.Create(ctx, DeploymentResourceClaimTemplateTemplatePath, &templateData)
+	rct, err := m.BaseResourceClaimTemplateManager.Create(ctx, DaemonSetResourceClaimTemplateTemplatePath, &templateData)
 	if err != nil {
 		return nil, fmt.Errorf("error creating ResourceClaimTemplate from base: %w", err)
 	}
