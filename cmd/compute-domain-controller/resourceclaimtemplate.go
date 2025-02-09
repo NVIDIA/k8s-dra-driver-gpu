@@ -223,6 +223,17 @@ func (m *BaseResourceClaimTemplateManager) RemoveFinalizer(ctx context.Context, 
 	return nil
 }
 
+func (m *BaseResourceClaimTemplateManager) AssertRemoved(ctx context.Context, cdUID string) error {
+	rcts, err := getByComputeDomainUID[*resourceapi.ResourceClaimTemplate](ctx, m.informer, cdUID)
+	if err != nil {
+		return fmt.Errorf("error retrieving ResourceClaimTemplate: %w", err)
+	}
+	if len(rcts) != 0 {
+		return fmt.Errorf("still exists")
+	}
+	return nil
+}
+
 func NewDeploymentResourceClaimTemplateManager(config *ManagerConfig) *DeploymentResourceClaimTemplateManager {
 	labelSelector := &metav1.LabelSelector{
 		MatchExpressions: []metav1.LabelSelectorRequirement{

@@ -258,6 +258,16 @@ func (m *DeploymentManager) RemoveFinalizer(ctx context.Context, cdUID string) e
 	return nil
 }
 
+func (m *DeploymentManager) AssertRemoved(ctx context.Context, cdUID string) error {
+	if err := m.resourceClaimTemplateManager.AssertRemoved(ctx, cdUID); err != nil {
+		return fmt.Errorf("error asserting ResourceClaimTemplate removed: %w", err)
+	}
+	if err := m.assertRemoved(ctx, cdUID); err != nil {
+		return fmt.Errorf("error asserting Deployment removal: %w", err)
+	}
+	return nil
+}
+
 func (m *DeploymentManager) removeFinalizer(ctx context.Context, cdUID string) error {
 	ds, err := getByComputeDomainUID[*appsv1.Deployment](ctx, m.informer, cdUID)
 	if err != nil {
@@ -294,6 +304,17 @@ func (m *DeploymentManager) removeFinalizer(ctx context.Context, cdUID string) e
 	return nil
 }
 
+func (m *DeploymentManager) assertRemoved(ctx context.Context, cdUID string) error {
+	ds, err := getByComputeDomainUID[*appsv1.Deployment](ctx, m.informer, cdUID)
+	if err != nil {
+		return fmt.Errorf("error retrieving Deployment: %w", err)
+	}
+	if len(ds) != 0 {
+		return fmt.Errorf("still exists")
+	}
+	return nil
+}
+
 func (m *DeploymentManager) onAddOrUpdate(ctx context.Context, obj any) error {
 	d, ok := obj.(*appsv1.Deployment)
 	if !ok {
@@ -318,8 +339,9 @@ func (m *DeploymentManager) onAddOrUpdate(ctx context.Context, obj any) error {
 		return nil
 	}
 
-	cd.Status.Status = nvapi.ComputeDomainStatusReady
-	if _, err = m.config.clientsets.Nvidia.ResourceV1beta1().ComputeDomains(cd.Namespace).UpdateStatus(ctx, cd, metav1.UpdateOptions{}); err != nil {
+	newCD := cd.DeepCopy()
+	newCD.Status.Status = nvapi.ComputeDomainStatusReady
+	if _, err = m.config.clientsets.Nvidia.ResourceV1beta1().ComputeDomains(newCD.Namespace).UpdateStatus(ctx, newCD, metav1.UpdateOptions{}); err != nil {
 		return fmt.Errorf("error updating nodes in ComputeDomain status: %w", err)
 	}
 

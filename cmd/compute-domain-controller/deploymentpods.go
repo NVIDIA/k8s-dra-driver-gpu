@@ -169,9 +169,10 @@ func (m *DeploymentPodManager) onPodAddOrUpdate(ctx context.Context, obj any) er
 		return fmt.Errorf("not all pods scheduled yet")
 	}
 
-	cd.Status.Nodes = m.computeDomainNodes
-	cd.Status.Status = nvapi.ComputeDomainStatusNotReady
-	if _, err = m.config.clientsets.Nvidia.ResourceV1beta1().ComputeDomains(cd.Namespace).UpdateStatus(ctx, cd, metav1.UpdateOptions{}); err != nil {
+	newCD := cd.DeepCopy()
+	newCD.Status.Nodes = m.computeDomainNodes
+	newCD.Status.Status = nvapi.ComputeDomainStatusNotReady
+	if _, err = m.config.clientsets.Nvidia.ResourceV1beta1().ComputeDomains(newCD.Namespace).UpdateStatus(ctx, newCD, metav1.UpdateOptions{}); err != nil {
 		return fmt.Errorf("error updating nodes in ComputeDomain status: %w", err)
 	}
 
