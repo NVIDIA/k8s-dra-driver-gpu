@@ -1,0 +1,35 @@
+---
+apiVersion: resource.k8s.io/v1beta1
+kind: ResourceClaimTemplate
+metadata:
+  namespace: {{ .Namespace }}
+  name: {{ .Name }}
+  finalizers:
+    - {{ .Finalizer }}
+  labels:
+    {{ .ComputeDomainLabelKey }}: {{ .ComputeDomainLabelValue }}
+    {{ .TargetLabelKey }}: {{ .TargetLabelValue }}
+spec:
+  spec:
+    devices:
+      requests:
+      - name: channel
+        deviceClassName: {{ .DeviceClassName }}
+        {{ if not .WithDefaultChannel }}
+        selectors:
+        - cel:
+            expression: "device.attributes['{{ .DriverName }}'].id == {{ .ChannelID }}"
+        - cel:
+            expression: "'domain' in device.attributes['{{ .DriverName }}']"
+        - cel:
+            expression: "device.attributes['{{ .DriverName }}'].domain == '{{ .ChannelConfig.DomainID }}'"
+        {{- end }}
+      config:
+      - requests: ["channel"]
+        opaque:
+          driver: {{ .DriverName }}
+          parameters:
+            apiVersion: {{ .ChannelConfig.APIVersion }}
+            kind: {{ .ChannelConfig.Kind }}
+            waitForReady: {{ .ChannelConfig.WaitForReady }}
+            domainID: {{ .ChannelConfig.DomainID }}

@@ -39,8 +39,13 @@ const (
 	computeDomainLabelKey  = "resource.nvidia.com/computeDomain"
 	computeDomainFinalizer = computeDomainLabelKey
 
+	computeDomainDefaultChannelDeviceClass = "compute-domain-default-channel.nvidia.com"
+	computeDomainChannelDeviceClass        = "compute-domain-channel.nvidia.com"
+	computeDomainDaemonDeviceClass         = "compute-domain-daemon.nvidia.com"
+
 	computeDomainResourceClaimTemplateTargetLabelKey = "resource.nvidia.com/computeDomainTarget"
 	computeDomainResourceClaimTemplateTargetDaemon   = "Daemon"
+	computeDomainResourceClaimTemplateTargetWorkload = "Workload"
 )
 
 type ComputeDomainManager struct {
@@ -51,10 +56,9 @@ type ComputeDomainManager struct {
 	factory  nvinformers.SharedInformerFactory
 	informer cache.SharedIndexInformer
 
-	deploymentManager           *DeploymentManager
-	deviceClassManager          *DeviceClassManager
-	resourceClaimManager        *ResourceClaimManager
-	computeDomainChannelManager *ComputeDomainChannelManager
+	deploymentManager            *DeploymentManager
+	resourceClaimTemplateManager *WorkloadResourceClaimTemplateManager
+	computeDomainChannelManager  *ComputeDomainChannelManager
 }
 
 // NewComputeDomainManager creates a new ComputeDomainManager.
@@ -68,8 +72,7 @@ func NewComputeDomainManager(config *ManagerConfig) *ComputeDomainManager {
 		informer: informer,
 	}
 	m.deploymentManager = NewDeploymentManager(config, m.Get)
-	m.deviceClassManager = NewDeviceClassManager(config)
-	m.resourceClaimManager = NewResourceClaimManager(config)
+	m.resourceClaimTemplateManager = NewWorkloadResourceClaimTemplateManager(config)
 	m.computeDomainChannelManager = NewComputeDomainChannelManager(config)
 
 	return m
@@ -121,11 +124,7 @@ func (m *ComputeDomainManager) Start(ctx context.Context) (rerr error) {
 		return fmt.Errorf("error starting Deployment manager: %w", err)
 	}
 
-	if err := m.deviceClassManager.Start(ctx); err != nil {
-		return fmt.Errorf("error creating DeviceClass manager: %w", err)
-	}
-
-	if err := m.resourceClaimManager.Start(ctx); err != nil {
+	if err := m.resourceClaimTemplateManager.Start(ctx); err != nil {
 		return fmt.Errorf("error creating ResourceClaim manager: %w", err)
 	}
 
@@ -140,11 +139,8 @@ func (m *ComputeDomainManager) Stop() error {
 	if err := m.deploymentManager.Stop(); err != nil {
 		return fmt.Errorf("error stopping Deployment manager: %w", err)
 	}
-	if err := m.resourceClaimManager.Stop(); err != nil {
-		return fmt.Errorf("error stopping ResourceClaim manager: %w", err)
-	}
-	if err := m.deviceClassManager.Stop(); err != nil {
-		return fmt.Errorf("error stopping DeviceClass manager: %w", err)
+	if err := m.resourceClaimTemplateManager.Stop(); err != nil {
+		return fmt.Errorf("error stopping ResourceClaimTemplate manager: %w", err)
 	}
 	if err := m.computeDomainChannelManager.Stop(); err != nil {
 		return fmt.Errorf("error stopping ComputeDomain channel manager: %w", err)
@@ -231,12 +227,8 @@ func (m *ComputeDomainManager) onAddOrUpdate(ctx context.Context, obj any) error
 			return fmt.Errorf("error deleting ComputeDomain channel pool: %w", err)
 		}
 
-		if err := m.resourceClaimManager.Delete(ctx, string(cd.UID)); err != nil {
+		if err := m.resourceClaimTemplateManager.Delete(ctx, string(cd.UID)); err != nil {
 			return fmt.Errorf("error deleting ResourceClaim: %w", err)
-		}
-
-		if err := m.deviceClassManager.Delete(ctx, string(cd.UID)); err != nil {
-			return fmt.Errorf("error deleting DeviceClass: %w", err)
 		}
 
 		if err := m.deploymentManager.Delete(ctx, string(cd.UID)); err != nil {
@@ -249,12 +241,8 @@ func (m *ComputeDomainManager) onAddOrUpdate(ctx context.Context, obj any) error
 		// has been deleted, and (2) track the allocation of channels in the
 		// ComputeDomain status and wait for that list to become empty.
 		if true {
-			if err := m.resourceClaimManager.RemoveFinalizer(ctx, string(cd.UID)); err != nil {
+			if err := m.resourceClaimTemplateManager.RemoveFinalizer(ctx, string(cd.UID)); err != nil {
 				return fmt.Errorf("error deleting ResourceClaim: %w", err)
-			}
-
-			if err := m.deviceClassManager.RemoveFinalizer(ctx, string(cd.UID)); err != nil {
-				return fmt.Errorf("error deleting DeviceClass: %w", err)
 			}
 
 			if err := m.deploymentManager.RemoveFinalizer(ctx, string(cd.UID)); err != nil {
@@ -277,14 +265,9 @@ func (m *ComputeDomainManager) onAddOrUpdate(ctx context.Context, obj any) error
 		return fmt.Errorf("error creating Deployment: %w", err)
 	}
 
-	dc, err := m.deviceClassManager.Create(ctx, cd)
-	if err != nil {
-		return fmt.Errorf("error creating DeviceClass: %w", err)
-	}
-
-	for _, rc := range cd.Spec.ResourceClaims {
-		if _, err := m.resourceClaimManager.Create(ctx, cd.Namespace, rc.Name, dc.Name, cd); err != nil {
-			return fmt.Errorf("error creating ResourceClaim '%s/%s': %w", cd.Namespace, rc.Name, err)
+	for i, rc := range cd.Spec.ResourceClaimTemplates {
+		if _, err := m.resourceClaimTemplateManager.Create(ctx, cd.Namespace, rc.Name, i+1, cd); err != nil {
+			return fmt.Errorf("error creating ResourceClaim '%s/%s' for channel %d: %w", cd.Namespace, rc.Name, i+1, err)
 		}
 	}
 
@@ -294,12 +277,6 @@ func (m *ComputeDomainManager) onAddOrUpdate(ctx context.Context, obj any) error
 		}
 
 		if err := m.createOrUpdatePoolImmediateMode(ctx, cd); err != nil {
-			return fmt.Errorf("error creating or updating pool: %w", err)
-		}
-	}
-
-	if cd.Spec.Mode == nvapi.ComputeDomainModeDelayed {
-		if err := m.createOrUpdatePoolDelayedMode(ctx, cd); err != nil {
 			return fmt.Errorf("error creating or updating pool: %w", err)
 		}
 	}
@@ -327,20 +304,9 @@ func (m *ComputeDomainManager) createOrUpdatePoolImmediateMode(ctx context.Conte
 		},
 	}
 
-	if err := m.computeDomainChannelManager.CreateOrUpdatePool(string(cd.UID), &nodeSelector); err != nil {
+	if err := m.computeDomainChannelManager.CreateOrUpdatePool(cd, &nodeSelector); err != nil {
 		return fmt.Errorf("failed to create or update ComputeDomain channel pool: %w", err)
 	}
 
-	return nil
-}
-
-func (m *ComputeDomainManager) createOrUpdatePoolDelayedMode(ctx context.Context, cd *nvapi.ComputeDomain) error {
-	var nodeSelector *corev1.NodeSelector
-	if cd.Spec.NodeAffinity != nil && cd.Spec.NodeAffinity.Required != nil {
-		nodeSelector = cd.Spec.NodeAffinity.Required
-	}
-	if err := m.computeDomainChannelManager.CreateOrUpdatePool(string(cd.UID), nodeSelector); err != nil {
-		return fmt.Errorf("failed to create or update ComputeDomain channel pool: %w", err)
-	}
 	return nil
 }
