@@ -50,7 +50,7 @@ func addComputeDomainLabelIndexer[T metav1.ObjectMetaAccessor](informer cache.Sh
 
 func getByComputeDomainUID[T1 *T2, T2 any](ctx context.Context, informer cache.SharedIndexInformer, cdUID string) ([]T1, error) {
 	if !cache.WaitForCacheSync(ctx.Done(), informer.HasSynced) {
-		return nil, fmt.Errorf("cache sync failed for Deployment")
+		return nil, fmt.Errorf("cache sync failed for %T", *new(T1))
 	}
 
 	objs, err := informer.GetIndexer().ByIndex("computeDomainLabel", cdUID)

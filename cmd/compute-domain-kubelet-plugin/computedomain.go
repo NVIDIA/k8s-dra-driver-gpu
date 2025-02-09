@@ -26,12 +26,9 @@ import (
 	"text/template"
 	"time"
 
-	appsv1 "k8s.io/api/apps/v1"
-	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
-	"k8s.io/utils/ptr"
 
 	cdiapi "tags.cncf.io/container-device-interface/pkg/cdi"
 	cdispec "tags.cncf.io/container-device-interface/specs-go"
@@ -231,10 +228,6 @@ func (s *ComputeDomainDaemonSettings) WriteNodesConfigFile(ctx context.Context) 
 }
 
 func (m *ComputeDomainManager) AssertComputeDomainReady(ctx context.Context, cdUID string) error {
-	if err := m.UpdateComputeDomainDeployment(ctx, cdUID); err != nil {
-		return fmt.Errorf("error updating Deployment for ComputeDomain: %w", err)
-	}
-
 	cd, err := m.GetComputeDomain(ctx, cdUID)
 	if err != nil {
 		return fmt.Errorf("error getting ComputeDomain: %w", err)
@@ -272,57 +265,49 @@ func (m *ComputeDomainManager) GetNodeIPs(ctx context.Context, cdUID string) ([]
 	return ips, nil
 }
 
-func (m *ComputeDomainManager) UpdateComputeDomainDeployment(ctx context.Context, cdUID string) error {
-	cd, err := m.GetComputeDomain(ctx, cdUID)
+func (m *ComputeDomainManager) AddNodeLabel(ctx context.Context, cdUID string) error {
+	node, err := m.config.clientsets.Core.CoreV1().Nodes().Get(ctx, m.config.flags.nodeName, metav1.GetOptions{})
 	if err != nil {
-		return fmt.Errorf("error getting ComputeDomain: %w", err)
-	}
-	if cd == nil {
-		return fmt.Errorf("ComputeDomain not found: %s", cdUID)
+		return fmt.Errorf("error retrieving Node: %w", err)
 	}
 
-	d, err := m.GetComputeDomainDeployment(ctx, cdUID)
-	if err != nil || d == nil {
-		return fmt.Errorf("error getting Deployment for ComputeDomain: %w", err)
+	currentValue, exists := node.Labels[computeDomainLabelKey]
+	if exists && currentValue != cdUID {
+		return fmt.Errorf("label already exists for a different ComputeDomain")
 	}
 
-	newD := d.DeepCopy()
-
-	if newD.Spec.Template.Spec.Affinity == nil {
-		newD.Spec.Template.Spec.Affinity = &corev1.Affinity{
-			NodeAffinity: &corev1.NodeAffinity{
-				RequiredDuringSchedulingIgnoredDuringExecution: &corev1.NodeSelector{
-					NodeSelectorTerms: []corev1.NodeSelectorTerm{
-						{
-							MatchExpressions: []corev1.NodeSelectorRequirement{
-								{
-									Key:      "kubernetes.io/hostname",
-									Operator: corev1.NodeSelectorOpIn,
-									Values:   []string{},
-								},
-							},
-						},
-					},
-				},
-			},
-		}
+	if exists && currentValue == cdUID {
+		return nil
 	}
 
-	values := []string{m.config.flags.nodeName}
-	for _, value := range newD.Spec.Template.Spec.Affinity.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms[0].MatchExpressions[0].Values {
-		if value == m.config.flags.nodeName {
-			return nil
-		}
-		values = append(values, value)
+	newNode := node.DeepCopy()
+	if newNode.Labels == nil {
+		newNode.Labels = make(map[string]string)
 	}
-	newD.Spec.Template.Spec.Affinity.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms[0].MatchExpressions[0].Values = values
+	newNode.Labels[computeDomainLabelKey] = cdUID
 
-	if len(values) == cd.Spec.NumNodes {
-		newD.Spec.Replicas = ptr.To(int32(len(values)))
+	if _, err = m.config.clientsets.Core.CoreV1().Nodes().Update(ctx, newNode, metav1.UpdateOptions{}); err != nil {
+		return fmt.Errorf("error updating Node with label: %w", err)
 	}
 
-	if _, err := m.config.clientsets.Core.AppsV1().Deployments(newD.Namespace).Update(ctx, newD, metav1.UpdateOptions{}); err != nil {
-		return fmt.Errorf("error updating Deployment for ComputeDomain: %w", err)
+	return nil
+}
+
+func (m *ComputeDomainManager) RemoveNodeLabel(ctx context.Context, cdUID string) error {
+	node, err := m.config.clientsets.Core.CoreV1().Nodes().Get(ctx, m.config.flags.nodeName, metav1.GetOptions{})
+	if err != nil {
+		return fmt.Errorf("error retrieving Node: %w", err)
+	}
+
+	if _, exists := node.Labels[computeDomainLabelKey]; !exists {
+		return nil
+	}
+
+	newNode := node.DeepCopy()
+	delete(newNode.Labels, computeDomainLabelKey)
+
+	if _, err := m.config.clientsets.Core.CoreV1().Nodes().Update(ctx, newNode, metav1.UpdateOptions{}); err != nil {
+		return fmt.Errorf("error updating Node to remove label: %w", err)
 	}
 
 	return nil
@@ -344,33 +329,4 @@ func (m *ComputeDomainManager) GetComputeDomain(ctx context.Context, cdUID strin
 		return nil, fmt.Errorf("failed to cast to ComputeDomain")
 	}
 	return cd, nil
-}
-
-func (m *ComputeDomainManager) GetComputeDomainDeployment(ctx context.Context, cdUID string) (*appsv1.Deployment, error) {
-	labelSelector := &metav1.LabelSelector{
-		MatchExpressions: []metav1.LabelSelectorRequirement{
-			{
-				Key:      computeDomainLabelKey,
-				Operator: metav1.LabelSelectorOpIn,
-				Values:   []string{cdUID},
-			},
-		},
-	}
-
-	listOptions := metav1.ListOptions{
-		LabelSelector: metav1.FormatLabelSelector(labelSelector),
-	}
-
-	ds, err := m.config.clientsets.Core.AppsV1().Deployments(m.config.flags.namespace).List(ctx, listOptions)
-	if err != nil {
-		return nil, fmt.Errorf("error listing Deployments for ComputeDomain: %w", err)
-	}
-	if len(ds.Items) == 0 {
-		return nil, nil
-	}
-	if len(ds.Items) != 1 {
-		return nil, fmt.Errorf("multiple Deployments for ComputeDomain with the same UID")
-	}
-
-	return &ds.Items[0], nil
 }

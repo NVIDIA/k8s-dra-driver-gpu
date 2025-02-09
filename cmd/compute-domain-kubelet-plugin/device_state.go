@@ -43,6 +43,7 @@ type OpaqueDeviceConfig struct {
 }
 
 type DeviceConfigState struct {
+	Type           string
 	ComputeDomain  string
 	containerEdits *cdiapi.ContainerEdits
 }
@@ -341,17 +342,19 @@ func (s *DeviceState) prepareDevices(ctx context.Context, claim *resourceapi.Res
 func (s *DeviceState) unprepareDevices(ctx context.Context, claimUID string, devices PreparedDevices) error {
 	// Unprepare any ComputeDomain daemons prepared for each group of prepared devices.
 	for _, group := range devices {
-		// Skip if no ComputeDomain daemon configured for this device.
-		if group.ConfigState.ComputeDomain == "" {
-			continue
+		// If a cannel type, remove the ComputeDomain label from the node
+		if group.ConfigState.Type == ComputeDomainChannelType {
+			if err := s.computeDomainManager.RemoveNodeLabel(ctx, group.ConfigState.ComputeDomain); err != nil {
+				return fmt.Errorf("error removing Node label for ComputeDomain: %w", err)
+			}
 		}
 
-		// Create new ComputeDomain daemon settings from the ComputeDomainManager.
-		computeDomainDaemonSettings := s.computeDomainManager.NewSettings(group.ConfigState.ComputeDomain)
-
-		// Unprepare the new ComputeDomain daemon.
-		if err := computeDomainDaemonSettings.Unprepare(ctx); err != nil {
-			return fmt.Errorf("error unpreparing ComputeDomain daemon settings: %w", err)
+		// If a daemon type, unprepare the new ComputeDomain daemon.
+		if group.ConfigState.Type == ComputeDomainDaemonType {
+			computeDomainDaemonSettings := s.computeDomainManager.NewSettings(group.ConfigState.ComputeDomain)
+			if err := computeDomainDaemonSettings.Unprepare(ctx); err != nil {
+				return fmt.Errorf("error unpreparing ComputeDomain daemon settings: %w", err)
+			}
 		}
 	}
 	return nil
@@ -375,12 +378,17 @@ func (s *DeviceState) applyComputeDomainChannelConfig(ctx context.Context, confi
 	// Create any necessary ComputeDomain channels and gather their CDI container edits.
 	for _, r := range results {
 		channel := s.allocatable[r.Device].Channel
+		if err := s.computeDomainManager.AddNodeLabel(ctx, config.DomainID); err != nil {
+			return nil, fmt.Errorf("error adding Node label for ComputeDomain: %w", err)
+		}
 		if err := s.computeDomainManager.AssertComputeDomainReady(ctx, config.DomainID); err != nil {
 			return nil, fmt.Errorf("error asserting ComputeDomain Ready: %w", err)
 		}
 		if err := s.nvdevlib.createComputeDomainChannelDevice(channel.ID); err != nil {
 			return nil, fmt.Errorf("error creating ComputeDomain channel device: %w", err)
 		}
+		configState.Type = ComputeDomainChannelType
+		configState.ComputeDomain = config.DomainID
 		configState.containerEdits = configState.containerEdits.Append(s.computeDomainManager.GetComputeDomainChannelContainerEdits(s.cdi.devRoot, channel))
 	}
 
@@ -416,7 +424,8 @@ func (s *DeviceState) applyComputeDomainDaemonConfig(ctx context.Context, config
 	}
 
 	// Store information about the ComputeDomain daemon in the configState.
-	configState.ComputeDomain = computeDomainDaemonSettings.GetDomain()
+	configState.Type = ComputeDomainDaemonType
+	configState.ComputeDomain = config.DomainID
 	configState.containerEdits = computeDomainDaemonSettings.GetCDIContainerEdits()
 
 	return &configState, nil
