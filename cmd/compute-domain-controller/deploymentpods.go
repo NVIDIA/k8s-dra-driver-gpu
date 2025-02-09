@@ -135,6 +135,10 @@ func (m *DeploymentPodManager) onPodAddOrUpdate(ctx context.Context, obj any) er
 
 	klog.Infof("Processing added or updated Pod: %s/%s", p.Namespace, p.Name)
 
+	if p.Spec.NodeName == "" {
+		return fmt.Errorf("pod not yet scheduled: %s/%s", p.Namespace, p.Name)
+	}
+
 	cd, err := m.getComputeDomain(p.Labels[computeDomainLabelKey])
 	if err != nil {
 		return fmt.Errorf("error getting ComputeDomain: %w", err)
@@ -143,8 +147,8 @@ func (m *DeploymentPodManager) onPodAddOrUpdate(ctx context.Context, obj any) er
 		return nil
 	}
 
-	if p.Spec.NodeName == "" {
-		return fmt.Errorf("pod not yet scheduled: %s/%s", p.Namespace, p.Name)
+	if cd.Status.Status == nvapi.ComputeDomainStatusReady {
+		return nil
 	}
 
 	var nodeNames []string

@@ -22,7 +22,6 @@ import (
 	"sync"
 	"time"
 
-	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
@@ -58,7 +57,6 @@ type ComputeDomainManager struct {
 
 	deploymentManager            *DeploymentManager
 	resourceClaimTemplateManager *WorkloadResourceClaimTemplateManager
-	computeDomainChannelManager  *ComputeDomainChannelManager
 }
 
 // NewComputeDomainManager creates a new ComputeDomainManager.
@@ -73,7 +71,6 @@ func NewComputeDomainManager(config *ManagerConfig) *ComputeDomainManager {
 	}
 	m.deploymentManager = NewDeploymentManager(config, m.Get)
 	m.resourceClaimTemplateManager = NewWorkloadResourceClaimTemplateManager(config)
-	m.computeDomainChannelManager = NewComputeDomainChannelManager(config)
 
 	return m
 }
@@ -128,10 +125,6 @@ func (m *ComputeDomainManager) Start(ctx context.Context) (rerr error) {
 		return fmt.Errorf("error creating ResourceClaim manager: %w", err)
 	}
 
-	if err := m.computeDomainChannelManager.Start(ctx); err != nil {
-		return fmt.Errorf("error starting ComputeDomain channel manager: %w", err)
-	}
-
 	return nil
 }
 
@@ -141,9 +134,6 @@ func (m *ComputeDomainManager) Stop() error {
 	}
 	if err := m.resourceClaimTemplateManager.Stop(); err != nil {
 		return fmt.Errorf("error stopping ResourceClaimTemplate manager: %w", err)
-	}
-	if err := m.computeDomainChannelManager.Stop(); err != nil {
-		return fmt.Errorf("error stopping ComputeDomain channel manager: %w", err)
 	}
 	m.cancelContext()
 	m.waitGroup.Wait()
@@ -174,6 +164,9 @@ func (m *ComputeDomainManager) RemoveFinalizer(ctx context.Context, uid string) 
 	cd, err := m.Get(uid)
 	if err != nil {
 		return fmt.Errorf("error retrieving ComputeDomain: %w", err)
+	}
+	if cd == nil {
+		return nil
 	}
 
 	if cd.GetDeletionTimestamp() == nil {
@@ -223,12 +216,8 @@ func (m *ComputeDomainManager) onAddOrUpdate(ctx context.Context, obj any) error
 	klog.Infof("Processing added or updated ComputeDomain: %s/%s", cd.Namespace, cd.Name)
 
 	if cd.GetDeletionTimestamp() != nil {
-		if err := m.computeDomainChannelManager.DeletePool(string(cd.UID)); err != nil {
-			return fmt.Errorf("error deleting ComputeDomain channel pool: %w", err)
-		}
-
 		if err := m.resourceClaimTemplateManager.Delete(ctx, string(cd.UID)); err != nil {
-			return fmt.Errorf("error deleting ResourceClaim: %w", err)
+			return fmt.Errorf("error deleting ResourceClaimTemplate: %w", err)
 		}
 
 		if err := m.deploymentManager.Delete(ctx, string(cd.UID)); err != nil {
@@ -242,11 +231,11 @@ func (m *ComputeDomainManager) onAddOrUpdate(ctx context.Context, obj any) error
 		// ComputeDomain status and wait for that list to become empty.
 		if true {
 			if err := m.resourceClaimTemplateManager.RemoveFinalizer(ctx, string(cd.UID)); err != nil {
-				return fmt.Errorf("error deleting ResourceClaim: %w", err)
+				return fmt.Errorf("error removing finalizer on ResourceClaimTemplate: %w", err)
 			}
 
 			if err := m.deploymentManager.RemoveFinalizer(ctx, string(cd.UID)); err != nil {
-				return fmt.Errorf("error deleting Deployment: %w", err)
+				return fmt.Errorf("error removing finalizer on Deployment: %w", err)
 			}
 
 			if err := m.RemoveFinalizer(ctx, string(cd.UID)); err != nil {
@@ -261,51 +250,12 @@ func (m *ComputeDomainManager) onAddOrUpdate(ctx context.Context, obj any) error
 		return fmt.Errorf("error adding finalizer: %w", err)
 	}
 
-	if _, err := m.deploymentManager.Create(ctx, m.config.driverNamespace, cd.Spec.NumNodes, cd); err != nil {
+	if _, err := m.deploymentManager.Create(ctx, m.config.driverNamespace, cd); err != nil {
 		return fmt.Errorf("error creating Deployment: %w", err)
 	}
 
-	for i, rc := range cd.Spec.ResourceClaimTemplates {
-		if _, err := m.resourceClaimTemplateManager.Create(ctx, cd.Namespace, rc.Name, i+1, cd); err != nil {
-			return fmt.Errorf("error creating ResourceClaim '%s/%s' for channel %d: %w", cd.Namespace, rc.Name, i+1, err)
-		}
-	}
-
-	if cd.Spec.Mode == nvapi.ComputeDomainModeImmediate {
-		if cd.Status.Status != nvapi.ComputeDomainStatusReady {
-			return nil
-		}
-
-		if err := m.createOrUpdatePoolImmediateMode(ctx, cd); err != nil {
-			return fmt.Errorf("error creating or updating pool: %w", err)
-		}
-	}
-
-	return nil
-}
-
-func (m *ComputeDomainManager) createOrUpdatePoolImmediateMode(ctx context.Context, cd *nvapi.ComputeDomain) error {
-	var nodeNames []string
-	for _, node := range cd.Status.Nodes {
-		nodeNames = append(nodeNames, node.Name)
-	}
-
-	nodeSelector := corev1.NodeSelector{
-		NodeSelectorTerms: []corev1.NodeSelectorTerm{
-			{
-				MatchExpressions: []corev1.NodeSelectorRequirement{
-					{
-						Key:      "kubernetes.io/hostname",
-						Operator: corev1.NodeSelectorOpIn,
-						Values:   nodeNames,
-					},
-				},
-			},
-		},
-	}
-
-	if err := m.computeDomainChannelManager.CreateOrUpdatePool(cd, &nodeSelector); err != nil {
-		return fmt.Errorf("failed to create or update ComputeDomain channel pool: %w", err)
+	if _, err := m.resourceClaimTemplateManager.Create(ctx, cd.Namespace, cd.Spec.ResourceClaimTemplate.Name, cd); err != nil {
+		return fmt.Errorf("error creating ResourceClaimTemplate '%s/%s': %w", cd.Namespace, cd.Spec.ResourceClaimTemplate.Name, err)
 	}
 
 	return nil
