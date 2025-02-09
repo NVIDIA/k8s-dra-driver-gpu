@@ -38,8 +38,6 @@ import (
 )
 
 const (
-	ComputeDomainDaemonDeviceClass              = "compute-domain-daemon.nvidia.com"
-	ComputeDomainDefaultChannelDeviceClass      = "compute-domain-default-channel.nvidia.com"
 	DeploymentResourceClaimTemplateTemplatePath = "/templates/compute-domain-daemon-claim-template.tmpl.yaml"
 )
 
@@ -159,23 +157,19 @@ func (m *DeploymentResourceClaimTemplateManager) Create(ctx context.Context, nam
 
 	templateData := DeploymentResourceClaimTemplateTemplateData{
 		Namespace:               namespace,
-		GenerateName:            fmt.Sprintf("%s-claim-template-", cd.Name),
+		GenerateName:            fmt.Sprintf("%s-daemon-claim-template-", cd.Name),
 		Finalizer:               computeDomainFinalizer,
 		ComputeDomainLabelKey:   computeDomainLabelKey,
 		ComputeDomainLabelValue: cd.UID,
 		TargetLabelKey:          computeDomainResourceClaimTemplateTargetLabelKey,
 		TargetLabelValue:        computeDomainResourceClaimTemplateTargetDaemon,
-		DaemonDeviceClassName:   ComputeDomainDaemonDeviceClass,
+		DaemonDeviceClassName:   computeDomainDaemonDeviceClass,
 		DriverName:              DriverName,
 		DaemonConfig:            daemonConfig,
 	}
 
-	// TODO: Add the commented conditional once we have a way for workloads to
-	// directly consume the node-advertised channel 0 via a global
-	// ResourceClaim in delayed mode.
-	//if cd.Spec.Mode == nvapi.ComputeDomainModeImmediate {
-	if true {
-		templateData.ChannelDeviceClassName = ComputeDomainDefaultChannelDeviceClass
+	if cd.Spec.Mode == nvapi.ComputeDomainModeImmediate {
+		templateData.ChannelDeviceClassName = computeDomainDefaultChannelDeviceClass
 		templateData.ChannelConfig = channelConfig
 	}
 
