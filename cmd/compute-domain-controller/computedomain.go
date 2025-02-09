@@ -234,8 +234,16 @@ func (m *ComputeDomainManager) onAddOrUpdate(ctx context.Context, obj any) error
 				return fmt.Errorf("error removing finalizer on ResourceClaimTemplate: %w", err)
 			}
 
+			if err := m.resourceClaimTemplateManager.AssertRemoved(ctx, string(cd.UID)); err != nil {
+				return fmt.Errorf("error asserting removal of ResourceClaimTemplate: %w", err)
+			}
+
 			if err := m.deploymentManager.RemoveFinalizer(ctx, string(cd.UID)); err != nil {
 				return fmt.Errorf("error removing finalizer on Deployment: %w", err)
+			}
+
+			if err := m.deploymentManager.AssertRemoved(ctx, string(cd.UID)); err != nil {
+				return fmt.Errorf("error asserting removal of Deployment: %w", err)
 			}
 
 			if err := m.RemoveFinalizer(ctx, string(cd.UID)); err != nil {
