@@ -37,7 +37,7 @@ const (
 	CliqueIDLabelKey = "nvidia.com/gpu.clique"
 )
 
-type DeploymentPodManager struct {
+type DaemonSetPodManager struct {
 	config        *ManagerConfig
 	waitGroup     sync.WaitGroup
 	cancelContext context.CancelFunc
@@ -51,7 +51,7 @@ type DeploymentPodManager struct {
 	numPods            int
 }
 
-func NewDeploymentPodManager(config *ManagerConfig, labelSelector *metav1.LabelSelector, numPods int, getComputeDomain GetComputeDomainFunc) *DeploymentPodManager {
+func NewDaemonSetPodManager(config *ManagerConfig, labelSelector *metav1.LabelSelector, numPods int, getComputeDomain GetComputeDomainFunc) *DaemonSetPodManager {
 	factory := informers.NewSharedInformerFactoryWithOptions(
 		config.clientsets.Core,
 		informerResyncPeriod,
@@ -64,7 +64,7 @@ func NewDeploymentPodManager(config *ManagerConfig, labelSelector *metav1.LabelS
 	informer := factory.Core().V1().Pods().Informer()
 	lister := factory.Core().V1().Pods().Lister()
 
-	m := &DeploymentPodManager{
+	m := &DaemonSetPodManager{
 		config:           config,
 		factory:          factory,
 		informer:         informer,
@@ -76,14 +76,14 @@ func NewDeploymentPodManager(config *ManagerConfig, labelSelector *metav1.LabelS
 	return m
 }
 
-func (m *DeploymentPodManager) Start(ctx context.Context) (rerr error) {
+func (m *DaemonSetPodManager) Start(ctx context.Context) (rerr error) {
 	ctx, cancel := context.WithCancel(ctx)
 	m.cancelContext = cancel
 
 	defer func() {
 		if rerr != nil {
 			if err := m.Stop(); err != nil {
-				klog.Errorf("error stopping DeploymentPod manager: %v", err)
+				klog.Errorf("error stopping DaemonSetPod manager: %v", err)
 			}
 		}
 	}()
@@ -113,13 +113,13 @@ func (m *DeploymentPodManager) Start(ctx context.Context) (rerr error) {
 	return nil
 }
 
-func (m *DeploymentPodManager) Stop() error {
+func (m *DaemonSetPodManager) Stop() error {
 	m.cancelContext()
 	m.waitGroup.Wait()
 	return nil
 }
 
-func (m *DeploymentPodManager) onPodAddOrUpdate(ctx context.Context, obj any) error {
+func (m *DaemonSetPodManager) onPodAddOrUpdate(ctx context.Context, obj any) error {
 	p, ok := obj.(*corev1.Pod)
 	if !ok {
 		return fmt.Errorf("failed to cast to Pod")
@@ -179,7 +179,7 @@ func (m *DeploymentPodManager) onPodAddOrUpdate(ctx context.Context, obj any) er
 	return nil
 }
 
-func (m *DeploymentPodManager) GetComputeDomainNode(ctx context.Context, nodeName string) (*nvapi.ComputeDomainNode, error) {
+func (m *DaemonSetPodManager) GetComputeDomainNode(ctx context.Context, nodeName string) (*nvapi.ComputeDomainNode, error) {
 	node, err := m.config.clientsets.Core.CoreV1().Nodes().Get(ctx, nodeName, metav1.GetOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("error getting Node '%s': %w", nodeName, err)

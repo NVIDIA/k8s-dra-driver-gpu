@@ -55,7 +55,7 @@ type ComputeDomainManager struct {
 	factory  nvinformers.SharedInformerFactory
 	informer cache.SharedIndexInformer
 
-	deploymentManager            *DeploymentManager
+	daemonSetManager             *DaemonSetManager
 	resourceClaimTemplateManager *WorkloadResourceClaimTemplateManager
 }
 
@@ -69,7 +69,7 @@ func NewComputeDomainManager(config *ManagerConfig) *ComputeDomainManager {
 		factory:  factory,
 		informer: informer,
 	}
-	m.deploymentManager = NewDeploymentManager(config, m.Get)
+	m.daemonSetManager = NewDaemonSetManager(config, m.Get)
 	m.resourceClaimTemplateManager = NewWorkloadResourceClaimTemplateManager(config)
 
 	return m
@@ -117,8 +117,8 @@ func (m *ComputeDomainManager) Start(ctx context.Context) (rerr error) {
 		return fmt.Errorf("informer cache sync for ComputeDomains failed")
 	}
 
-	if err := m.deploymentManager.Start(ctx); err != nil {
-		return fmt.Errorf("error starting Deployment manager: %w", err)
+	if err := m.daemonSetManager.Start(ctx); err != nil {
+		return fmt.Errorf("error starting DaemonSet manager: %w", err)
 	}
 
 	if err := m.resourceClaimTemplateManager.Start(ctx); err != nil {
@@ -129,8 +129,8 @@ func (m *ComputeDomainManager) Start(ctx context.Context) (rerr error) {
 }
 
 func (m *ComputeDomainManager) Stop() error {
-	if err := m.deploymentManager.Stop(); err != nil {
-		return fmt.Errorf("error stopping Deployment manager: %w", err)
+	if err := m.daemonSetManager.Stop(); err != nil {
+		return fmt.Errorf("error stopping DaemonSet manager: %w", err)
 	}
 	if err := m.resourceClaimTemplateManager.Stop(); err != nil {
 		return fmt.Errorf("error stopping ResourceClaimTemplate manager: %w", err)
@@ -220,8 +220,8 @@ func (m *ComputeDomainManager) onAddOrUpdate(ctx context.Context, obj any) error
 			return fmt.Errorf("error deleting ResourceClaimTemplate: %w", err)
 		}
 
-		if err := m.deploymentManager.Delete(ctx, string(cd.UID)); err != nil {
-			return fmt.Errorf("error deleting Deployment: %w", err)
+		if err := m.daemonSetManager.Delete(ctx, string(cd.UID)); err != nil {
+			return fmt.Errorf("error deleting DaemonSet: %w", err)
 		}
 
 		// TODO: Condition the removal of these finalizers on there being no
@@ -238,12 +238,12 @@ func (m *ComputeDomainManager) onAddOrUpdate(ctx context.Context, obj any) error
 				return fmt.Errorf("error asserting removal of ResourceClaimTemplate: %w", err)
 			}
 
-			if err := m.deploymentManager.RemoveFinalizer(ctx, string(cd.UID)); err != nil {
-				return fmt.Errorf("error removing finalizer on Deployment: %w", err)
+			if err := m.daemonSetManager.RemoveFinalizer(ctx, string(cd.UID)); err != nil {
+				return fmt.Errorf("error removing finalizer on DaemonSet: %w", err)
 			}
 
-			if err := m.deploymentManager.AssertRemoved(ctx, string(cd.UID)); err != nil {
-				return fmt.Errorf("error asserting removal of Deployment: %w", err)
+			if err := m.daemonSetManager.AssertRemoved(ctx, string(cd.UID)); err != nil {
+				return fmt.Errorf("error asserting removal of DaemonSet: %w", err)
 			}
 
 			if err := m.RemoveFinalizer(ctx, string(cd.UID)); err != nil {
@@ -258,8 +258,8 @@ func (m *ComputeDomainManager) onAddOrUpdate(ctx context.Context, obj any) error
 		return fmt.Errorf("error adding finalizer: %w", err)
 	}
 
-	if _, err := m.deploymentManager.Create(ctx, m.config.driverNamespace, cd); err != nil {
-		return fmt.Errorf("error creating Deployment: %w", err)
+	if _, err := m.daemonSetManager.Create(ctx, m.config.driverNamespace, cd); err != nil {
+		return fmt.Errorf("error creating DaemonSet: %w", err)
 	}
 
 	if _, err := m.resourceClaimTemplateManager.Create(ctx, cd.Namespace, cd.Spec.ResourceClaimTemplate.Name, cd); err != nil {
