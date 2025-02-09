@@ -9,7 +9,7 @@ require (
 	github.com/NVIDIA/nvidia-container-toolkit v1.17.4
 	github.com/prometheus/client_golang v1.19.1
 	github.com/sirupsen/logrus v1.9.3
-	github.com/spf13/pflag v1.0.5
+	github.com/spf13/pflag v1.0.6
 	github.com/stretchr/testify v1.10.0
 	github.com/urfave/cli/v2 v2.27.5
 	golang.org/x/sys v0.29.0
