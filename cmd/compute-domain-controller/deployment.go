@@ -149,6 +149,9 @@ func (m *DeploymentManager) Stop() error {
 	if err := m.removeAllPodManagers(); err != nil {
 		return fmt.Errorf("error removing all Pod managers: %w", err)
 	}
+	if err := m.resourceClaimTemplateManager.Stop(); err != nil {
+		return fmt.Errorf("error stopping ResourceClaimTemplate manager: %w", err)
+	}
 	m.cancelContext()
 	m.waitGroup.Wait()
 	return nil

@@ -25,12 +25,14 @@ import (
 	"k8s.io/dynamic-resource-allocation/resourceslice"
 	"k8s.io/klog/v2"
 	"k8s.io/utils/ptr"
+
+	nvapi "github.com/NVIDIA/k8s-dra-driver-gpu/api/nvidia.com/resource/v1beta1"
 )
 
 const (
-	ResourceSliceComputeDomainChannelStart = 1   // Channel 0 is reserved, and advertised by the node itself
-	ResourceSliceComputeDomainChannelLimit = 128 // There is a limit of 128 per ResourceSlice
-	DriverComputeDomainChannelLimit        = 128 // The acual limit is 2048, but keep things to a single slice for now
+	ResourceSliceComputeDomainChannelStart = 1    // Channel 0 is reserved, and advertised by the node itself
+	ResourceSliceComputeDomainChannelLimit = 128  // There is a limit of 128 per ResourceSlice
+	DriverComputeDomainChannelLimit        = 2048 // This limit is imposed by the underlying GPU driver
 )
 
 type ComputeDomainChannelManager struct {
@@ -99,11 +101,21 @@ func (m *ComputeDomainChannelManager) Stop() error {
 }
 
 // CreateOrUpdatePool creates or updates a pool of ComputeDomain channels for the given ComputeDomain.
-func (m *ComputeDomainChannelManager) CreateOrUpdatePool(computeDomainName string, nodeSelector *v1.NodeSelector) error {
+func (m *ComputeDomainChannelManager) CreateOrUpdatePool(cd *nvapi.ComputeDomain, nodeSelector *v1.NodeSelector) error {
 	var slices []resourceslice.Slice
-	for i := m.resourceSliceComputeDomainChannelStart; i < m.driverComputeDomainChannelLimit; i += m.resourceSliceComputeDomainChannelLimit {
-		slice := m.generatePoolSlice(computeDomainName, i, m.resourceSliceComputeDomainChannelLimit)
-		slices = append(slices, slice)
+	for i := m.resourceSliceComputeDomainChannelStart; i < (len(cd.Spec.ResourceClaimTemplates) + m.resourceSliceComputeDomainChannelStart); i++ {
+		remainingCopies := cd.Spec.NumNodes
+		for j := 0; remainingCopies > 0; j++ {
+			count := m.resourceSliceComputeDomainChannelLimit
+			if remainingCopies < m.resourceSliceComputeDomainChannelLimit {
+				count = remainingCopies
+			}
+
+			slice := m.generatePoolSlice(string(cd.UID), i, j, count)
+			slices = append(slices, slice)
+
+			remainingCopies -= count
+		}
 	}
 
 	pool := resourceslice.Pool{
@@ -111,35 +123,35 @@ func (m *ComputeDomainChannelManager) CreateOrUpdatePool(computeDomainName strin
 		Slices:       slices,
 	}
 
-	m.driverResources.Pools[computeDomainName] = pool
+	m.driverResources.Pools[string(cd.UID)] = pool
 	m.controller.Update(m.driverResources)
 
 	return nil
 }
 
 // DeletePool deletes a pool of ComnputeDomain channels for the given ComputeDomain.
-func (m *ComputeDomainChannelManager) DeletePool(computeDomainName string) error {
-	delete(m.driverResources.Pools, computeDomainName)
+func (m *ComputeDomainChannelManager) DeletePool(cdUID string) error {
+	delete(m.driverResources.Pools, cdUID)
 	m.controller.Update(m.driverResources)
 	return nil
 }
 
-// generatePoolSlice generates the contents of a single ResourceSlice of ComputeDomain channels in the given range.
-func (m *ComputeDomainChannelManager) generatePoolSlice(computeDomainName string, startChannel, numChannels int) resourceslice.Slice {
+// generatePoolSlice generates the contents of a single ResourceSlice of ComputeDomain channels.
+func (m *ComputeDomainChannelManager) generatePoolSlice(cdUID string, channel, sliceIndex, count int) resourceslice.Slice {
 	var devices []resourceapi.Device
-	for i := startChannel; i < (startChannel + numChannels); i++ {
+	for i := 0; i < count; i++ {
 		d := resourceapi.Device{
-			Name: fmt.Sprintf("channel-%d", i),
+			Name: fmt.Sprintf("channel-%d-%d-%d", channel, sliceIndex, i),
 			Basic: &resourceapi.BasicDevice{
 				Attributes: map[resourceapi.QualifiedName]resourceapi.DeviceAttribute{
 					"type": {
 						StringValue: ptr.To("channel"),
 					},
 					"domain": {
-						StringValue: ptr.To(computeDomainName),
+						StringValue: ptr.To(cdUID),
 					},
 					"id": {
-						IntValue: ptr.To(int64(i)),
+						IntValue: ptr.To(int64(channel)),
 					},
 				},
 			},

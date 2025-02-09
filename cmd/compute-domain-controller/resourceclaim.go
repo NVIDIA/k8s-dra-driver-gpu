@@ -38,21 +38,25 @@ import (
 )
 
 const (
-	ResourceClaimTemplatePath = "/templates/compute-domain-channel-claim.tmpl.yaml"
+	WorkloadResourceClaimTemplateTemplatePath = "/templates/compute-domain-workload-claim-template.tmpl.yaml"
 )
 
-type ResourceClaimTemplateData struct {
+type WorkloadResourceClaimTemplateTemplateData struct {
 	Namespace               string
 	Name                    string
 	Finalizer               string
 	ComputeDomainLabelKey   string
 	ComputeDomainLabelValue types.UID
+	TargetLabelKey          string
+	TargetLabelValue        string
 	DeviceClassName         string
+	ChannelID               int
 	DriverName              string
 	ChannelConfig           *nvapi.ComputeDomainChannelConfig
+	WithDefaultChannel      bool
 }
 
-type ResourceClaimManager struct {
+type WorkloadResourceClaimTemplateManager struct {
 	config        *ManagerConfig
 	waitGroup     sync.WaitGroup
 	cancelContext context.CancelFunc
@@ -61,12 +65,17 @@ type ResourceClaimManager struct {
 	informer cache.SharedIndexInformer
 }
 
-func NewResourceClaimManager(config *ManagerConfig) *ResourceClaimManager {
+func NewWorkloadResourceClaimTemplateManager(config *ManagerConfig) *WorkloadResourceClaimTemplateManager {
 	labelSelector := &metav1.LabelSelector{
 		MatchExpressions: []metav1.LabelSelectorRequirement{
 			{
 				Key:      computeDomainLabelKey,
 				Operator: metav1.LabelSelectorOpExists,
+			},
+			{
+				Key:      computeDomainResourceClaimTemplateTargetLabelKey,
+				Operator: metav1.LabelSelectorOpIn,
+				Values:   []string{computeDomainResourceClaimTemplateTargetWorkload},
 			},
 		},
 	}
@@ -79,9 +88,9 @@ func NewResourceClaimManager(config *ManagerConfig) *ResourceClaimManager {
 		}),
 	)
 
-	informer := factory.Resource().V1beta1().ResourceClaims().Informer()
+	informer := factory.Resource().V1beta1().ResourceClaimTemplates().Informer()
 
-	m := &ResourceClaimManager{
+	m := &WorkloadResourceClaimTemplateManager{
 		config:   config,
 		factory:  factory,
 		informer: informer,
@@ -90,19 +99,19 @@ func NewResourceClaimManager(config *ManagerConfig) *ResourceClaimManager {
 	return m
 }
 
-func (m *ResourceClaimManager) Start(ctx context.Context) (rerr error) {
+func (m *WorkloadResourceClaimTemplateManager) Start(ctx context.Context) (rerr error) {
 	ctx, cancel := context.WithCancel(ctx)
 	m.cancelContext = cancel
 
 	defer func() {
 		if rerr != nil {
 			if err := m.Stop(); err != nil {
-				klog.Errorf("error stopping ResourceClaim manager: %v", err)
+				klog.Errorf("error stopping ResourceClaimTemplate manager: %v", err)
 			}
 		}
 	}()
 
-	if err := addComputeDomainLabelIndexer[*resourceapi.ResourceClaim](m.informer); err != nil {
+	if err := addComputeDomainLabelIndexer[*resourceapi.ResourceClaimTemplate](m.informer); err != nil {
 		return fmt.Errorf("error adding indexer for MulitNodeEnvironment label: %w", err)
 	}
 
@@ -113,124 +122,137 @@ func (m *ResourceClaimManager) Start(ctx context.Context) (rerr error) {
 	}()
 
 	if !cache.WaitForCacheSync(ctx.Done(), m.informer.HasSynced) {
-		return fmt.Errorf("informer cache sync for ResourceClaim failed")
+		return fmt.Errorf("informer cache sync for ResourceClaimTemplate failed")
 	}
 
 	return nil
 }
 
-func (m *ResourceClaimManager) Stop() error {
+func (m *WorkloadResourceClaimTemplateManager) Stop() error {
 	m.cancelContext()
 	m.waitGroup.Wait()
 	return nil
 }
 
-func (m *ResourceClaimManager) Create(ctx context.Context, namespace, name, deviceClassName string, cd *nvapi.ComputeDomain) (*resourceapi.ResourceClaim, error) {
-	rc, err := m.config.clientsets.Core.ResourceV1beta1().ResourceClaims(namespace).Get(ctx, name, metav1.GetOptions{})
+func (m *WorkloadResourceClaimTemplateManager) Create(ctx context.Context, namespace, name string, channel int, cd *nvapi.ComputeDomain) (*resourceapi.ResourceClaimTemplate, error) {
+	rct, err := m.config.clientsets.Core.ResourceV1beta1().ResourceClaimTemplates(namespace).Get(ctx, name, metav1.GetOptions{})
 	if err != nil && !errors.IsNotFound(err) {
-		return nil, fmt.Errorf("error getting ResourceClaim: %w", err)
+		return nil, fmt.Errorf("error getting ResourceClaimTemplate: %w", err)
 	}
-	if err == nil && rc.Labels[computeDomainLabelKey] != string(cd.UID) {
-		return nil, fmt.Errorf("existing ResourceClaim '%s/%s' not associated with ComputeDomain '%v'", namespace, name, cd.UID)
+	if err == nil && rct.Labels[computeDomainLabelKey] != string(cd.UID) {
+		return nil, fmt.Errorf("existing ResourceClaimTemplate '%s/%s' not associated with ComputeDomain '%v'", namespace, name, cd.UID)
 	}
 	if err == nil {
-		return rc, nil
+		return rct, nil
 	}
 
 	channelConfig := nvapi.DefaultComputeDomainChannelConfig()
 	channelConfig.WaitForReady = true
 	channelConfig.DomainID = string(cd.UID)
 
-	templateData := ResourceClaimTemplateData{
+	templateData := WorkloadResourceClaimTemplateTemplateData{
 		Namespace:               namespace,
 		Name:                    name,
 		Finalizer:               computeDomainFinalizer,
 		ComputeDomainLabelKey:   computeDomainLabelKey,
 		ComputeDomainLabelValue: cd.UID,
-		DeviceClassName:         deviceClassName,
+		TargetLabelKey:          computeDomainResourceClaimTemplateTargetLabelKey,
+		TargetLabelValue:        computeDomainResourceClaimTemplateTargetWorkload,
+		DeviceClassName:         computeDomainChannelDeviceClass,
+		ChannelID:               channel,
 		DriverName:              DriverName,
 		ChannelConfig:           channelConfig,
+		WithDefaultChannel:      false,
 	}
 
-	tmpl, err := template.ParseFiles(ResourceClaimTemplatePath)
+	if cd.Spec.Mode == nvapi.ComputeDomainModeDelayed {
+		templateData.DeviceClassName = computeDomainDefaultChannelDeviceClass
+		templateData.ChannelConfig = channelConfig
+		templateData.WithDefaultChannel = true
+	}
+
+	tmpl, err := template.ParseFiles(WorkloadResourceClaimTemplateTemplatePath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse template file: %w", err)
 	}
 
-	var resourceClaimYaml bytes.Buffer
-	if err := tmpl.Execute(&resourceClaimYaml, templateData); err != nil {
+	var resourceClaimTemplateYaml bytes.Buffer
+	if err := tmpl.Execute(&resourceClaimTemplateYaml, templateData); err != nil {
 		return nil, fmt.Errorf("failed to execute template: %w", err)
 	}
 
 	var unstructuredObj unstructured.Unstructured
-	if err := yaml.Unmarshal(resourceClaimYaml.Bytes(), &unstructuredObj); err != nil {
+	if err := yaml.Unmarshal(resourceClaimTemplateYaml.Bytes(), &unstructuredObj); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal yaml: %w", err)
 	}
 
-	var resourceClaim resourceapi.ResourceClaim
-	if err := runtime.DefaultUnstructuredConverter.FromUnstructured(unstructuredObj.UnstructuredContent(), &resourceClaim); err != nil {
+	var resourceClaimTemplate resourceapi.ResourceClaimTemplate
+	if err := runtime.DefaultUnstructuredConverter.FromUnstructured(unstructuredObj.UnstructuredContent(), &resourceClaimTemplate); err != nil {
 		return nil, fmt.Errorf("failed to convert unstructured data to typed object: %w", err)
 	}
 
-	rc, err = m.config.clientsets.Core.ResourceV1beta1().ResourceClaims(namespace).Create(ctx, &resourceClaim, metav1.CreateOptions{})
+	rct, err = m.config.clientsets.Core.ResourceV1beta1().ResourceClaimTemplates(namespace).Create(ctx, &resourceClaimTemplate, metav1.CreateOptions{})
 	if err != nil {
-		return nil, fmt.Errorf("error creating ResourceClaim: %w", err)
+		return nil, fmt.Errorf("error creating ResourceClaimTemplate: %w", err)
 	}
 
-	return rc, nil
+	return rct, nil
 }
 
-func (m *ResourceClaimManager) Delete(ctx context.Context, cdUID string) error {
-	rcs, err := getByComputeDomainUID[*resourceapi.ResourceClaim](ctx, m.informer, cdUID)
+func (m *WorkloadResourceClaimTemplateManager) Delete(ctx context.Context, cdUID string) error {
+	rcts, err := getByComputeDomainUID[*resourceapi.ResourceClaimTemplate](ctx, m.informer, cdUID)
 	if err != nil {
-		return fmt.Errorf("error retrieving ResourceClaims: %w", err)
+		return fmt.Errorf("error retrieving ResourceClaimTemplates: %w", err)
 	}
-	if len(rcs) == 0 {
+	if len(rcts) == 0 {
 		return nil
 	}
 
-	for _, rc := range rcs {
-		if rc.GetDeletionTimestamp() != nil {
+	for _, rct := range rcts {
+		if rct.GetDeletionTimestamp() != nil {
 			continue
 		}
 
-		err := m.config.clientsets.Core.ResourceV1beta1().ResourceClaims(rc.Namespace).Delete(ctx, rc.Name, metav1.DeleteOptions{})
+		err := m.config.clientsets.Core.ResourceV1beta1().ResourceClaimTemplates(rct.Namespace).Delete(ctx, rct.Name, metav1.DeleteOptions{})
 		if err != nil && !errors.IsNotFound(err) {
-			return fmt.Errorf("erroring deleting ResourceClaim: %w", err)
+			return fmt.Errorf("erroring deleting ResourceClaimTemplate: %w", err)
 		}
 	}
 
 	return nil
 }
 
-func (m *ResourceClaimManager) RemoveFinalizer(ctx context.Context, cdUID string) error {
-	rcs, err := getByComputeDomainUID[*resourceapi.ResourceClaim](ctx, m.informer, cdUID)
+func (m *WorkloadResourceClaimTemplateManager) RemoveFinalizer(ctx context.Context, cdUID string) error {
+	rcts, err := getByComputeDomainUID[*resourceapi.ResourceClaimTemplate](ctx, m.informer, cdUID)
 	if err != nil {
-		return fmt.Errorf("error retrieving ResourceClaims: %w", err)
+		return fmt.Errorf("error retrieving ResourceClaimTemplate: %w", err)
 	}
-	if len(rcs) == 0 {
+	if len(rcts) > 1 {
+		return fmt.Errorf("more than one ResourceClaimTemplate found with same ComputeDomain UID")
+	}
+	if len(rcts) == 0 {
 		return nil
 	}
 
-	for _, rc := range rcs {
-		if rc.GetDeletionTimestamp() == nil {
-			return fmt.Errorf("attempting to remove finalizer before ResoureClaim marked for deletion")
-		}
+	rct := rcts[0]
 
-		newRC := rc.DeepCopy()
-		newRC.Finalizers = []string{}
-		for _, f := range rc.Finalizers {
-			if f != computeDomainFinalizer {
-				newRC.Finalizers = append(newRC.Finalizers, f)
-			}
-		}
-		if len(rc.Finalizers) == len(newRC.Finalizers) {
-			return nil
-		}
+	if rct.GetDeletionTimestamp() == nil {
+		return fmt.Errorf("attempting to remove finalizer before ResourceClaimTemplate marked for deletion")
+	}
 
-		if _, err = m.config.clientsets.Core.ResourceV1beta1().ResourceClaims(rc.Namespace).Update(ctx, newRC, metav1.UpdateOptions{}); err != nil {
-			return fmt.Errorf("error updating ResourceClaim: %w", err)
+	newRCT := rct.DeepCopy()
+	newRCT.Finalizers = []string{}
+	for _, f := range rct.Finalizers {
+		if f != computeDomainFinalizer {
+			newRCT.Finalizers = append(newRCT.Finalizers, f)
 		}
+	}
+	if len(rct.Finalizers) == len(newRCT.Finalizers) {
+		return nil
+	}
+
+	if _, err = m.config.clientsets.Core.ResourceV1beta1().ResourceClaimTemplates(rct.Namespace).Update(ctx, newRCT, metav1.UpdateOptions{}); err != nil {
+		return fmt.Errorf("error updating ResourceClaimTemplate: %w", err)
 	}
 
 	return nil

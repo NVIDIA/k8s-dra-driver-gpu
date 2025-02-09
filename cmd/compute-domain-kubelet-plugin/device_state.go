@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 	"slices"
+	"strings"
 	"sync"
 
 	resourceapi "k8s.io/api/resource/v1beta1"
@@ -228,9 +229,11 @@ func (s *DeviceState) prepareDevices(ctx context.Context, claim *resourceapi.Res
 	// each device allocation result based on their order of precedence and type.
 	configResultsMap := make(map[runtime.Object][]*resourceapi.DeviceRequestAllocationResult)
 	for _, result := range claim.Status.Allocation.Devices.Results {
-		device, exists := s.allocatable[result.Device]
+		resultDevice := getChannelDevicePrefix(result.Device)
+
+		device, exists := s.allocatable[resultDevice]
 		if !exists {
-			return nil, fmt.Errorf("requested device is not allocatable: %v", result.Device)
+			return nil, fmt.Errorf("requested device is not allocatable: %v", resultDevice)
 		}
 		for _, c := range slices.Backward(configs) {
 			if slices.Contains(c.Requests, result.Request) {
@@ -302,10 +305,12 @@ func (s *DeviceState) prepareDevices(ctx context.Context, claim *resourceapi.Res
 
 		for _, result := range results {
 			cdiDevices := []string{}
-			if d := s.cdi.GetStandardDevice(s.allocatable[result.Device]); d != "" {
+			resultDevice := getChannelDevicePrefix(result.Device)
+
+			if d := s.cdi.GetStandardDevice(s.allocatable[resultDevice]); d != "" {
 				cdiDevices = append(cdiDevices, d)
 			}
-			if d := s.cdi.GetClaimDevice(string(claim.UID), s.allocatable[result.Device], preparedDeviceGroupConfigState[c].containerEdits); d != "" {
+			if d := s.cdi.GetClaimDevice(string(claim.UID), s.allocatable[resultDevice], preparedDeviceGroupConfigState[c].containerEdits); d != "" {
 				cdiDevices = append(cdiDevices, d)
 			}
 
@@ -317,15 +322,15 @@ func (s *DeviceState) prepareDevices(ctx context.Context, claim *resourceapi.Res
 			}
 
 			var preparedDevice PreparedDevice
-			switch s.allocatable[result.Device].Type() {
+			switch s.allocatable[resultDevice].Type() {
 			case ComputeDomainChannelType:
 				preparedDevice.Channel = &PreparedComputeDomainChannel{
-					Info:   s.allocatable[result.Device].Channel,
+					Info:   s.allocatable[resultDevice].Channel,
 					Device: device,
 				}
 			case ComputeDomainDaemonType:
 				preparedDevice.Daemon = &PreparedComputeDomainDaemon{
-					Info:   s.allocatable[result.Device].Daemon,
+					Info:   s.allocatable[resultDevice].Daemon,
 					Device: device,
 				}
 			}
@@ -374,7 +379,8 @@ func (s *DeviceState) applyComputeDomainChannelConfig(ctx context.Context, confi
 
 	// Create any necessary ComputeDomain channels and gather their CDI container edits.
 	for _, r := range results {
-		channel := s.allocatable[r.Device].Channel
+		rDevice := getChannelDevicePrefix(r.Device)
+		channel := s.allocatable[rDevice].Channel
 		if config.WaitForReady {
 			if err := s.computeDomainManager.AssertComputeDomainReady(ctx, config.DomainID); err != nil {
 				return nil, fmt.Errorf("error asserting ComputeDomain Ready: %w", err)
@@ -399,7 +405,8 @@ func (s *DeviceState) applyComputeDomainDaemonConfig(ctx context.Context, config
 	// Get the list of allocatable devices this config is being applied over.
 	allocatableDevices := make(AllocatableDevices)
 	for _, r := range results {
-		allocatableDevices[r.Device] = s.allocatable[r.Device]
+		rDevice := getChannelDevicePrefix(r.Device)
+		allocatableDevices[rDevice] = s.allocatable[rDevice]
 	}
 
 	if len(allocatableDevices) != 1 {
@@ -488,4 +495,12 @@ func GetOpaqueDeviceConfigs(
 	}
 
 	return resultConfigs, nil
+}
+
+func getChannelDevicePrefix(device string) string {
+	parts := strings.Split(device, "-")
+	if len(parts) >= 2 && parts[0] == "channel" {
+		return parts[0] + "-" + parts[1]
+	}
+	return device
 }
