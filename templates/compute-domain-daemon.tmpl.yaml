@@ -52,6 +52,18 @@ spec:
               test "$(nvidia-imex-ctl -q)" = "READY"
           initialDelaySeconds: 1
           periodSeconds: 1
+        livenessProbe:
+          exec:
+            command:
+              - "sh"
+              - "-c"
+              - |
+                if [ -f /etc/nvidia-imex/null ]; then
+                  exit 0
+                fi
+                test "$(nvidia-imex-ctl -q)" = "READY"
+          initialDelaySeconds: 10
+          periodSeconds: 5
       resourceClaims:
       - name: compute-domain-daemon
         resourceClaimTemplateName: {{ .ResourceClaimTemplateName }}
