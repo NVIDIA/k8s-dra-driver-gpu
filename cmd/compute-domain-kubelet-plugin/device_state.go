@@ -379,7 +379,7 @@ func (s *DeviceState) applyComputeDomainChannelConfig(ctx context.Context, confi
 	for _, r := range results {
 		channel := s.allocatable[r.Device].Channel
 		if err := s.computeDomainManager.AssertComputeDomainNamespace(ctx, claim.Namespace, config.DomainID); err != nil {
-			return nil, fmt.Errorf("error asserting ComputeDomain's namespace: %w", err)
+			return nil, permanentError{fmt.Errorf("error asserting ComputeDomain's namespace: %w", err)}
 		}
 		if err := s.computeDomainManager.AddNodeLabel(ctx, config.DomainID); err != nil {
 			return nil, fmt.Errorf("error adding Node label for ComputeDomain: %w", err)
