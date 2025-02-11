@@ -191,6 +191,36 @@ func (m *ComputeDomainManager) RemoveFinalizer(ctx context.Context, uid string) 
 	return nil
 }
 
+// AssertWorkloadsCompletes ensures that all workloads asssociated with a ComputeDomain have completed.
+//
+// TODO: We should probably also check to ensure that all ResourceClaims
+// generated from our ResourceClaimTemplate for workloads are gone. Doing
+// something is better than nothing for now though.
+func (m *ComputeDomainManager) AssertWorkloadsCompleted(ctx context.Context, cdUID string) error {
+	labelSelector := &metav1.LabelSelector{
+		MatchExpressions: []metav1.LabelSelectorRequirement{
+			{
+				Key:      computeDomainLabelKey,
+				Operator: metav1.LabelSelectorOpIn,
+				Values:   []string{cdUID},
+			},
+		},
+	}
+
+	nodes, err := m.config.clientsets.Core.CoreV1().Nodes().List(ctx, metav1.ListOptions{
+		LabelSelector: metav1.FormatLabelSelector(labelSelector),
+	})
+	if err != nil {
+		return fmt.Errorf("error retrieving nodes: %w", err)
+	}
+
+	if len(nodes.Items) != 0 {
+		return fmt.Errorf("nodes exist with label for ComputeDomain %s", cdUID)
+	}
+
+	return nil
+}
+
 func (m *ComputeDomainManager) addFinalizer(ctx context.Context, cd *nvapi.ComputeDomain) error {
 	for _, f := range cd.Finalizers {
 		if f == computeDomainFinalizer {
@@ -224,31 +254,28 @@ func (m *ComputeDomainManager) onAddOrUpdate(ctx context.Context, obj any) error
 			return fmt.Errorf("error deleting DaemonSet: %w", err)
 		}
 
-		// TODO: Condition the removal of these finalizers on there being no
-		// workloads running in the compute domain. One idea to do this is to
-		// (1) ensure that the ResourceSlice associated with the ComputeDomain
-		// has been deleted, and (2) track the allocation of channels in the
-		// ComputeDomain status and wait for that list to become empty.
-		if true {
-			if err := m.resourceClaimTemplateManager.RemoveFinalizer(ctx, string(cd.UID)); err != nil {
-				return fmt.Errorf("error removing finalizer on ResourceClaimTemplate: %w", err)
-			}
+		if err := m.AssertWorkloadsCompleted(ctx, string(cd.UID)); err != nil {
+			return fmt.Errorf("error asserting workloads completed: %w", err)
+		}
 
-			if err := m.resourceClaimTemplateManager.AssertRemoved(ctx, string(cd.UID)); err != nil {
-				return fmt.Errorf("error asserting removal of ResourceClaimTemplate: %w", err)
-			}
+		if err := m.resourceClaimTemplateManager.RemoveFinalizer(ctx, string(cd.UID)); err != nil {
+			return fmt.Errorf("error removing finalizer on ResourceClaimTemplate: %w", err)
+		}
 
-			if err := m.daemonSetManager.RemoveFinalizer(ctx, string(cd.UID)); err != nil {
-				return fmt.Errorf("error removing finalizer on DaemonSet: %w", err)
-			}
+		if err := m.resourceClaimTemplateManager.AssertRemoved(ctx, string(cd.UID)); err != nil {
+			return fmt.Errorf("error asserting removal of ResourceClaimTemplate: %w", err)
+		}
 
-			if err := m.daemonSetManager.AssertRemoved(ctx, string(cd.UID)); err != nil {
-				return fmt.Errorf("error asserting removal of DaemonSet: %w", err)
-			}
+		if err := m.daemonSetManager.RemoveFinalizer(ctx, string(cd.UID)); err != nil {
+			return fmt.Errorf("error removing finalizer on DaemonSet: %w", err)
+		}
 
-			if err := m.RemoveFinalizer(ctx, string(cd.UID)); err != nil {
-				return fmt.Errorf("error removing finalizer: %w", err)
-			}
+		if err := m.daemonSetManager.AssertRemoved(ctx, string(cd.UID)); err != nil {
+			return fmt.Errorf("error asserting removal of DaemonSet: %w", err)
+		}
+
+		if err := m.RemoveFinalizer(ctx, string(cd.UID)); err != nil {
+			return fmt.Errorf("error removing finalizer: %w", err)
 		}
 
 		return nil
