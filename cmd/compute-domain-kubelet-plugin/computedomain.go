@@ -265,6 +265,22 @@ func (m *ComputeDomainManager) GetNodeIPs(ctx context.Context, cdUID string) ([]
 	return ips, nil
 }
 
+func (m *ComputeDomainManager) AssertComputeDomainNamespace(ctx context.Context, claimNamespace, cdUID string) error {
+	cd, err := m.GetComputeDomain(ctx, cdUID)
+	if err != nil {
+		return fmt.Errorf("error getting ComputeDomain: %w", err)
+	}
+	if cd == nil {
+		return fmt.Errorf("ComputeDomain not found: %s", cdUID)
+	}
+
+	if cd.Namespace != claimNamespace {
+		return fmt.Errorf("the ResourceClaim's namespace is different than the ComputeDomain's namespace")
+	}
+
+	return nil
+}
+
 func (m *ComputeDomainManager) AddNodeLabel(ctx context.Context, cdUID string) error {
 	node, err := m.config.clientsets.Core.CoreV1().Nodes().Get(ctx, m.config.flags.nodeName, metav1.GetOptions{})
 	if err != nil {
