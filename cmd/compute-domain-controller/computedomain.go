@@ -289,8 +289,8 @@ func (m *ComputeDomainManager) onAddOrUpdate(ctx context.Context, obj any) error
 		return fmt.Errorf("error creating DaemonSet: %w", err)
 	}
 
-	if _, err := m.resourceClaimTemplateManager.Create(ctx, cd.Namespace, cd.Spec.ResourceClaimTemplate.Name, cd); err != nil {
-		return fmt.Errorf("error creating ResourceClaimTemplate '%s/%s': %w", cd.Namespace, cd.Spec.ResourceClaimTemplate.Name, err)
+	if _, err := m.resourceClaimTemplateManager.Create(ctx, cd.Namespace, cd.Spec.Channel.ResourceClaimTemplate.Name, cd); err != nil {
+		return fmt.Errorf("error creating ResourceClaimTemplate '%s/%s': %w", cd.Namespace, cd.Spec.Channel.ResourceClaimTemplate.Name, err)
 	}
 
 	return nil

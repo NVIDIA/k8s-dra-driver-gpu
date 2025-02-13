@@ -54,7 +54,12 @@ type ComputeDomainList struct {
 
 // ComputeDomainSpec provides the spec for a ComputeDomain.
 type ComputeDomainSpec struct {
-	NumNodes              int                                `json:"numNodes"`
+	NumNodes int                       `json:"numNodes"`
+	Channel  *ComputeDomainChannelSpec `json:"channel"`
+}
+
+// ComputeDomainChannelSpec provides the spec for a channel used to run a workload inside a ComputeDomain.
+type ComputeDomainChannelSpec struct {
 	ResourceClaimTemplate ComputeDomainResourceClaimTemplate `json:"resourceClaimTemplate"`
 }
 

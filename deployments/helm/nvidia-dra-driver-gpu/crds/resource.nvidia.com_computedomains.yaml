@@ -40,20 +40,27 @@ spec:
           spec:
             description: ComputeDomainSpec provides the spec for a ComputeDomain.
             properties:
+              channel:
+                description: ComputeDomainChannelSpec provides the spec for a channel
+                  used to run a workload inside a ComputeDomain.
+                properties:
+                  resourceClaimTemplate:
+                    description: ComputeDomainResourceClaimTemplate provides the details
+                      of the ResourceClaimTemplate to generate.
+                    properties:
+                      name:
+                        type: string
+                    required:
+                    - name
+                    type: object
+                required:
+                - resourceClaimTemplate
+                type: object
               numNodes:
                 type: integer
-              resourceClaimTemplate:
-                description: ComputeDomainResourceClaimTemplate provides the details
-                  of the ResourceClaimTemplate to generate.
-                properties:
-                  name:
-                    type: string
-                required:
-                - name
-                type: object
             required:
+            - channel
             - numNodes
-            - resourceClaimTemplate
             type: object
             x-kubernetes-validations:
             - message: A computeDomain.spec is immutable
