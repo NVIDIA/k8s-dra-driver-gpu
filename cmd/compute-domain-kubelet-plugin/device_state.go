@@ -167,9 +167,11 @@ func (s *DeviceState) Prepare(ctx context.Context, claim *resourceapi.ResourceCl
 	return preparedClaims[claimUID].GetDevices(), nil
 }
 
-func (s *DeviceState) Unprepare(ctx context.Context, claimUID string) error {
+func (s *DeviceState) Unprepare(ctx context.Context, claim *resourceapi.ResourceClaim) error {
 	s.Lock()
 	defer s.Unlock()
+
+	claimUID := string(claim.UID)
 
 	checkpoint := newCheckpoint()
 	if err := s.checkpointManager.GetCheckpoint(DriverPluginCheckpointFile, checkpoint); err != nil {
@@ -199,10 +201,6 @@ func (s *DeviceState) Unprepare(ctx context.Context, claimUID string) error {
 }
 
 func (s *DeviceState) prepareDevices(ctx context.Context, claim *resourceapi.ResourceClaim) (PreparedDevices, error) {
-	if claim.Status.Allocation == nil {
-		return nil, fmt.Errorf("claim not yet allocated")
-	}
-
 	// Retrieve the full set of device configs for the driver.
 	configs, err := GetOpaqueDeviceConfigs(
 		configapi.Decoder,

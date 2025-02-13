@@ -189,6 +189,13 @@ func (d *driver) nodePrepareResource(ctx context.Context, claim *drapbv1.Claim) 
 		return isPermanentError(err), ret
 	}
 
+	if resourceClaim.Status.Allocation == nil {
+		ret := &drapbv1.NodePrepareResourceResponse{
+			Error: fmt.Sprintf("no allocation set in ResourceClaim %s in namespace %s", claim.Name, claim.Namespace),
+		}
+		return true, ret
+	}
+
 	prepared, err := d.state.Prepare(ctx, resourceClaim)
 	if err != nil {
 		ret := &drapbv1.NodePrepareResourceResponse{
@@ -205,7 +212,25 @@ func (d *driver) nodeUnprepareResource(ctx context.Context, claim *drapbv1.Claim
 	d.Lock()
 	defer d.Unlock()
 
-	if err := d.state.Unprepare(ctx, claim.UID); err != nil {
+	resourceClaim, err := d.client.ResourceV1beta1().ResourceClaims(claim.Namespace).Get(
+		ctx,
+		claim.Name,
+		metav1.GetOptions{})
+	if err != nil {
+		ret := &drapbv1.NodeUnprepareResourceResponse{
+			Error: fmt.Sprintf("failed to fetch ResourceClaim %s in namespace %s", claim.Name, claim.Namespace),
+		}
+		return isPermanentError(err), ret
+	}
+
+	if resourceClaim.Status.Allocation == nil {
+		ret := &drapbv1.NodeUnprepareResourceResponse{
+			Error: fmt.Sprintf("no allocation set in ResourceClaim %s in namespace %s", claim.Name, claim.Namespace),
+		}
+		return true, ret
+	}
+
+	if err := d.state.Unprepare(ctx, resourceClaim); err != nil {
 		ret := &drapbv1.NodeUnprepareResourceResponse{
 			Error: fmt.Sprintf("error unpreparing devices for claim %v: %v", claim.UID, err),
 		}
