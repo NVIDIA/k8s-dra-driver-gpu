@@ -173,6 +173,10 @@ func (s *DeviceState) Unprepare(ctx context.Context, claim *resourceapi.Resource
 
 	claimUID := string(claim.UID)
 
+	if err := s.unprepareDevices(ctx, claim); err != nil {
+		return fmt.Errorf("unprepare devices failed: %w", err)
+	}
+
 	checkpoint := newCheckpoint()
 	if err := s.checkpointManager.GetCheckpoint(DriverPluginCheckpointFile, checkpoint); err != nil {
 		return fmt.Errorf("unable to sync from checkpoint: %v", err)
@@ -181,10 +185,6 @@ func (s *DeviceState) Unprepare(ctx context.Context, claim *resourceapi.Resource
 
 	if preparedClaims[claimUID] == nil {
 		return nil
-	}
-
-	if err := s.unprepareDevices(ctx, claimUID, preparedClaims[claimUID]); err != nil {
-		return fmt.Errorf("unprepare devices failed: %w", err)
 	}
 
 	err := s.cdi.DeleteClaimSpecFile(claimUID)
@@ -289,24 +289,30 @@ func (s *DeviceState) prepareDevices(ctx context.Context, claim *resourceapi.Res
 	return preparedDevices, nil
 }
 
-func (s *DeviceState) unprepareDevices(ctx context.Context, claimUID string, devices PreparedDevices) error {
+func (s *DeviceState) unprepareDevices(ctx context.Context, claim *resourceapi.ResourceClaim) error {
+	// Generate a mapping of each OpaqueDeviceConfigs to the Device.Results it applies to
+	configResultsMap, err := s.getConfigResultsMap(claim)
+	if err != nil {
+		return fmt.Errorf("error generating configResultsMap: %w", err)
+	}
+
 	// Unprepare any ComputeDomain daemons prepared for each group of prepared devices.
-	for _, group := range devices {
-		// If a cannel type, remove the ComputeDomain label from the node
-		if group.ConfigState.Type == ComputeDomainChannelType {
-			if err := s.computeDomainManager.RemoveNodeLabel(ctx, group.ConfigState.ComputeDomain); err != nil {
+	for c := range configResultsMap {
+		switch config := c.(type) {
+		case *configapi.ComputeDomainChannelConfig:
+			// If a channel type, remove the ComputeDomain label from the node
+			if err := s.computeDomainManager.RemoveNodeLabel(ctx, config.DomainID); err != nil {
 				return fmt.Errorf("error removing Node label for ComputeDomain: %w", err)
 			}
-		}
-
-		// If a daemon type, unprepare the new ComputeDomain daemon.
-		if group.ConfigState.Type == ComputeDomainDaemonType {
-			computeDomainDaemonSettings := s.computeDomainManager.NewSettings(group.ConfigState.ComputeDomain)
+		case *configapi.ComputeDomainDaemonConfig:
+			// If a daemon type, unprepare the new ComputeDomain daemon.
+			computeDomainDaemonSettings := s.computeDomainManager.NewSettings(config.DomainID)
 			if err := computeDomainDaemonSettings.Unprepare(ctx); err != nil {
 				return fmt.Errorf("error unpreparing ComputeDomain daemon settings: %w", err)
 			}
 		}
 	}
+
 	return nil
 }
 
