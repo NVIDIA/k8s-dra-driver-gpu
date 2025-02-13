@@ -28,7 +28,8 @@ spec:
         - |-
           trap 'exit 0' TERM
           set -e
-          if nvidia-smi -q | grep -E "ClusterUUID|CliqueId" | grep -q "N/A"; then
+          if nvidia-smi -q | grep -E "ClusterUUID|CliqueId" | grep -q "N/A" || \
+             nvidia-smi -q | grep -E "ClusterUUID" | grep -q "00000000-0000-0000-0000-000000000000"; then
             echo "ClusterUUID and CliqueId are NOT set for GPUs on this node."
             echo "The IMEX daemon will not be started."
             echo "Sleeping forever..."
