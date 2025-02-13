@@ -201,58 +201,10 @@ func (s *DeviceState) Unprepare(ctx context.Context, claim *resourceapi.Resource
 }
 
 func (s *DeviceState) prepareDevices(ctx context.Context, claim *resourceapi.ResourceClaim) (PreparedDevices, error) {
-	// Retrieve the full set of device configs for the driver.
-	configs, err := GetOpaqueDeviceConfigs(
-		configapi.Decoder,
-		DriverName,
-		claim.Status.Allocation.Devices.Config,
-	)
+	// Generate a mapping of each OpaqueDeviceConfigs to the Device.Results it applies to
+	configResultsMap, err := s.getConfigResultsMap(claim)
 	if err != nil {
-		return nil, fmt.Errorf("error getting opaque device configs: %v", err)
-	}
-
-	// Add the default ComputeDomainConfig to the front of the config list with the
-	// lowest precedence. This guarantees there will be at least one of each
-	// config in the list with len(Requests) == 0 for the lookup below.
-	configs = slices.Insert(configs, 0, &OpaqueDeviceConfig{
-		Requests: []string{},
-		Config:   configapi.DefaultComputeDomainChannelConfig(),
-	})
-	configs = slices.Insert(configs, 0, &OpaqueDeviceConfig{
-		Requests: []string{},
-		Config:   configapi.DefaultComputeDomainDaemonConfig(),
-	})
-
-	// Look through the configs and figure out which one will be applied to
-	// each device allocation result based on their order of precedence and type.
-	configResultsMap := make(map[runtime.Object][]*resourceapi.DeviceRequestAllocationResult)
-	for _, result := range claim.Status.Allocation.Devices.Results {
-		device, exists := s.allocatable[result.Device]
-		if !exists {
-			return nil, fmt.Errorf("requested device is not allocatable: %v", result.Device)
-		}
-		for _, c := range slices.Backward(configs) {
-			if slices.Contains(c.Requests, result.Request) {
-				if _, ok := c.Config.(*configapi.ComputeDomainChannelConfig); ok && device.Type() != ComputeDomainChannelType {
-					return nil, fmt.Errorf("cannot apply ComputeDomainChannelConfig to request: %v", result.Request)
-				}
-				if _, ok := c.Config.(*configapi.ComputeDomainDaemonConfig); ok && device.Type() != ComputeDomainDaemonType {
-					return nil, fmt.Errorf("cannot apply ComputeDomainDaemonConfig to request: %v", result.Request)
-				}
-				configResultsMap[c.Config] = append(configResultsMap[c.Config], &result)
-				break
-			}
-			if len(c.Requests) == 0 {
-				if _, ok := c.Config.(*configapi.ComputeDomainChannelConfig); ok && device.Type() != ComputeDomainChannelType {
-					continue
-				}
-				if _, ok := c.Config.(*configapi.ComputeDomainDaemonConfig); ok && device.Type() != ComputeDomainDaemonType {
-					continue
-				}
-				configResultsMap[c.Config] = append(configResultsMap[c.Config], &result)
-				break
-			}
-		}
+		return nil, fmt.Errorf("error generating configResultsMap: %w", err)
 	}
 
 	// Normalize, validate, and apply all configs associated with devices that
@@ -430,6 +382,63 @@ func (s *DeviceState) applyComputeDomainDaemonConfig(ctx context.Context, config
 	configState.containerEdits = computeDomainDaemonSettings.GetCDIContainerEdits()
 
 	return &configState, nil
+}
+
+func (s *DeviceState) getConfigResultsMap(claim *resourceapi.ResourceClaim) (map[runtime.Object][]*resourceapi.DeviceRequestAllocationResult, error) {
+	// Retrieve the full set of device configs for the driver.
+	configs, err := GetOpaqueDeviceConfigs(
+		configapi.Decoder,
+		DriverName,
+		claim.Status.Allocation.Devices.Config,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("error getting opaque device configs: %v", err)
+	}
+
+	// Add the default ComputeDomainConfig to the front of the config list with the
+	// lowest precedence. This guarantees there will be at least one of each
+	// config in the list with len(Requests) == 0 for the lookup below.
+	configs = slices.Insert(configs, 0, &OpaqueDeviceConfig{
+		Requests: []string{},
+		Config:   configapi.DefaultComputeDomainChannelConfig(),
+	})
+	configs = slices.Insert(configs, 0, &OpaqueDeviceConfig{
+		Requests: []string{},
+		Config:   configapi.DefaultComputeDomainDaemonConfig(),
+	})
+
+	// Look through the configs and figure out which one will be applied to
+	// each device allocation result based on their order of precedence and type.
+	configResultsMap := make(map[runtime.Object][]*resourceapi.DeviceRequestAllocationResult)
+	for _, result := range claim.Status.Allocation.Devices.Results {
+		device, exists := s.allocatable[result.Device]
+		if !exists {
+			return nil, fmt.Errorf("requested device is not allocatable: %v", result.Device)
+		}
+		for _, c := range slices.Backward(configs) {
+			if slices.Contains(c.Requests, result.Request) {
+				if _, ok := c.Config.(*configapi.ComputeDomainChannelConfig); ok && device.Type() != ComputeDomainChannelType {
+					return nil, fmt.Errorf("cannot apply ComputeDomainChannelConfig to request: %v", result.Request)
+				}
+				if _, ok := c.Config.(*configapi.ComputeDomainDaemonConfig); ok && device.Type() != ComputeDomainDaemonType {
+					return nil, fmt.Errorf("cannot apply ComputeDomainDaemonConfig to request: %v", result.Request)
+				}
+				configResultsMap[c.Config] = append(configResultsMap[c.Config], &result)
+				break
+			}
+			if len(c.Requests) == 0 {
+				if _, ok := c.Config.(*configapi.ComputeDomainChannelConfig); ok && device.Type() != ComputeDomainChannelType {
+					continue
+				}
+				if _, ok := c.Config.(*configapi.ComputeDomainDaemonConfig); ok && device.Type() != ComputeDomainDaemonType {
+					continue
+				}
+				configResultsMap[c.Config] = append(configResultsMap[c.Config], &result)
+				break
+			}
+		}
+	}
+	return configResultsMap, nil
 }
 
 // GetOpaqueDeviceConfigs returns an ordered list of the configs contained in possibleConfigs for this driver.
