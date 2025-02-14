@@ -20,11 +20,14 @@ import (
 	"bufio"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
 
 	"golang.org/x/sys/unix"
+
+	"k8s.io/mount-utils"
 
 	nvdev "github.com/NVIDIA/go-nvlib/pkg/nvlib/device"
 	"github.com/NVIDIA/go-nvml/pkg/nvml"
@@ -32,6 +35,7 @@ import (
 
 const (
 	procDevicesPath                  = "/proc/devices"
+	procDriverNvidiaPath             = "/proc/driver/nvidia"
 	nvidiaCapsDeviceName             = "nvidia-caps"
 	nvidiaCapsImexChannelsDeviceName = "nvidia-caps-imex-channels"
 	nvidiaCapFabricImexMgmtPath      = "/proc/driver/nvidia/capabilities/fabric-imex-mgmt"
@@ -76,6 +80,11 @@ func newDeviceLib(driverRoot root) (*deviceLib, error) {
 		devRoot:           driverRoot.getDevRoot(),
 		nvidiaSMIPath:     nvidiaSMIPath,
 	}
+
+	if err := d.unmountRecursively(procDriverNvidiaPath); err != nil {
+		return nil, fmt.Errorf("error recursively unmounting %s: %w", procDriverNvidiaPath, err)
+	}
+
 	return &d, nil
 }
 
@@ -284,4 +293,48 @@ func (l deviceLib) createNvCapDevice(nvcapFilePath string) error {
 	}
 
 	return nil
+}
+
+func (l deviceLib) unmountRecursively(root string) error {
+	// Get a reference to the mount executable.
+	mountExecutable, err := exec.LookPath("mount")
+	if err != nil {
+		return fmt.Errorf("error looking up mpunt executable: %w", err)
+	}
+	mounter := mount.New(mountExecutable)
+
+	// Build a recursive helper function to unmount depth-first.
+	var helper func(path string) error
+	helper = func(path string) error {
+		// Read the directory contents of path.
+		entries, err := os.ReadDir(path)
+		if err != nil {
+			return fmt.Errorf("failed to read directory %s: %w", path, err)
+		}
+
+		// Process each entry, recursively.
+		for _, entry := range entries {
+			subPath := filepath.Join(path, entry.Name())
+			if entry.IsDir() {
+				if err := helper(subPath); err != nil {
+					return err
+				}
+			}
+		}
+
+		// After processing all children, unmount the current directory if it's a mount point.
+		mounted, err := mounter.IsMountPoint(path)
+		if err != nil {
+			return fmt.Errorf("failed to check mount point %s: %w", path, err)
+		}
+		if mounted {
+			if err := mounter.Unmount(path); err != nil {
+				return fmt.Errorf("failed to unmount %s: %w", path, err)
+			}
+		}
+
+		return nil
+	}
+
+	return helper(root)
 }
