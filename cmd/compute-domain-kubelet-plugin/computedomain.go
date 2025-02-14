@@ -152,7 +152,8 @@ func (s *ComputeDomainDaemonSettings) GetDomain() string {
 	return s.domain
 }
 
-func (s *ComputeDomainDaemonSettings) GetCDIContainerEdits() *cdiapi.ContainerEdits {
+func (s *ComputeDomainDaemonSettings) GetCDIContainerEdits(devRoot string, info *nvcapDeviceInfo) *cdiapi.ContainerEdits {
+
 	return &cdiapi.ContainerEdits{
 		ContainerEdits: &cdispec.ContainerEdits{
 			Mounts: []*cdispec.Mount{
@@ -160,6 +161,12 @@ func (s *ComputeDomainDaemonSettings) GetCDIContainerEdits() *cdiapi.ContainerEd
 					ContainerPath: "/etc/nvidia-imex",
 					HostPath:      s.rootDir,
 					Options:       []string{"rw", "nosuid", "nodev", "bind"},
+				},
+			},
+			DeviceNodes: []*cdispec.DeviceNode{
+				{
+					Path:     info.path,
+					HostPath: filepath.Join(devRoot, info.path),
 				},
 			},
 		},
