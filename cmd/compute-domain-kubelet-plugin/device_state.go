@@ -371,6 +371,17 @@ func (s *DeviceState) applyComputeDomainDaemonConfig(ctx context.Context, config
 		return nil, fmt.Errorf("only expected 1 device for requests '%v' in claim '%v'", requests, claim.UID)
 	}
 
+	// Parse the device node info for the fabic-imex-mgmt nvcap.
+	nvcapDeviceInfo, err := s.nvdevlib.parseNVCapDeviceInfo(nvidiaCapFabricImexMgmtPath)
+	if err != nil {
+		return nil, fmt.Errorf("error parsing nvcap device info for fabic-imex-mgmt: %w", err)
+	}
+
+	// Create the device node for the fabic-imex-mgmt nvcap.
+	if err := s.nvdevlib.createNvCapDevice(nvidiaCapFabricImexMgmtPath); err != nil {
+		return nil, fmt.Errorf("error creating nvcap device for fabic-imex-mgmt: %w", err)
+	}
+
 	// Declare a device group state object to populate.
 	var configState DeviceConfigState
 
@@ -385,7 +396,7 @@ func (s *DeviceState) applyComputeDomainDaemonConfig(ctx context.Context, config
 	// Store information about the ComputeDomain daemon in the configState.
 	configState.Type = ComputeDomainDaemonType
 	configState.ComputeDomain = config.DomainID
-	configState.containerEdits = computeDomainDaemonSettings.GetCDIContainerEdits()
+	configState.containerEdits = computeDomainDaemonSettings.GetCDIContainerEdits(s.cdi.devRoot, nvcapDeviceInfo)
 
 	return &configState, nil
 }
