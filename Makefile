@@ -30,7 +30,7 @@ endif
 CMDS := $(patsubst ./cmd/%/,%,$(sort $(dir $(wildcard ./cmd/*/))))
 CMD_TARGETS := $(patsubst %,cmd-%, $(CMDS))
 
-CHECK_TARGETS := golangci-lint
+CHECK_TARGETS := golangci-lint check-generate
 MAKE_TARGETS := binaries build build-image check fmt lint-internal test examples cmds coverage generate vendor check-modules $(CHECK_TARGETS)
 
 TARGETS := $(MAKE_TARGETS) $(CMD_TARGETS)
@@ -100,6 +100,9 @@ coverage: test
 	go tool cover -func=$(COVERAGE_FILE).no-mocks
 
 generate: generate-deepcopy fmt
+
+check-generate: generate
+	git diff --exit-code HEAD
 
 generate-deepcopy: .remove-deepcopy
 	for dir in $(DEEPCOPY_SOURCES); do \
