@@ -76,7 +76,7 @@ func NewDeviceState(ctx context.Context, config *Config) (*DeviceState, error) {
 		WithDriverRoot(string(containerDriverRoot)),
 		WithDevRoot(devRoot),
 		WithTargetDriverRoot(hostDriverRoot),
-		WithNvidiaCTKPath(config.flags.nvidiaCTKPath),
+		WithNvidiaCDIHookPath(config.flags.nvidiaCDIHookPath),
 		WithCDIRoot(config.flags.cdiRoot),
 		WithVendor(cdiVendor),
 	)

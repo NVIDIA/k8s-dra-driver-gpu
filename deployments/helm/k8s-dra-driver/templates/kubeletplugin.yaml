@@ -71,8 +71,8 @@ spec:
         env:
         - name: MASK_NVIDIA_DRIVER_PARAMS
           value: "{{ .Values.maskNvidiaDriverParams }}"
-        - name: NVIDIA_CTK_PATH
-          value: "{{ .Values.nvidiaCtkPath }}"
+        - name: NVIDIA_CDI_HOOK_PATH
+          value: "{{ .Values.nvidiaCDIHookPath }}"
         - name: NVIDIA_DRIVER_ROOT
           value: "{{ .Values.nvidiaDriverRoot }}"
         - name: NVIDIA_VISIBLE_DEVICES

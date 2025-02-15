@@ -22,10 +22,10 @@
 # For driver installed directly on a host, a value of `/` is used.
 nvidiaDriverRoot: /
 
-# Specify the path of CTK binary (nvidia-ctk) on the host,
+# Specify the path of cdi hook (nvidia-cdi-hook) on the host,
 # as it should appear in the the generated CDI specification.
 # The path depends on the system that runs on the node.
-nvidiaCtkPath: /usr/bin/nvidia-ctk
+nvidiaCDIHookPath: /usr/bin/nvidia-cdi-hook
 
 nameOverride: ""
 fullnameOverride: ""

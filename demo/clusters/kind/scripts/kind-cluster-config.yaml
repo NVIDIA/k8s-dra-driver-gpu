@@ -59,13 +59,12 @@ nodes:
   # in `/etc/nvidia-container-runtime/config.toml`
   - hostPath: /dev/null
     containerPath: /var/run/nvidia-container-devices/cdi/runtime.nvidia.com/gpu/all
-  # The generated CDI specification assumes that `nvidia-ctk` is available on a
-  # node -- specifically for the `nvidia-ctk hook` subcommand. As a workaround,
-  # we mount it from the host.
-  # TODO: Remove this once we have a more stable solution to make `nvidia-ctk`
+  # The generated CDI specification assumes that `nvidia-cdi-hook` is available on a
+  # node
+  # TODO: Remove this once we have a more stable solution to make `nvidia-cdi-hook`
   # on the kind nodes.
-  - hostPath: /usr/bin/nvidia-ctk
-    containerPath: /usr/bin/nvidia-ctk
+  - hostPath: /usr/bin/nvidia-cdi-hook
+    containerPath: /usr/bin/nvidia-cdi-hook
   # We need to inject the fabricmanager socket to support MIG with toolkit 1.16.2
   # TODO: Remove this once we have a version of the toolkit where this is not required
   - hostPath: /run/nvidia-fabricmanager/socket

@@ -52,10 +52,10 @@ func WithCDIRoot(cdiRoot string) cdiOption {
 	}
 }
 
-// WithNvidiaCTKPath provides an cdiOption to set the nvidia-ctk path used by the 'cdi' interface.
-func WithNvidiaCTKPath(path string) cdiOption {
+// WithNvidiaCDIHookPath provides an cdiOption to set the nvidia-cdi-hook path used by the 'cdi' interface.
+func WithNvidiaCDIHookPath(path string) cdiOption {
 	return func(c *CDIHandler) {
-		c.nvidiaCTKPath = path
+		c.nvidiaCDIHookPath = path
 	}
 }
 

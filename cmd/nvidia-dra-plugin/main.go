@@ -50,7 +50,7 @@ type Flags struct {
 	cdiRoot             string
 	containerDriverRoot string
 	hostDriverRoot      string
-	nvidiaCTKPath       string
+	nvidiaCDIHookPath   string
 	deviceClasses       sets.Set[string]
 }
 
@@ -108,11 +108,11 @@ func newApp() *cli.App {
 			EnvVars:     []string{"CONTAINER_DRIVER_ROOT"},
 		},
 		&cli.StringFlag{
-			Name:        "nvidia-ctk-path",
-			Value:       "/usr/bin/nvidia-ctk",
-			Usage:       "the path to use for the nvidia-ctk in the generated CDI specification. Note that this represents the path on the host.",
-			Destination: &flags.nvidiaCTKPath,
-			EnvVars:     []string{"NVIDIA_CTK_PATH"},
+			Name:        "nvidia-cdi-hook-path",
+			Value:       "/usr/bin/nvidia-cdi-hook",
+			Usage:       "the path to use for the nvidia-cdi-hook in the generated CDI specification. Note that this represents the path on the host.",
+			Destination: &flags.nvidiaCDIHookPath,
+			EnvVars:     []string{"NVIDIA_CDI_HOOK_PATH", "NVIDIA_CTK_PATH"},
 		},
 		&cli.StringSliceFlag{
 			Name:    "device-classes",

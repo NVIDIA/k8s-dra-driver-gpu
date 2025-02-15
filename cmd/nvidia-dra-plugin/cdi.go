@@ -48,16 +48,16 @@ const (
 )
 
 type CDIHandler struct {
-	logger           *logrus.Logger
-	nvml             nvml.Interface
-	nvdevice         nvdevice.Interface
-	nvcdiDevice      nvcdi.Interface
-	nvcdiClaim       nvcdi.Interface
-	cache            *cdiapi.Cache
-	driverRoot       string
-	devRoot          string
-	targetDriverRoot string
-	nvidiaCTKPath    string
+	logger            *logrus.Logger
+	nvml              nvml.Interface
+	nvdevice          nvdevice.Interface
+	nvcdiDevice       nvcdi.Interface
+	nvcdiClaim        nvcdi.Interface
+	cache             *cdiapi.Cache
+	driverRoot        string
+	devRoot           string
+	targetDriverRoot  string
+	nvidiaCDIHookPath string
 
 	cdiRoot     string
 	vendor      string
@@ -103,7 +103,7 @@ func NewCDIHandler(opts ...cdiOption) (*CDIHandler, error) {
 			nvcdi.WithMode("nvml"),
 			nvcdi.WithVendor(h.vendor),
 			nvcdi.WithClass(h.deviceClass),
-			nvcdi.WithNVIDIACDIHookPath(h.nvidiaCTKPath),
+			nvcdi.WithNVIDIACDIHookPath(h.nvidiaCDIHookPath),
 		)
 		if err != nil {
 			return nil, fmt.Errorf("unable to create CDI library for devices: %w", err)
@@ -120,7 +120,7 @@ func NewCDIHandler(opts ...cdiOption) (*CDIHandler, error) {
 			nvcdi.WithMode("nvml"),
 			nvcdi.WithVendor(h.vendor),
 			nvcdi.WithClass(h.claimClass),
-			nvcdi.WithNVIDIACDIHookPath(h.nvidiaCTKPath),
+			nvcdi.WithNVIDIACDIHookPath(h.nvidiaCDIHookPath),
 		)
 		if err != nil {
 			return nil, fmt.Errorf("unable to create CDI library for claims: %w", err)
