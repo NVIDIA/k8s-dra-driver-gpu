@@ -105,7 +105,7 @@ func newApp() *cli.App {
 			Value:       "/driver-root",
 			Usage:       "the path where the NVIDIA driver root is mounted in the container; used for generating CDI specifications",
 			Destination: &flags.containerDriverRoot,
-			EnvVars:     []string{"CONTAINER_DRIVER_ROOT"},
+			EnvVars:     []string{"DRIVER_ROOT_CTR_PATH"},
 		},
 		&cli.StringFlag{
 			Name:        "nvidia-ctk-path",
