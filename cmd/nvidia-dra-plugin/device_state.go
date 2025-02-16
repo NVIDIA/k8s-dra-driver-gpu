@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 	"slices"
+	"strings"
 	"sync"
 
 	resourceapi "k8s.io/api/resource/v1beta1"
@@ -28,6 +29,8 @@ import (
 	drapbv1 "k8s.io/kubelet/pkg/apis/dra/v1beta1"
 	"k8s.io/kubernetes/pkg/kubelet/checkpointmanager"
 	cdiapi "tags.cncf.io/container-device-interface/pkg/cdi"
+
+	"golang.org/x/mod/semver"
 
 	configapi "github.com/NVIDIA/k8s-dra-driver/api/nvidia.com/resource/gpu/v1alpha1"
 )
@@ -390,6 +393,21 @@ func (s *DeviceState) applySharingConfig(ctx context.Context, config configapi.S
 		allocatableDevices[r.Device] = s.allocatable[r.Device]
 	}
 
+	// allow devices only with cuda compute compatility >= 7.5 as time slicing and MPS does not work with old arch
+	shareableAllocatableDevices := make(AllocatableDevices)
+	for device, deviceType := range allocatableDevices {
+		if deviceType.Gpu != nil {
+			cudaCCv := "v" + strings.TrimPrefix(deviceType.Gpu.cudaComputeCapability, "v")
+			gpuUUID := deviceType.Gpu.UUID
+			if semver.Compare(semver.Canonical(cudaCCv), semver.Canonical("v7.5")) >= 0 {
+				klog.Infof("GPU sharing is available on this device UUID=%v  with CudaComputeCapability=%v", gpuUUID, cudaCCv)
+				shareableAllocatableDevices[device] = deviceType
+			} else {
+				return nil, fmt.Errorf("GPU sharing is not available on this device UUID=%v", gpuUUID)
+			}
+		}
+	}
+
 	// Declare a device group state object to populate.
 	var configState DeviceConfigState
 
@@ -400,7 +418,7 @@ func (s *DeviceState) applySharingConfig(ctx context.Context, config configapi.S
 			return nil, fmt.Errorf("error getting timeslice config for requests '%v' in claim '%v': %w", requests, claim.UID, err)
 		}
 		if tsc != nil {
-			err = s.tsManager.SetTimeSlice(allocatableDevices, tsc)
+			err = s.tsManager.SetTimeSlice(shareableAllocatableDevices, tsc)
 			if err != nil {
 				return nil, fmt.Errorf("error setting timeslice config for requests '%v' in claim '%v': %w", requests, claim.UID, err)
 			}
@@ -413,7 +431,8 @@ func (s *DeviceState) applySharingConfig(ctx context.Context, config configapi.S
 		if err != nil {
 			return nil, fmt.Errorf("error getting MPS configuration: %w", err)
 		}
-		mpsControlDaemon := s.mpsManager.NewMpsControlDaemon(string(claim.UID), allocatableDevices)
+
+		mpsControlDaemon := s.mpsManager.NewMpsControlDaemon(string(claim.UID), shareableAllocatableDevices)
 		if err := mpsControlDaemon.Start(ctx, mpsc); err != nil {
 			return nil, fmt.Errorf("error starting MPS control daemon: %w", err)
 		}
