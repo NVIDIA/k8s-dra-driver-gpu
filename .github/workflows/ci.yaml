@@ -1,4 +1,4 @@
-# Copyright (c) 2024, NVIDIA CORPORATION.  All rights reserved.
+# Copyright 2025 NVIDIA CORPORATION
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,16 +11,24 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+name: CI Pipeline
 
-# This Dockerfile is also used to define the golang version used in this project
-# This allows dependabot to manage this version in addition to other images.
-FROM golang:1.23.1
+on:
+  push:
+    branches:
+      - "pull-request/[0-9]+"
+      - main
+      - release-*
+  
+jobs:
+  basic:
+    uses: ./.github/workflows/basic-checks.yaml
 
-WORKDIR /work
-COPY * .
-
-RUN make install-tools
-
-# We need to set the /work directory as a safe directory.
-# This allows git commands to run in the container.
-RUN git config --file=/.gitconfig --add safe.directory /work
+  image:
+    uses: ./.github/workflows/image.yaml
+    needs:
+    - basic
+    secrets: inherit
+    with:
+      version: ${{ needs.basic.outputs.version }}
+      build_multi_arch_images: ${{ github.ref_name == 'main' || startsWith(github.ref_name, 'release-') }}
