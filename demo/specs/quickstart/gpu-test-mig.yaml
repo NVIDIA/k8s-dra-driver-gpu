@@ -1,0 +1,57 @@
+# Run as a deployment with 4 replicas
+# Each replica shares a mig-enabled GPU with a profile of '1g.5gb'.
+
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: gpu-test-mig
+
+---
+apiVersion: resource.k8s.io/v1alpha3
+kind: ResourceClaimTemplate
+metadata:
+  namespace: gpu-test-mig
+  name: mig-devices
+spec:
+  spec:
+    devices:
+      requests:
+      - name: mig-1g-5gb
+        deviceClassName: mig.nvidia.com
+        selectors:
+        - cel:
+            expression: "device.attributes['gpu.nvidia.com'].profile == '1g.5gb'"
+      constraints:
+      - requests: []
+        matchAttribute: "gpu.nvidia.com/parentUUID"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  namespace: gpu-test-mig
+  name: pod
+  labels:
+    app: gpu-test-mig
+spec:
+  replicas: 4
+  selector:
+    matchLabels:
+      app: pod
+  template:
+    metadata:
+      labels:
+        app: pod
+    spec:
+      resourceClaims:
+      - name: mig-ts-gpu
+        resourceClaimTemplateName: mig-devices
+      containers:
+      - name: ctr
+        image: ubuntu:22.04
+        command: ["bash", "-c"]
+        args: ["nvidia-smi -L; trap 'exit 0' TERM; sleep 9999 & wait"]
+        resources:
+          claims:
+          - name: mig-ts-gpu
+            request: mig-1g-5gb
