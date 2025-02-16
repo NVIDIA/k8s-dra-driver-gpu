@@ -366,6 +366,10 @@ func (m *MpsControlDaemon) GetCDIContainerEdits() *cdiapi.ContainerEdits {
 }
 
 func (m *MpsControlDaemon) Stop(ctx context.Context) error {
+	// TODO: Remove the need for an explicit stop call. Instead we can set the
+	// MPS daemon's owners refefence to the claim it governs. We can then
+	// garbage collect the shm/log/pipe directories asynchronously.
+
 	_, err := os.Stat(m.rootDir)
 	if os.IsNotExist(err) {
 		return nil
