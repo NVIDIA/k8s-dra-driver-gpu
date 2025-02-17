@@ -111,8 +111,8 @@ trigger-pipeline:
 .scan-base:
   stage: scan
   variables:
-    IMAGE: "${CI_REGISTRY_IMAGE}/k8s-dra-driver:${CI_COMMIT_SHORT_SHA}-${DIST}"
-    IMAGE_ARCHIVE: "k8s-dra-driver-${CI_COMMIT_SHORT_SHA}-${DIST}-${PLATFORM_ARCH}.tar"
+    IMAGE: "${CI_REGISTRY_IMAGE}/k8s-dra-driver-gpu:${CI_COMMIT_SHORT_SHA}-${DIST}"
+    IMAGE_ARCHIVE: "k8s-dra-driver-gpu-${CI_COMMIT_SHORT_SHA}-${DIST}-${PLATFORM_ARCH}.tar"
   before_script:
     - docker login -u "${CI_REGISTRY_USER}" -p "${CI_REGISTRY_PASSWORD}" "${CI_REGISTRY}"
     - docker pull --platform="${PLATFORM}" "${IMAGE}"
@@ -160,7 +160,7 @@ scan-ubi9-arm64:
   stage: release
   variables:
     # Define the source image for the release
-    IMAGE_NAME: "${CI_REGISTRY_IMAGE}/k8s-dra-driver"
+    IMAGE_NAME: "${CI_REGISTRY_IMAGE}/k8s-dra-driver-gpu"
     VERSION: "${CI_COMMIT_SHORT_SHA}"
     # OUT_IMAGE_VERSION is overridden for external releases
     OUT_IMAGE_VERSION: "${CI_COMMIT_SHORT_SHA}"
@@ -195,7 +195,7 @@ scan-ubi9-arm64:
     OUT_REGISTRY_USER: "${CI_REGISTRY_USER}"
     OUT_REGISTRY_TOKEN: "${CI_REGISTRY_PASSWORD}"
     OUT_REGISTRY: "${CI_REGISTRY}"
-    OUT_IMAGE_NAME: "${CI_REGISTRY_IMAGE}/staging/k8s-dra-driver"
+    OUT_IMAGE_NAME: "${CI_REGISTRY_IMAGE}/staging/k8s-dra-driver-gpu"
 
 # Define an external release step that pushes an image to an external repository.
 # This includes a devlopment image off main.

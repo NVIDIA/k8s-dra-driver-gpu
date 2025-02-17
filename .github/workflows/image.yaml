@@ -56,7 +56,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Build image
         env:
-          IMAGE_NAME: ghcr.io/${LOWERCASE_REPO_OWNER}/k8s-dra-driver
+          IMAGE_NAME: ghcr.io/${LOWERCASE_REPO_OWNER}/k8s-dra-driver-gpu
           VERSION: ${COMMIT_SHORT_SHA}
         run: |
           echo "${VERSION}"

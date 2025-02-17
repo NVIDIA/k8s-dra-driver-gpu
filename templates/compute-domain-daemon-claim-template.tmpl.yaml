@@ -1,0 +1,26 @@
+---
+apiVersion: resource.k8s.io/v1beta1
+kind: ResourceClaimTemplate
+metadata:
+  namespace: {{ .Namespace }}
+  generateName: {{ .GenerateName }}
+  finalizers:
+    - {{ .Finalizer }}
+  labels:
+    {{ .ComputeDomainLabelKey }}: {{ .ComputeDomainLabelValue }}
+    {{ .TargetLabelKey }}: {{ .TargetLabelValue }}
+spec:
+  spec:
+    devices:
+      requests:
+      - name: daemon
+        deviceClassName: {{ .DeviceClassName }}
+      config:
+      - requests: ["daemon"]
+        opaque:
+          driver: {{ .DriverName }}
+          parameters:
+            apiVersion: {{ .DaemonConfig.APIVersion }}
+            kind: {{ .DaemonConfig.Kind }}
+            numNodes: {{ .DaemonConfig.NumNodes }}
+            domainID: {{ .DaemonConfig.DomainID }}

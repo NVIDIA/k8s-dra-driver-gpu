@@ -22,8 +22,4 @@ package main
 // Define the tooling required to build the device plugin.
 import (
 	_ "github.com/matryer/moq"
-	_ "k8s.io/code-generator/cmd/client-gen"
-	_ "k8s.io/code-generator/cmd/informer-gen"
-	_ "k8s.io/code-generator/cmd/lister-gen"
-	_ "sigs.k8s.io/controller-tools/cmd/controller-gen"
 )
