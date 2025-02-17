@@ -329,7 +329,10 @@ func (s *DeviceState) applyConfig(ctx context.Context, config configapi.Interfac
 
 func (s *DeviceState) applyComputeDomainChannelConfig(ctx context.Context, config *configapi.ComputeDomainChannelConfig, claim *resourceapi.ResourceClaim, results []*resourceapi.DeviceRequestAllocationResult) (*DeviceConfigState, error) {
 	// Declare a device group state object to populate.
-	var configState DeviceConfigState
+	configState := DeviceConfigState{
+		Type:          ComputeDomainChannelType,
+		ComputeDomain: config.DomainID,
+	}
 
 	// Create any necessary ComputeDomain channels and gather their CDI container edits.
 	for _, r := range results {
@@ -343,12 +346,12 @@ func (s *DeviceState) applyComputeDomainChannelConfig(ctx context.Context, confi
 		if err := s.computeDomainManager.AssertComputeDomainReady(ctx, config.DomainID); err != nil {
 			return nil, fmt.Errorf("error asserting ComputeDomain Ready: %w", err)
 		}
-		if err := s.nvdevlib.createComputeDomainChannelDevice(channel.ID); err != nil {
-			return nil, fmt.Errorf("error creating ComputeDomain channel device: %w", err)
+		if s.computeDomainManager.cliqueID != "" {
+			if err := s.nvdevlib.createComputeDomainChannelDevice(channel.ID); err != nil {
+				return nil, fmt.Errorf("error creating ComputeDomain channel device: %w", err)
+			}
+			configState.containerEdits = configState.containerEdits.Append(s.computeDomainManager.GetComputeDomainChannelContainerEdits(s.cdi.devRoot, channel))
 		}
-		configState.Type = ComputeDomainChannelType
-		configState.ComputeDomain = config.DomainID
-		configState.containerEdits = configState.containerEdits.Append(s.computeDomainManager.GetComputeDomainChannelContainerEdits(s.cdi.devRoot, channel))
 	}
 
 	return &configState, nil
@@ -371,32 +374,36 @@ func (s *DeviceState) applyComputeDomainDaemonConfig(ctx context.Context, config
 		return nil, fmt.Errorf("only expected 1 device for requests '%v' in claim '%v'", requests, claim.UID)
 	}
 
-	// Parse the device node info for the fabic-imex-mgmt nvcap.
-	nvcapDeviceInfo, err := s.nvdevlib.parseNVCapDeviceInfo(nvidiaCapFabricImexMgmtPath)
-	if err != nil {
-		return nil, fmt.Errorf("error parsing nvcap device info for fabic-imex-mgmt: %w", err)
-	}
-
-	// Create the device node for the fabic-imex-mgmt nvcap.
-	if err := s.nvdevlib.createNvCapDevice(nvidiaCapFabricImexMgmtPath); err != nil {
-		return nil, fmt.Errorf("error creating nvcap device for fabic-imex-mgmt: %w", err)
-	}
-
 	// Declare a device group state object to populate.
-	var configState DeviceConfigState
-
-	// Create new ComputeDomain daemon settings from the ComputeDomainManager.
-	computeDomainDaemonSettings := s.computeDomainManager.NewSettings(config.DomainID)
-
-	// Prepare the new ComputeDomain daemon.
-	if err := computeDomainDaemonSettings.Prepare(ctx); err != nil {
-		return nil, fmt.Errorf("error preparing ComputeDomain daemon settings for requests '%v' in claim '%v': %w", requests, claim.UID, err)
+	configState := DeviceConfigState{
+		Type:          ComputeDomainDaemonType,
+		ComputeDomain: config.DomainID,
 	}
 
-	// Store information about the ComputeDomain daemon in the configState.
-	configState.Type = ComputeDomainDaemonType
-	configState.ComputeDomain = config.DomainID
-	configState.containerEdits = computeDomainDaemonSettings.GetCDIContainerEdits(s.cdi.devRoot, nvcapDeviceInfo)
+	// Only prepare files to inject to the daemon if IMEX is supported.
+	if s.computeDomainManager.cliqueID != "" {
+		// Parse the device node info for the fabic-imex-mgmt nvcap.
+		nvcapDeviceInfo, err := s.nvdevlib.parseNVCapDeviceInfo(nvidiaCapFabricImexMgmtPath)
+		if err != nil {
+			return nil, fmt.Errorf("error parsing nvcap device info for fabic-imex-mgmt: %w", err)
+		}
+
+		// Create the device node for the fabic-imex-mgmt nvcap.
+		if err := s.nvdevlib.createNvCapDevice(nvidiaCapFabricImexMgmtPath); err != nil {
+			return nil, fmt.Errorf("error creating nvcap device for fabic-imex-mgmt: %w", err)
+		}
+
+		// Create new ComputeDomain daemon settings from the ComputeDomainManager.
+		computeDomainDaemonSettings := s.computeDomainManager.NewSettings(config.DomainID)
+
+		// Prepare the new ComputeDomain daemon.
+		if err := computeDomainDaemonSettings.Prepare(ctx); err != nil {
+			return nil, fmt.Errorf("error preparing ComputeDomain daemon settings for requests '%v' in claim '%v': %w", requests, claim.UID, err)
+		}
+
+		// Store information about the ComputeDomain daemon in the configState.
+		configState.containerEdits = configState.containerEdits.Append(computeDomainDaemonSettings.GetCDIContainerEdits(s.cdi.devRoot, nvcapDeviceInfo))
+	}
 
 	return &configState, nil
 }

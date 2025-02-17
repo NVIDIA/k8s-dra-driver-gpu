@@ -33,7 +33,7 @@ spec:
             echo "ClusterUUID and CliqueId are NOT set for GPUs on this node."
             echo "The IMEX daemon will not be started."
             echo "Sleeping forever..."
-            touch /etc/nvidia-imex/null
+            touch /etc/nvidia-imex-null
             tail -f /dev/null & wait
           fi
           /usr/bin/nvidia-imex -c /etc/nvidia-imex/config.cfg
@@ -47,7 +47,7 @@ spec:
             - "sh"
             - "-c"
             - |-
-              if [ -f /etc/nvidia-imex/null ]; then
+              if [ -f /etc/nvidia-imex-null ]; then
                 exit 0
               fi
               test "$(nvidia-imex-ctl -q)" = "READY"
@@ -59,7 +59,7 @@ spec:
               - "sh"
               - "-c"
               - |
-                if [ -f /etc/nvidia-imex/null ]; then
+                if [ -f /etc/nvidia-imex-null ]; then
                   exit 0
                 fi
                 test "$(nvidia-imex-ctl -q)" = "READY"

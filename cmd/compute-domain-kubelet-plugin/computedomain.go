@@ -130,10 +130,6 @@ func (m *ComputeDomainManager) NewSettings(domain string) *ComputeDomainDaemonSe
 }
 
 func (m *ComputeDomainManager) GetComputeDomainChannelContainerEdits(devRoot string, info *ComputeDomainChannelInfo) *cdiapi.ContainerEdits {
-	if m.cliqueID == "" {
-		return nil
-	}
-
 	channelPath := fmt.Sprintf("/dev/nvidia-caps-imex-channels/channel%d", info.ID)
 
 	return &cdiapi.ContainerEdits{
