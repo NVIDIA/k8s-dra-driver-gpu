@@ -27,16 +27,13 @@ $ helm upgrade -i --create-namespace --namespace nvidia nvidia-dra-driver .
 
 > Note: You will need to update the `values.yaml` file to set image repository and tag to the desired version from github packages.
 
+> Note: The controller is designed to run as a single instance per cluster. Please avoid running multiple instances of the controller in the same cluster at same time.
+
 ## Values
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
 | allowDefaultNamespace | bool | `false` |  |
-| autoscaling.enabled | bool | `false` |  |
-| autoscaling.maxReplicas | int | `4` |  |
-| autoscaling.minReplicas | int | `2` |  |
-| autoscaling.targetCPUUtilizationPercentage | int | `80` |  |
-| autoscaling.targetMemoryUtilizationPercentage | int | `80` |  |
 | controller.affinity | object | `{}` |  |
 | controller.containers.controller.resources | object | `{}` |  |
 | controller.containers.controller.securityContext | object | `{}` |  |

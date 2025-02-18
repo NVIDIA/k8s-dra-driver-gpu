@@ -89,6 +89,8 @@ nvidia-dra-driver-k8s-dra-driver-controller-844fcb94b-ktbkc   1/1     Running   
 nvidia-dra-driver-k8s-dra-driver-kubelet-plugin-5vfp9         1/1     Running   0          69s
 ```
 
+> Note: The controller is designed to run as a single instance per cluster. Please avoid running multiple instances of the controller in the same cluster at same time.
+
 ### Run the examples by following the steps in the demo script
 Finally, you can run the various examples contained in the `demo/specs/quickstart` folder.
 With the most recent updates for Kubernetes v1.31, only the first 3 examples in
