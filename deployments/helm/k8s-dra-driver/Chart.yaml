@@ -1,6 +1,6 @@
 apiVersion: v2
 name: k8s-dra-driver
-description: A Helm chart for Kubernetes
+description: Dynamic Resource Allocation (DRA) for NVIDIA GPUs in Kubernetes
 
 # A chart can be either an 'application' or a 'library' chart.
 #

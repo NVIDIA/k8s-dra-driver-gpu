@@ -1,0 +1,75 @@
+name: Generate Helm Docs
+on:
+  pull_request:
+    branches: ["**"]
+    paths:
+      - "deployments/helm/k8s-dra-driver/**"
+  workflow_dispatch: # enable workflow to be triggered manually
+
+jobs:
+  generate-docs:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+          
+      - name: Install helm-docs
+        run: |
+          go install github.com/norwoodj/helm-docs/cmd/helm-docs@latest
+          
+      - name: Update README.md with helm-docs
+        run: |
+          helm-docs --template-files README.md.gotmpl
+
+      - name: Check for changes
+        id: git-check
+        shell: bash
+        run: |
+          if [ -n "$(git status --porcelain)" ]; then
+            echo "changes=true" >> $GITHUB_OUTPUT
+          else
+            echo "changes=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Configure Git
+        if: steps.git-check.outputs.changes == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          
+      - name: Commit and push changes
+        if: steps.git-check.outputs.changes == 'true'
+        run: |
+          git add .
+          git commit -m "ci(bot): Update README.md with helm-docs" --signoff
+          
+          # Try to push changes
+          MAX_RETRIES=3
+          RETRY_COUNT=0
+          
+          while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
+            if git push origin HEAD:$GITHUB_HEAD_REF; then
+              echo "Successfully pushed changes"
+              exit 0
+            else
+              RETRY_COUNT=$((RETRY_COUNT + 1))
+              if [ $RETRY_COUNT -eq $MAX_RETRIES ]; then
+                echo "Failed to push after $MAX_RETRIES attempts"
+                exit 1
+              fi
+              echo "Push failed, attempting to rebase and retry..."
+              git fetch origin $GITHUB_HEAD_REF
+              git rebase origin/$GITHUB_HEAD_REF
+            fi
+          done
