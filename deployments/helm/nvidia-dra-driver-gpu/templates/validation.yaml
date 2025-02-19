@@ -1,0 +1,40 @@
+# Copyright 2024 NVIDIA CORPORATION
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+{{- if .Values.namespace }}
+{{- $error := "" }}
+{{- $error = printf "%s\nValue 'namespace' set to %s" $error .Values.namespace }}
+{{- $error = printf "%s\nSetting an explicit 'namespace' in values.yaml or via --set on the command line is no longer supported." $error }}
+{{- $error = printf "%s\nUse --namespace (with --create-namespace as necessary) instead." $error }}
+{{- $error = printf "%s\nSee: https://helm.sh/docs/helm/helm_install/#options" $error }}
+{{- fail $error }}
+{{- end }}
+
+{{- if and (eq (include "nvidia-dra-driver-gpu.namespace" .) "default") ( eq .Values.namespaceOverride "") (not .Values.allowDefaultNamespace) }}
+{{- $error := "" }}
+{{- $error = printf "%s\nRunning in the 'default' namespace is not recommended." $error }}
+{{- $error = printf "%s\nSet 'allowDefaultNamespace=true' to bypass this error." $error }}
+{{- $error = printf "%s\nOtherwise, use --namespace (with --create-namespace as necessary) to run in a specific namespace." $error }}
+{{- $error = printf "%s\nSee: https://helm.sh/docs/helm/helm_install/#options" $error }}
+{{- fail $error }}
+{{- end }}
+
+{{- if and .Values.resources.gpus.enabled (not .Values.gpuResourcesEnabledOverride) }}
+{{- $error := "" }}
+{{- $error = printf "%s\nThe default value of 'resources.gpus.enabled=true' is not yet supported." $error }}
+{{- $error = printf "%s\nIt is set to true by default to future proof it as the default once support for it becomes available." $error }}
+{{- $error = printf "%s\nUntil then, please explicitly set 'resources.gpus.enabled=false' when installing this chart." $error }}
+{{- $error = printf "%s\nIf you truly want to force 'resources.gpus.enabled=true' to apply, you can set 'gpuResourcesEnabledOverride=true'." $error }}
+{{- fail $error }}
+{{- end }}

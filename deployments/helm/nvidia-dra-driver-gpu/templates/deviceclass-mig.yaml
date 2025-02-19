@@ -1,0 +1,11 @@
+{{- if .Values.resources.gpus.enabled }}
+---
+apiVersion: resource.k8s.io/v1beta1
+kind: DeviceClass
+metadata:
+  name: mig.nvidia.com
+spec:
+  selectors:
+  - cel:
+      expression: "device.driver == 'gpu.nvidia.com' && device.attributes['gpu.nvidia.com'].type == 'mig'"
+{{- end }}

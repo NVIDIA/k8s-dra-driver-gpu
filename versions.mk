@@ -12,12 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-DRIVER_NAME := k8s-dra-driver
+DRIVER_NAME := k8s-dra-driver-gpu
+HELM_DRIVER_NAME := nvidia-dra-driver-gpu
 MODULE := github.com/NVIDIA/$(DRIVER_NAME)
 
 REGISTRY ?= nvcr.io/nvidia/cloud-native
 
-VERSION  ?= v0.1.0
+VERSION  ?= v25.2.0
 
 # vVERSION represents the version with a guaranteed v-prefix
 vVERSION := v$(VERSION:v%=%)

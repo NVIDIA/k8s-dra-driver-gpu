@@ -33,19 +33,19 @@ variables:
   # On the multi-arch builder we don't need the qemu setup.
   SKIP_QEMU_SETUP: "1"
   # Define the public staging registry
-  STAGING_REGISTRY: registry.gitlab.com/nvidia/cloud-native/k8s-dra-driver/staging
+  STAGING_REGISTRY: registry.gitlab.com/nvidia/cloud-native/k8s-dra-driver-gpu/staging
   STAGING_VERSION: ${CI_COMMIT_SHORT_SHA}
 
 .image-pull:
   stage: image-build
   variables:
     IN_REGISTRY: "${STAGING_REGISTRY}"
-    IN_IMAGE_NAME: k8s-dra-driver
+    IN_IMAGE_NAME: k8s-dra-driver-gpu
     IN_VERSION: "${STAGING_VERSION}"
     OUT_REGISTRY_USER: "${CI_REGISTRY_USER}"
     OUT_REGISTRY_TOKEN: "${CI_REGISTRY_PASSWORD}"
     OUT_REGISTRY: "${CI_REGISTRY}"
-    OUT_IMAGE_NAME: "${CI_REGISTRY_IMAGE}/k8s-dra-driver"
+    OUT_IMAGE_NAME: "${CI_REGISTRY_IMAGE}/k8s-dra-driver-gpu"
     PUSH_MULTIPLE_TAGS: "false"
   # We delay the job start to allow the public pipeline to generate the required images.
   when: delayed

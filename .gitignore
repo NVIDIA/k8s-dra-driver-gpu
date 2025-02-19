@@ -1,7 +1,8 @@
 .cache/
 .bash_history
-/nvidia-dra-controller
-/nvidia-dra-plugin
+/compute-domain-controller
+/compute-domain-kubelet-plugin
+/gpu-kubelet-plugin
 .idea
 [._]*.sw[a-p]
 coverage.out

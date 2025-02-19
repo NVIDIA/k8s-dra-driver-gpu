@@ -1,0 +1,83 @@
+---
+apiVersion: resource.nvidia.com/v1beta1
+kind: ComputeDomain
+metadata:
+  name: nvbandwidth-test-compute-domain-1
+spec:
+  numNodes: 2
+  channel:
+    resourceClaimTemplate:
+      name: nvbandwidth-test-compute-domain-1-channel
+
+---
+apiVersion: kubeflow.org/v2beta1
+kind: MPIJob
+metadata:
+  name: nvbandwidth-test-1
+spec:
+  slotsPerWorker: 2
+  launcherCreationPolicy: WaitForWorkersReady
+  runPolicy:
+    cleanPodPolicy: Running
+  sshAuthMountPath: /home/mpiuser/.ssh
+  mpiReplicaSpecs:
+    Launcher:
+      replicas: 1
+      template:
+        metadata:
+          labels:
+            mpi-memcpy-dra-test-replica: mpi-launcher
+        spec:
+          containers:
+          - image: ghcr.io/nvidia/k8s-samples:nvbandwidth-v0.7-8d103163
+            name: mpi-launcher
+            securityContext:
+              runAsUser: 1000
+            command:
+            - mpirun
+            args:
+            - --bind-to
+            - core
+            - --map-by
+            - ppr:2:node
+            - -np
+            - "4"
+            - --report-bindings
+            - -q
+            - nvbandwidth
+            - -t
+            - multinode_device_to_device_memcpy_read_ce
+          affinity:
+            nodeAffinity:
+              requiredDuringSchedulingIgnoredDuringExecution:
+                nodeSelectorTerms:
+                - matchExpressions:
+                  - key: node-role.kubernetes.io/control-plane
+                    operator: Exists
+    Worker:
+      replicas: 2
+      template:
+        metadata:
+          labels:
+            mpi-memcpy-dra-test-replica: mpi-worker
+        spec:
+          containers:
+          - image: ghcr.io/nvidia/k8s-samples:nvbandwidth-v0.7-8d103163
+            name: mpi-worker
+            securityContext:
+              runAsUser: 1000
+            env:
+            command:
+            - /usr/sbin/sshd
+            args:
+            - -De
+            - -f
+            - /home/mpiuser/.sshd_config
+            resources:
+              limits:
+                nvidia.com/gpu: 2
+              claims:
+              - name: compute-domain-channel
+          resourceClaims:
+          - name: compute-domain-channel
+            resourceClaimTemplateName: nvbandwidth-test-compute-domain-1-channel

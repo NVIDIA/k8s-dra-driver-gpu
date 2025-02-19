@@ -1,0 +1,70 @@
+---
+apiVersion: apps/v1
+kind: Daemonset
+metadata:
+  namespace: {{ .Namespace }}
+  generateName: {{ .GenerateName }}
+  finalizers:
+    - {{ .Finalizer }}
+  labels:
+    {{ .ComputeDomainLabelKey }}: {{ .ComputeDomainLabelValue }}
+spec:
+  selector:
+    matchLabels:
+      {{ .ComputeDomainLabelKey }}: {{ .ComputeDomainLabelValue }}
+  template:
+    metadata:
+      labels:
+        {{ .ComputeDomainLabelKey }}: {{ .ComputeDomainLabelValue }}
+    spec:
+      hostNetwork: true
+      nodeSelector:
+        {{ .ComputeDomainLabelKey }}: {{ .ComputeDomainLabelValue }}
+      containers:
+      - name: compute-domain-daemon
+        image: ubuntu:22.04
+        command: [sh, -c]
+        args:
+        - |-
+          trap 'exit 0' TERM
+          set -e
+          if nvidia-smi -q | grep -E "ClusterUUID|CliqueId" | grep -q "N/A" || \
+             nvidia-smi -q | grep -E "ClusterUUID" | grep -q "00000000-0000-0000-0000-000000000000"; then
+            echo "ClusterUUID and CliqueId are NOT set for GPUs on this node."
+            echo "The IMEX daemon will not be started."
+            echo "Sleeping forever..."
+            touch /etc/nvidia-imex-null
+            tail -f /dev/null & wait
+          fi
+          /usr/bin/nvidia-imex -c /etc/nvidia-imex/config.cfg
+          tail -n +1 -f /var/log/nvidia-imex.log & wait
+        resources:
+          claims:
+          - name: compute-domain-daemon
+        startupProbe:
+          exec:
+            command:
+            - "sh"
+            - "-c"
+            - |-
+              if [ -f /etc/nvidia-imex-null ]; then
+                exit 0
+              fi
+              test "$(nvidia-imex-ctl -q)" = "READY"
+          initialDelaySeconds: 1
+          periodSeconds: 1
+        livenessProbe:
+          exec:
+            command:
+              - "sh"
+              - "-c"
+              - |
+                if [ -f /etc/nvidia-imex-null ]; then
+                  exit 0
+                fi
+                test "$(nvidia-imex-ctl -q)" = "READY"
+          initialDelaySeconds: 10
+          periodSeconds: 5
+      resourceClaims:
+      - name: compute-domain-daemon
+        resourceClaimTemplateName: {{ .ResourceClaimTemplateName }}

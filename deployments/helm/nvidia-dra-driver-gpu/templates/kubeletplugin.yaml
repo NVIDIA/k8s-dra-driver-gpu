@@ -1,0 +1,145 @@
+# Copyright 2023 NVIDIA CORPORATION
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+{{- if or .Values.resources.computeDomains.enabled .Values.resources.gpus.enabled }}
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: {{ include "nvidia-dra-driver-gpu.name" . }}-kubelet-plugin
+  namespace: {{ include "nvidia-dra-driver-gpu.namespace" . }}
+  labels:
+    {{- include "nvidia-dra-driver-gpu.labels" . | nindent 4 }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "nvidia-dra-driver-gpu.selectorLabels" . | nindent 6 }}
+  {{- with .Values.kubeletPlugin.updateStrategy }}
+  updateStrategy:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  template:
+    metadata:
+      {{- with .Values.kubeletPlugin.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      labels:
+        {{- include "nvidia-dra-driver-gpu.templateLabels" . | nindent 8 }}
+    spec:
+      {{- if .Values.kubeletPlugin.priorityClassName }}
+      priorityClassName: {{ .Values.kubeletPlugin.priorityClassName }}
+      {{- end }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "nvidia-dra-driver-gpu.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.kubeletPlugin.podSecurityContext | nindent 8 }}
+      containers:
+      {{- if .Values.resources.computeDomains.enabled }}
+      - name: compute-domains
+        securityContext:
+          {{- toYaml .Values.kubeletPlugin.containers.computeDomains.securityContext | nindent 10 }}
+        image: {{ include "nvidia-dra-driver-gpu.fullimage" . }}
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        command:
+        - compute-domain-kubelet-plugin
+        resources:
+          {{- toYaml .Values.kubeletPlugin.containers.computeDomains.resources | nindent 10 }}
+        env:
+        - name: CDI_ROOT
+          value: /var/run/cdi
+        - name: NODE_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+        - name: NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        volumeMounts:
+        - name: plugins-registry
+          mountPath: /var/lib/kubelet/plugins_registry
+        - name: plugins
+          mountPath: /var/lib/kubelet/plugins
+          mountPropagation: Bidirectional
+        - name: cdi
+          mountPath: /var/run/cdi
+        # We always mount the driver root at /driver-root in the container.
+        - name: driver-root
+          mountPath: /driver-root
+          readOnly: true
+      {{- end }}
+      {{- if .Values.resources.gpus.enabled }}
+      - name: gpus
+        securityContext:
+          {{- toYaml .Values.kubeletPlugin.containers.gpus.securityContext | nindent 10 }}
+        image: {{ include "nvidia-dra-driver-gpu.fullimage" . }}
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        command:
+        - gpu-kubelet-plugin
+        resources:
+          {{- toYaml .Values.kubeletPlugin.containers.gpus.resources | nindent 10 }}
+        env:
+        - name: CDI_ROOT
+          value: /var/run/cdi
+        - name: NODE_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+        - name: NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        volumeMounts:
+        - name: plugins-registry
+          mountPath: /var/lib/kubelet/plugins_registry
+        - name: plugins
+          mountPath: /var/lib/kubelet/plugins
+          mountPropagation: Bidirectional
+        - name: cdi
+          mountPath: /var/run/cdi
+        # We always mount the driver root at /driver-root in the container.
+        - name: driver-root
+          mountPath: /driver-root
+          readOnly: true
+      {{- end }}
+      volumes:
+      - name: plugins-registry
+        hostPath:
+          path: /var/lib/kubelet/plugins_registry
+      - name: plugins
+        hostPath:
+          path: /var/lib/kubelet/plugins
+      - name: cdi
+        hostPath:
+          path: /var/run/cdi
+      - name: driver-root
+        hostPath:
+          path: {{ .Values.nvidiaDriverRoot }}
+      {{- with .Values.kubeletPlugin.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.kubeletPlugin.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.kubeletPlugin.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}

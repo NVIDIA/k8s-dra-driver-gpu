@@ -12,14 +12,25 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-download:
-	@echo Download go.mod dependencies
-	@go mod download
 
-install-tools: download
+
+install-tools: cmd-tools | tools-go
+
+tools-go:
 	@echo Installing tools from tools.go
 	@cat tools.go | grep _ | awk -F'"' '{print $$2}' | xargs -tI % go install %
 
+# Defining the following tools through tools.go is unstable and thus we define
+# their versions explicitly.
+CLIENT_GEN_VERSION ?= v0.29.2
+LISTER_GEN_VERSION ?= v0.29.2
+INFORMER_GEN_VERSION ?= v0.29.2
+CONTROLLER_GEN_VERSION ?= v0.17.1
+cmd-tools:
+	@go install sigs.k8s.io/controller-tools/cmd/controller-gen@${CONTROLLER_GEN_VERSION}
+	@go install k8s.io/code-generator/cmd/client-gen@${CLIENT_GEN_VERSION}
+	@go install k8s.io/code-generator/cmd/lister-gen@${LISTER_GEN_VERSION}
+	@go install k8s.io/code-generator/cmd/informer-gen@${INFORMER_GEN_VERSION}
 
 DOCKER ?= docker
 -include $(CURDIR)/versions.mk

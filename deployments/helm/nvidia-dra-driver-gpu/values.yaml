@@ -1,0 +1,122 @@
+# Copyright 2023 NVIDIA CORPORATION
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Default values for k8s-dra-driver-gpu.
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+# Specify the driver root on the host.
+# If the NVIDIA GPU driver is managed using the NVIDIA GPU Driver Container,
+# this is typically /run/nvidia/driver.
+# For driver installed directly on a host, a value of `/` is used.
+nvidiaDriverRoot: /
+
+# Specify the path of CTK binary (nvidia-ctk) on the host,
+# as it should appear in the the generated CDI specification.
+# The path depends on the system that runs on the node.
+nvidiaCtkPath: /usr/bin/nvidia-ctk
+
+nameOverride: ""
+fullnameOverride: ""
+namespaceOverride: ""
+selectorLabelsOverride: {}
+gpuResourcesEnabledOverride: false
+
+allowDefaultNamespace: false
+
+imagePullSecrets: []
+image:
+  repository: nvcr.io/nvidia/cloud-native/k8s-dra-driver-gpu
+  pullPolicy: IfNotPresent
+  # Overrides the image tag whose default is the chart appVersion.
+  tag: ""
+
+serviceAccount:
+  # Specifies whether a service account should be created
+  create: true
+  # Annotations to add to the service account
+  annotations: {}
+  # The name of the service account to use.
+  # If not set and create is true, a name is generated using the fullname template
+  name: ""
+
+resources:
+  gpus:
+    enabled: true
+  computeDomains:
+    enabled: true
+
+controller:
+  priorityClassName: "system-node-critical"
+  podAnnotations: {}
+  podSecurityContext: {}
+  nodeSelector: {}
+  tolerations:
+  - key: node-role.kubernetes.io/control-plane
+    operator: Exists
+    effect: NoSchedule
+  containers:
+    computeDomain:
+      securityContext: {}
+      resources: {}
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+        - matchExpressions:
+          - key: "node-role.kubernetes.io/control-plane"
+            operator: "Exists"
+
+kubeletPlugin:
+  priorityClassName: "system-node-critical"
+  updateStrategy:
+    type: RollingUpdate
+  podAnnotations: {}
+  podSecurityContext: {}
+  nodeSelector: {}
+  tolerations: []
+  containers:
+    init:
+      securityContext: {}
+      resources: {}
+    computeDomains:
+      securityContext:
+        privileged: true
+      resources: {}
+    gpus:
+      securityContext:
+        privileged: true
+      resources: {}
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+        - matchExpressions:
+          # On discrete-GPU based systems NFD adds the following label where 10de is the NVIDIA PCI vendor ID
+          - key: feature.node.kubernetes.io/pci-10de.present
+            operator: In
+            values:
+            - "true"
+        - matchExpressions:
+          # On some Tegra-based systems NFD detects the CPU vendor ID as NVIDIA
+          - key: feature.node.kubernetes.io/cpu-model.vendor_id
+            operator: In
+            values:
+            - "NVIDIA"
+        - matchExpressions:
+          # We allow a GPU deployment to be forced by setting the following label to "true"
+          - key: "nvidia.com/gpu.present"
+            operator: In
+            values:
+            - "true"

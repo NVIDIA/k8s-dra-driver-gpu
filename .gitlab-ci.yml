@@ -58,7 +58,7 @@ unit-tests:
 .image-build:
   stage: image-build
   variables:
-    IMAGE_NAME: "${CI_REGISTRY_IMAGE}/k8s-dra-driver"
+    IMAGE_NAME: "${CI_REGISTRY_IMAGE}/k8s-dra-driver-gpu"
     VERSION: "${CI_COMMIT_SHORT_SHA}"
     PUSH_ON_BUILD: "true"
   before_script:

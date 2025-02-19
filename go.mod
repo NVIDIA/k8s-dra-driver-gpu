@@ -1,12 +1,13 @@
-module github.com/NVIDIA/k8s-dra-driver
+module github.com/NVIDIA/k8s-dra-driver-gpu
 
 go 1.23.1
 
 require (
 	github.com/Masterminds/semver v1.5.0
-	github.com/NVIDIA/go-nvlib v0.7.0
+	github.com/NVIDIA/go-nvlib v0.7.1
 	github.com/NVIDIA/go-nvml v0.12.4-1
-	github.com/NVIDIA/nvidia-container-toolkit v1.17.4
+	github.com/NVIDIA/nvidia-container-toolkit v1.17.1-0.20250206090248-1d0777ee0165
+	github.com/google/uuid v1.6.0
 	github.com/prometheus/client_golang v1.19.1
 	github.com/sirupsen/logrus v1.9.3
 	github.com/spf13/pflag v1.0.6
@@ -46,7 +47,6 @@ require (
 	github.com/google/gnostic-models v0.6.8 // indirect
 	github.com/google/go-cmp v0.6.0 // indirect
 	github.com/google/gofuzz v1.2.0 // indirect
-	github.com/google/uuid v1.6.0 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/josharian/intern v1.0.0 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
@@ -72,7 +72,7 @@ require (
 	go.opentelemetry.io/otel/trace v1.28.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	go.uber.org/zap v1.27.0 // indirect
-	golang.org/x/mod v0.21.0 // indirect
+	golang.org/x/mod v0.22.0 // indirect
 	golang.org/x/net v0.33.0 // indirect
 	golang.org/x/oauth2 v0.23.0 // indirect
 	golang.org/x/term v0.27.0 // indirect
