@@ -99,9 +99,9 @@ func WithNvmlLib(nvmllib nvml.Interface) Option {
 }
 
 // WithMode sets the discovery mode for the library
-func WithMode[m modeConstraint](mode m) Option {
+func WithMode(mode string) Option {
 	return func(l *nvcdilib) {
-		l.mode = Mode(mode)
+		l.mode = mode
 	}
 }
 
