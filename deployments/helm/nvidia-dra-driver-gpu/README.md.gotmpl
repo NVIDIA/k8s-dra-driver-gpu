@@ -1,0 +1,31 @@
+{{ template "chart.header" . }}
+{{ template "chart.description" . }}
+
+{{ template "chart.versionBadge" . }}{{ template "chart.typeBadge" . }}{{ template "chart.appVersionBadge" . }}
+
+## Dynamic Resource Allocation (DRA) for NVIDIA GPUs in Kubernetes
+
+This DRA resource driver is currently under active development and not yet designed for production use. 
+We may (at times) decide to push commits over main until we have something more stable. Use at your own risk.
+
+Detailed info in [README.md](../../README.md)
+
+## Introduction
+
+This chart bootstraps a DRA driver deployment on a [Kubernetes](https://kubernetes.io/) cluster using the [Helm](https://helm.sh/) package manager. 
+
+## Installing the Chart
+
+To install the chart with the release name `nvidia-dra-driver-gpu` in namespace `nvidia` from [deployments/helm/nvidia-dra-driver-gpu](./deployments/helm/nvidia-dra-driver-gpu) directory:
+
+```console
+$ helm upgrade -i --create-namespace --namespace nvidia nvidia-dra-driver-gpu .
+```
+
+> Note: The above command assumes you are in the folder where the chart is located and will install it with the default values.. The [Values](#values) section lists the parameters that can be configured during installation.
+
+> Note: You will need to update the `values.yaml` file to set image repository and tag to the desired version from github packages.
+
+{{ template "chart.requirementsSection" . }}
+
+{{ template "chart.valuesSection" . }}
