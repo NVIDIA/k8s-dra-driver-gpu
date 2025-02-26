@@ -26,6 +26,8 @@ $ helm upgrade -i --create-namespace --namespace nvidia nvidia-dra-driver-gpu .
 
 > Note: You will need to update the `values.yaml` file to set image repository and tag to the desired version from github packages.
 
+> Note: The controller is designed to run as a single instance per cluster. Please avoid running multiple instances of the controller in the same cluster at same time.
+
 {{ template "chart.requirementsSection" . }}
 
 {{ template "chart.valuesSection" . }}
