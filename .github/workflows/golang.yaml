@@ -40,10 +40,15 @@ jobs:
         args: -v --timeout 5m
         skip-cache: true
 
-    - name: Check golang modules
+    - name: Golang modules
       run: |
         make check-modules
         make -C deployments/devel check-modules
+
+    - name: Generated code
+      run: |
+        make -C deployments/devel install-tools
+        make check-generate
 
   test:
     name: Unit test
