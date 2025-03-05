@@ -18,7 +18,7 @@ MODULE := github.com/NVIDIA/$(DRIVER_NAME)
 
 REGISTRY ?= nvcr.io/nvidia/cloud-native
 
-VERSION  ?= v25.2.0
+VERSION  ?= v25.3.0
 
 # vVERSION represents the version with a guaranteed v-prefix
 vVERSION := v$(VERSION:v%=%)
