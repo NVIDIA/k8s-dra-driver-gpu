@@ -2,7 +2,7 @@
 
 Dynamic Resource Allocation (DRA) for NVIDIA GPUs in Kubernetes
 
-![Version: v25.2.0](https://img.shields.io/badge/Version-v25.2.0-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: v25.2.0](https://img.shields.io/badge/AppVersion-v25.2.0-informational?style=flat-square)
+![Version: v25.3.0](https://img.shields.io/badge/Version-v25.3.0-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: v25.3.0](https://img.shields.io/badge/AppVersion-v25.3.0-informational?style=flat-square)
 
 ## Dynamic Resource Allocation (DRA) for NVIDIA GPUs in Kubernetes
 
@@ -28,6 +28,10 @@ $ helm upgrade -i --create-namespace --namespace nvidia nvidia-dra-driver-gpu .
 > Note: You will need to update the `values.yaml` file to set image repository and tag to the desired version from github packages.
 
 > Note: The controller is designed to run as a single instance per cluster. Please avoid running multiple instances of the controller in the same cluster at same time.
+
+## Building the Chart
+
+The [package-helm-charts.sh](./hack/package-helm-charts) helper script can be used to build the helm chart
 
 ## Values
 
