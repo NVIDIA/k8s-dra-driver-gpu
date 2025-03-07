@@ -20,6 +20,7 @@ helm upgrade -i \
 	nvidia-dra-driver-gpu \
 	../../../deployments/helm/nvidia-dra-driver-gpu \
     --set nvidiaDriverRoot="/" \
+    --set nvidiaCtkPath=/usr/local/nvidia/toolkit/nvidia-ctk \
 	--set resources.gpus.enabled=false \
     --wait
 

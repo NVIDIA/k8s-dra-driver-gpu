@@ -30,7 +30,7 @@ endif
 CMDS := $(patsubst ./cmd/%/,%,$(sort $(dir $(wildcard ./cmd/*/))))
 CMD_TARGETS := $(patsubst %,cmd-%, $(CMDS))
 
-CHECK_TARGETS := golangci-lint
+CHECK_TARGETS := golangci-lint check-generate
 MAKE_TARGETS := binaries build build-image check fmt lint-internal test examples cmds coverage generate vendor check-modules $(CHECK_TARGETS)
 
 TARGETS := $(MAKE_TARGETS) $(CMD_TARGETS)
@@ -112,6 +112,9 @@ generate-crds: generate-deepcopy .remove-crds
 		$(CURDIR)/deployments/helm/$(HELM_DRIVER_NAME)/crds
 	rm -rf $(CURDIR)/deployments/helm/tmp_crds
 
+
+check-generate: generate
+	git diff --exit-code HEAD
 
 generate-deepcopy: .remove-deepcopy
 	for dir in $(DEEPCOPY_SOURCES); do \
