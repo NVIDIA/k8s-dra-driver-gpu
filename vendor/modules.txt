@@ -9,8 +9,8 @@ github.com/NVIDIA/go-nvlib/pkg/nvlib/info
 ## explicit; go 1.20
 github.com/NVIDIA/go-nvml/pkg/dl
 github.com/NVIDIA/go-nvml/pkg/nvml
-# github.com/NVIDIA/nvidia-container-toolkit v1.17.1-0.20250206090248-1d0777ee0165
-## explicit; go 1.22.0
+# github.com/NVIDIA/nvidia-container-toolkit v1.17.5-rc.1
+## explicit; go 1.22
 github.com/NVIDIA/nvidia-container-toolkit/internal/config/image
 github.com/NVIDIA/nvidia-container-toolkit/internal/discover
 github.com/NVIDIA/nvidia-container-toolkit/internal/dxcore
@@ -139,7 +139,7 @@ github.com/modern-go/reflect2
 # github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822
 ## explicit
 github.com/munnerz/goautoneg
-# github.com/opencontainers/runtime-spec v1.2.0
+# github.com/opencontainers/runtime-spec v1.2.1
 ## explicit
 github.com/opencontainers/runtime-spec/specs-go
 # github.com/opencontainers/runtime-tools v0.9.1-0.20221107090550-2e043c6bd626
