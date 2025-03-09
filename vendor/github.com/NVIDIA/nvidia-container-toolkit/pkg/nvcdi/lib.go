@@ -46,7 +46,7 @@ type nvcdilib struct {
 	logger             logger.Interface
 	nvmllib            nvml.Interface
 	nvsandboxutilslib  nvsandboxutils.Interface
-	mode               Mode
+	mode               string
 	devicelib          device.Interface
 	deviceNamers       DeviceNamers
 	driverRoot         string
@@ -66,11 +66,15 @@ type nvcdilib struct {
 	infolib info.Interface
 
 	mergedDeviceOptions []transform.MergedDeviceOption
+
+	disabledHooks disabledHooks
 }
 
 // New creates a new nvcdi library
 func New(opts ...Option) (Interface, error) {
-	l := &nvcdilib{}
+	l := &nvcdilib{
+		disabledHooks: make(disabledHooks),
+	}
 	for _, opt := range opts {
 		opt(l)
 	}
@@ -111,19 +115,24 @@ func New(opts ...Option) (Interface, error) {
 		}
 		l.nvmllib = nvml.New(nvmlOpts...)
 	}
-	if l.nvsandboxutilslib == nil {
-		var nvsandboxutilsOpts []nvsandboxutils.LibraryOption
-		// Set the library path for libnvidia-sandboxutils
-		candidates, err := l.driver.Libraries().Locate("libnvidia-sandboxutils.so.1")
-		if err != nil {
-			l.logger.Warningf("Ignoring error in locating libnvidia-sandboxutils.so.1: %v", err)
-		} else {
-			libNvidiaSandboxutilsPath := candidates[0]
-			l.logger.Infof("Using %v", libNvidiaSandboxutilsPath)
-			nvsandboxutilsOpts = append(nvsandboxutilsOpts, nvsandboxutils.WithLibraryPath(libNvidiaSandboxutilsPath))
-		}
-		l.nvsandboxutilslib = nvsandboxutils.New(nvsandboxutilsOpts...)
-	}
+	// TODO: Repeated calls to nvsandboxutils.Init and Shutdown are causing
+	// segmentation violations. Here we disabled nvsandbox utils unless explicitly
+	// specified.
+	// This will be reenabled as soon as we have more visibility into why this is
+	// happening and a mechanism to detect and disable this if required.
+	// if l.nvsandboxutilslib == nil {
+	// 	var nvsandboxutilsOpts []nvsandboxutils.LibraryOption
+	// 	// Set the library path for libnvidia-sandboxutils
+	// 	candidates, err := l.driver.Libraries().Locate("libnvidia-sandboxutils.so.1")
+	// 	if err != nil {
+	// 		l.logger.Warningf("Ignoring error in locating libnvidia-sandboxutils.so.1: %v", err)
+	// 	} else {
+	// 		libNvidiaSandboxutilsPath := candidates[0]
+	// 		l.logger.Infof("Using %v", libNvidiaSandboxutilsPath)
+	// 		nvsandboxutilsOpts = append(nvsandboxutilsOpts, nvsandboxutils.WithLibraryPath(libNvidiaSandboxutilsPath))
+	// 	}
+	// 	l.nvsandboxutilslib = nvsandboxutils.New(nvsandboxutilsOpts...)
+	// }
 	if l.devicelib == nil {
 		l.devicelib = device.New(l.nvmllib)
 	}
@@ -147,6 +156,8 @@ func New(opts ...Option) (Interface, error) {
 		if l.vendor == "" {
 			l.vendor = "management.nvidia.com"
 		}
+		// Management containers in general do not require CUDA Forward compatibility.
+		l.disabledHooks[HookEnableCudaCompat] = true
 		lib = (*managementlib)(l)
 	case ModeNvml:
 		lib = (*nvmllib)(l)
@@ -162,11 +173,6 @@ func New(opts ...Option) (Interface, error) {
 			l.class = "mofed"
 		}
 		lib = (*mofedlib)(l)
-	case ModeImex:
-		if l.class == "" {
-			l.class = classImexChannel
-		}
-		lib = (*imexlib)(l)
 	default:
 		return nil, fmt.Errorf("unknown mode %q", l.mode)
 	}
@@ -210,6 +216,28 @@ func (m *wrapper) GetCommonEdits() (*cdi.ContainerEdits, error) {
 	edits.Env = append(edits.Env, image.EnvVarNvidiaVisibleDevices+"=void")
 
 	return edits, nil
+}
+
+// resolveMode resolves the mode for CDI spec generation based on the current system.
+func (l *nvcdilib) resolveMode() (rmode string) {
+	if l.mode != ModeAuto {
+		return l.mode
+	}
+	defer func() {
+		l.logger.Infof("Auto-detected mode as '%v'", rmode)
+	}()
+
+	platform := l.infolib.ResolvePlatform()
+	switch platform {
+	case info.PlatformNVML:
+		return ModeNvml
+	case info.PlatformTegra:
+		return ModeCSV
+	case info.PlatformWSL:
+		return ModeWsl
+	}
+	l.logger.Warningf("Unsupported platform detected: %v; assuming %v", platform, ModeNvml)
+	return ModeNvml
 }
 
 // getCudaVersion returns the CUDA version of the current system.

@@ -6,7 +6,7 @@ require (
 	github.com/Masterminds/semver v1.5.0
 	github.com/NVIDIA/go-nvlib v0.7.1
 	github.com/NVIDIA/go-nvml v0.12.4-1
-	github.com/NVIDIA/nvidia-container-toolkit v1.17.1-0.20250206090248-1d0777ee0165
+	github.com/NVIDIA/nvidia-container-toolkit v1.17.5-rc.1
 	github.com/google/uuid v1.6.0
 	github.com/prometheus/client_golang v1.19.1
 	github.com/sirupsen/logrus v1.9.3
@@ -56,7 +56,7 @@ require (
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
 	github.com/modern-go/reflect2 v1.0.2 // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
-	github.com/opencontainers/runtime-spec v1.2.0 // indirect
+	github.com/opencontainers/runtime-spec v1.2.1 // indirect
 	github.com/opencontainers/runtime-tools v0.9.1-0.20221107090550-2e043c6bd626 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
@@ -89,3 +89,7 @@ require (
 	sigs.k8s.io/structured-merge-diff/v4 v4.4.2 // indirect
 	sigs.k8s.io/yaml v1.4.0 // indirect
 )
+
+// The k8s-dra-driver does not need to modify the OCI Runtime Specifications and as such
+// this transitive dependency is not needed. We skip the transitive update from the new nvcdi version.
+replace github.com/opencontainers/runtime-spec v1.2.1 => github.com/opencontainers/runtime-spec v1.2.0
