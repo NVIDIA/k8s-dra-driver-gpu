@@ -12,7 +12,7 @@ A document and demo of the DRA support for GPUs provided by this repo can be fou
 
 ## Demo
 
-This section describes using `kind` to demo the functionality of the NVIDIA GPU DRA Driver.
+This section describes using `kind` to demo the functionality of the NVIDIA GPU DRA Driver. For Red Hat OpenShift, refer to [running the NVIDIA DRA driver on OpenShift](demo/clusters/openshift/README.md).
 
 First since we'll launch kind with GPU support, ensure that the following prerequisites are met:
 1. `kind` is installed. See the official documentation [here](https://kind.sigs.k8s.io/docs/user/quick-start/#installation).
