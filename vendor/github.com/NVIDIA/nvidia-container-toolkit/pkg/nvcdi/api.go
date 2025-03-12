@@ -24,6 +24,24 @@ import (
 	"github.com/NVIDIA/nvidia-container-toolkit/pkg/nvcdi/spec"
 )
 
+const (
+	// ModeAuto configures the CDI spec generator to automatically detect the system configuration
+	ModeAuto = "auto"
+	// ModeNvml configures the CDI spec generator to use the NVML library.
+	ModeNvml = "nvml"
+	// ModeWsl configures the CDI spec generator to generate a WSL spec.
+	ModeWsl = "wsl"
+	// ModeManagement configures the CDI spec generator to generate a management spec.
+	ModeManagement = "management"
+	// ModeGds configures the CDI spec generator to generate a GDS spec.
+	ModeGds = "gds"
+	// ModeMofed configures the CDI spec generator to generate a MOFED spec.
+	ModeMofed = "mofed"
+	// ModeCSV configures the CDI spec generator to generate a spec based on the contents of CSV
+	// mountspec files.
+	ModeCSV = "csv"
+)
+
 // Interface defines the API for the nvcdi package
 type Interface interface {
 	GetSpec() (spec.Interface, error)
@@ -35,3 +53,13 @@ type Interface interface {
 	GetMIGDeviceSpecs(int, device.Device, int, device.MigDevice) ([]specs.Device, error)
 	GetDeviceSpecsByID(...string) ([]specs.Device, error)
 }
+
+// A HookName refers to one of the predefined set of CDI hooks that may be
+// included in the generated CDI specification.
+type HookName string
+
+const (
+	// HookEnableCudaCompat refers to the hook used to enable CUDA Forward Compatibility.
+	// This was added with v1.17.5 of the NVIDIA Container Toolkit.
+	HookEnableCudaCompat = HookName("enable-cuda-compat")
+)

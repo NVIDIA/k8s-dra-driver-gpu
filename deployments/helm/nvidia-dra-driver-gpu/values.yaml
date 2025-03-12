@@ -39,7 +39,9 @@ imagePullSecrets: []
 image:
   repository: nvcr.io/nvidia/cloud-native/k8s-dra-driver-gpu
   pullPolicy: IfNotPresent
-  # Overrides the image tag whose default is the chart appVersion.
+  # Note: an empty string is translated to the `appVersion` string from
+  # the Helm chart YAML (effectively implementing the default value to be
+  # the current version).
   tag: ""
 
 serviceAccount:

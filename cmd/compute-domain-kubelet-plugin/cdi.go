@@ -120,6 +120,8 @@ func NewCDIHandler(opts ...cdiOption) (*CDIHandler, error) {
 			nvcdi.WithVendor(h.vendor),
 			nvcdi.WithClass(h.claimClass),
 			nvcdi.WithNVIDIACDIHookPath(h.nvidiaCTKPath),
+			// TODO: This should be removed once the use of a NVIDIA Container Toolkit >= v1.17.5 is commonplace.
+			nvcdi.WithDisabledHook(nvcdi.HookEnableCudaCompat),
 		)
 		if err != nil {
 			return nil, fmt.Errorf("unable to create CDI library for claims: %w", err)

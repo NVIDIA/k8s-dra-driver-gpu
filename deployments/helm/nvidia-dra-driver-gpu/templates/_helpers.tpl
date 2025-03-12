@@ -80,7 +80,7 @@ Selector labels
 Full image name with tag
 */}}
 {{- define "nvidia-dra-driver-gpu.fullimage" -}}
-{{- $tag := printf "%s" .Chart.AppVersion }}
+{{- $tag := printf "v%s" .Chart.AppVersion }}
 {{- .Values.image.repository -}}:{{- .Values.image.tag | default $tag -}}
 {{- end }}
 

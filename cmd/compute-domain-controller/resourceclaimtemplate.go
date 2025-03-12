@@ -290,7 +290,6 @@ func (m *DaemonSetResourceClaimTemplateManager) Create(ctx context.Context, name
 	}
 
 	daemonConfig := nvapi.DefaultComputeDomainDaemonConfig()
-	daemonConfig.NumNodes = cd.Spec.NumNodes
 	daemonConfig.DomainID = string(cd.UID)
 
 	templateData := ResourceClaimTemplateTemplateData{

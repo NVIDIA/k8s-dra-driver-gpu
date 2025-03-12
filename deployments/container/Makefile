@@ -27,6 +27,10 @@ ifeq ($(IMAGE_NAME),)
 IMAGE_NAME := $(REGISTRY)/$(DRIVER_NAME)
 endif
 
+# Note: this is sometimes a v-prefixed version string
+# (in case of proper releases) or sometimes a commit hash
+# (in case of regular CI builds) in which case VERSION
+# is not v-prefixed.
 IMAGE_VERSION := $(VERSION)
 
 IMAGE_TAG ?= $(IMAGE_VERSION)-$(DIST)

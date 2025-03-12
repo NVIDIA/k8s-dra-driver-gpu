@@ -58,7 +58,6 @@ func (c *ComputeDomainChannelConfig) Validate() error {
 // ComputeDomainDaemonConfig holds the set of parameters for configuring an ComputeDomainDaemon.
 type ComputeDomainDaemonConfig struct {
 	metav1.TypeMeta `json:",inline"`
-	NumNodes        int    `json:"numNodes"`
 	DomainID        string `json:"domainID"`
 }
 
@@ -79,9 +78,6 @@ func (c *ComputeDomainDaemonConfig) Normalize() error {
 
 // Validate ensures that ComputeDomainDaemonConfig has a valid set of values.
 func (c *ComputeDomainDaemonConfig) Validate() error {
-	if c.NumNodes <= 0 {
-		return fmt.Errorf("numNodes must be greater than or equal to 1")
-	}
 	if c.DomainID == "" {
 		return fmt.Errorf("domainID cannot be empty")
 	}

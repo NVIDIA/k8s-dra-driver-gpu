@@ -63,7 +63,6 @@ type DaemonSetManager struct {
 
 	resourceClaimTemplateManager *DaemonSetResourceClaimTemplateManager
 	cleanupManager               *CleanupManager[*appsv1.DaemonSet]
-	podManagers                  map[string]*DaemonSetPodManager
 }
 
 func NewDaemonSetManager(config *ManagerConfig, getComputeDomain GetComputeDomainFunc) *DaemonSetManager {
@@ -92,7 +91,6 @@ func NewDaemonSetManager(config *ManagerConfig, getComputeDomain GetComputeDomai
 		getComputeDomain: getComputeDomain,
 		factory:          factory,
 		informer:         informer,
-		podManagers:      make(map[string]*DaemonSetPodManager),
 	}
 	m.resourceClaimTemplateManager = NewDaemonSetResourceClaimTemplateManager(config, getComputeDomain)
 	m.cleanupManager = NewCleanupManager[*appsv1.DaemonSet](informer, getComputeDomain, m.cleanup)
@@ -150,9 +148,6 @@ func (m *DaemonSetManager) Start(ctx context.Context) (rerr error) {
 }
 
 func (m *DaemonSetManager) Stop() error {
-	if err := m.removeAllPodManagers(); err != nil {
-		return fmt.Errorf("error removing all Pod managers: %w", err)
-	}
 	if err := m.resourceClaimTemplateManager.Stop(); err != nil {
 		return fmt.Errorf("error stopping ResourceClaimTemplate manager: %w", err)
 	}
@@ -230,14 +225,9 @@ func (m *DaemonSetManager) Delete(ctx context.Context, cdUID string) error {
 	}
 
 	d := ds[0]
-	key := d.Spec.Selector.MatchLabels[computeDomainLabelKey]
 
 	if err := m.resourceClaimTemplateManager.Delete(ctx, cdUID); err != nil {
 		return fmt.Errorf("error deleting ResourceClaimTemplate: %w", err)
-	}
-
-	if err := m.removePodManager(key); err != nil {
-		return fmt.Errorf("error removing Pod manager: %w", err)
 	}
 
 	if d.GetDeletionTimestamp() != nil {
@@ -335,10 +325,6 @@ func (m *DaemonSetManager) onAddOrUpdate(ctx context.Context, obj any) error {
 		return nil
 	}
 
-	if err := m.addPodManager(ctx, d.Spec.Selector, cd.Spec.NumNodes); err != nil {
-		return fmt.Errorf("error adding Pod manager '%s/%s': %w", d.Namespace, d.Name, err)
-	}
-
 	if int(d.Status.NumberReady) != cd.Spec.NumNodes {
 		return nil
 	}
@@ -349,60 +335,6 @@ func (m *DaemonSetManager) onAddOrUpdate(ctx context.Context, obj any) error {
 		return fmt.Errorf("error updating nodes in ComputeDomain status: %w", err)
 	}
 
-	return nil
-}
-
-func (m *DaemonSetManager) addPodManager(ctx context.Context, labelSelector *metav1.LabelSelector, numPods int) error {
-	key := labelSelector.MatchLabels[computeDomainLabelKey]
-
-	if _, exists := m.podManagers[key]; exists {
-		return nil
-	}
-
-	podManager := NewDaemonSetPodManager(m.config, labelSelector, numPods, m.getComputeDomain)
-
-	if err := podManager.Start(ctx); err != nil {
-		return fmt.Errorf("error creating Pod manager: %w", err)
-	}
-
-	m.Lock()
-	m.podManagers[key] = podManager
-	m.Unlock()
-
-	return nil
-}
-
-func (m *DaemonSetManager) removePodManager(key string) error {
-	if _, exists := m.podManagers[key]; !exists {
-		return nil
-	}
-
-	m.Lock()
-	podManager := m.podManagers[key]
-	m.Unlock()
-
-	if err := podManager.Stop(); err != nil {
-		return fmt.Errorf("error stopping Pod manager: %w", err)
-	}
-
-	m.Lock()
-	delete(m.podManagers, key)
-	m.Unlock()
-
-	return nil
-}
-
-func (m *DaemonSetManager) removeAllPodManagers() error {
-	m.Lock()
-	for key, pm := range m.podManagers {
-		m.Unlock()
-		if err := pm.Stop(); err != nil {
-			return fmt.Errorf("error stopping Pod manager: %w", err)
-		}
-		m.Lock()
-		delete(m.podManagers, key)
-	}
-	m.Unlock()
 	return nil
 }
 

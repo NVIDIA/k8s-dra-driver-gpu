@@ -22,5 +22,4 @@ spec:
           parameters:
             apiVersion: {{ .DaemonConfig.APIVersion }}
             kind: {{ .DaemonConfig.Kind }}
-            numNodes: {{ .DaemonConfig.NumNodes }}
             domainID: {{ .DaemonConfig.DomainID }}

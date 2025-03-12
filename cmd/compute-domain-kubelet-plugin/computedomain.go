@@ -22,10 +22,12 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"sync"
 	"text/template"
 	"time"
 
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
@@ -253,6 +255,66 @@ func (m *ComputeDomainManager) AssertComputeDomainReady(ctx context.Context, cdU
 	return nil
 }
 
+func (m *ComputeDomainManager) AddNodeStatusToComputeDomain(ctx context.Context, cdUID string) error {
+	cd, err := m.GetComputeDomain(ctx, cdUID)
+	if err != nil {
+		return fmt.Errorf("error getting ComputeDomain: %w", err)
+	}
+	if cd == nil {
+		return fmt.Errorf("ComputeDomain not found: %s", cdUID)
+	}
+
+	if cd.Status.Status == nvapi.ComputeDomainStatusReady {
+		return nil
+	}
+
+	var nodeNames []string
+	for _, node := range cd.Status.Nodes {
+		nodeNames = append(nodeNames, node.Name)
+	}
+
+	if slices.Contains(nodeNames, m.config.flags.nodeName) {
+		return nil
+	}
+
+	node, err := m.GetComputeDomainNodeStatusInfo(ctx, m.config.flags.nodeName)
+	if err != nil {
+		return fmt.Errorf("error getting ComputeDomain node status info: %w", err)
+	}
+
+	newCD := cd.DeepCopy()
+	newCD.Status.Nodes = append(newCD.Status.Nodes, node)
+	newCD.Status.Status = nvapi.ComputeDomainStatusNotReady
+	if _, err = m.config.clientsets.Nvidia.ResourceV1beta1().ComputeDomains(newCD.Namespace).UpdateStatus(ctx, newCD, metav1.UpdateOptions{}); err != nil {
+		return fmt.Errorf("error updating nodes in ComputeDomain status: %w", err)
+	}
+
+	return nil
+}
+
+func (m *ComputeDomainManager) GetComputeDomainNodeStatusInfo(ctx context.Context, nodeName string) (*nvapi.ComputeDomainNode, error) {
+	node, err := m.config.clientsets.Core.CoreV1().Nodes().Get(ctx, nodeName, metav1.GetOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("error getting Node '%s': %w", nodeName, err)
+	}
+
+	var ipAddress string
+	for _, addr := range node.Status.Addresses {
+		if addr.Type == corev1.NodeInternalIP {
+			ipAddress = addr.Address
+			break
+		}
+	}
+
+	n := &nvapi.ComputeDomainNode{
+		Name:      nodeName,
+		IPAddress: ipAddress,
+		CliqueID:  m.cliqueID,
+	}
+
+	return n, nil
+}
+
 func (m *ComputeDomainManager) GetNodeIPs(ctx context.Context, cdUID string) ([]string, error) {
 	cd, err := m.GetComputeDomain(ctx, cdUID)
 	if err != nil {
@@ -264,6 +326,10 @@ func (m *ComputeDomainManager) GetNodeIPs(ctx context.Context, cdUID string) ([]
 
 	if cd.Status.Nodes == nil {
 		return nil, fmt.Errorf("error getting status of nodes in ComputeDomain: %w", err)
+	}
+
+	if len(cd.Status.Nodes) != cd.Spec.NumNodes {
+		return nil, fmt.Errorf("not all nodes populated in ComputeDomain status yet")
 	}
 
 	var ips []string

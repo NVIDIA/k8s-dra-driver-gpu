@@ -32,10 +32,6 @@ import (
 	configapi "github.com/NVIDIA/k8s-dra-driver-gpu/api/nvidia.com/resource/v1beta1"
 )
 
-const (
-	CliqueIDLabelKey = "nvidia.com/gpu.clique"
-)
-
 type OpaqueDeviceConfig struct {
 	Requests []string
 	Config   runtime.Object
@@ -370,6 +366,11 @@ func (s *DeviceState) applyComputeDomainDaemonConfig(ctx context.Context, config
 
 	if len(allocatableDevices) != 1 {
 		return nil, fmt.Errorf("only expected 1 device for requests '%v' in claim '%v'", requests, claim.UID)
+	}
+
+	// Add info about this node to the ComputeDomain status.
+	if err := s.computeDomainManager.AddNodeStatusToComputeDomain(ctx, config.DomainID); err != nil {
+		return nil, fmt.Errorf("error adding node status to ComputeDomain: %w", err)
 	}
 
 	// Declare a device group state object to populate.

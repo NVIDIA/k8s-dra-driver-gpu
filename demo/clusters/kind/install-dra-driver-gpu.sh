@@ -24,7 +24,7 @@ source "${CURRENT_DIR}/scripts/common.sh"
 
 kubectl label node -l node-role.x-k8s.io/worker --overwrite nvidia.com/gpu.present=true
 
-helm upgrade -i --create-namespace --namespace nvidia nvidia-dra-driver-gpu ${PROJECT_DIR}/deployments/helm/nvidia-dra-driver-gpu \
+helm upgrade -i --create-namespace --namespace nvidia-dra-driver-gpu nvidia-dra-driver-gpu ${PROJECT_DIR}/deployments/helm/nvidia-dra-driver-gpu \
     ${NVIDIA_CTK_PATH:+--set nvidiaCtkPath=${NVIDIA_CTK_PATH}} \
     ${NVIDIA_DRIVER_ROOT:+--set nvidiaDriverRoot=${NVIDIA_DRIVER_ROOT}} \
     ${MASK_NVIDIA_DRIVER_PARAMS:+--set maskNvidiaDriverParams=${MASK_NVIDIA_DRIVER_PARAMS}} \
@@ -34,5 +34,5 @@ helm upgrade -i --create-namespace --namespace nvidia nvidia-dra-driver-gpu ${PR
 set +x
 printf '\033[0;32m'
 echo "Driver installation complete:"
-kubectl get pod -n nvidia
+kubectl get pod -n nvidia-dra-driver-gpu
 printf '\033[0m'
