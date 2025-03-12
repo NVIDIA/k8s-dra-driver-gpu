@@ -37,11 +37,12 @@ allowDefaultNamespace: false
 
 imagePullSecrets: []
 image:
-  repository: nvcr.io/nvidia/cloud-native/k8s-dra-driver-gpu
+  repository: nvcr.io/nvidia/k8s-dra-driver-gpu
   pullPolicy: IfNotPresent
   # Note: an empty string is translated to the `appVersion` string from
   # the Helm chart YAML (effectively implementing the default value to be
-  # the current version).
+  # the current version). Also note that a "v" is prefixed to the
+  # `appVersion` value.
   tag: ""
 
 serviceAccount:

@@ -1,6 +1,21 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 apiVersion: v2
 name: nvidia-dra-driver-gpu
-description: Dynamic Resource Allocation (DRA) for NVIDIA GPUs in Kubernetes
+description: Official Helm chart for the Kubernetes DRA driver for NVIDIA GPUs
 
 # A chart can be either an 'application' or a 'library' chart.
 #
@@ -24,6 +39,8 @@ version: 25.3.0-rc.1
 # follow Semantic Versioning. They should reflect the version the application is using.
 # It is recommended to use it with quotes.
 
-# Note(JP): this currently defines the default `tag` value in a k8s
-# image specification. A "v" is prefixed in our template helpers to ensure consistency.
+# Note(jgehrcke): templating logic consumes `appVersion` for building the default
+# `tag` value used in a k8s image specification. That logic expects the version
+# number below to not have a "v" prefix (a "v" is added by said logic to yield a
+# valid image reference).
 appVersion: "25.3.0-rc.1"
