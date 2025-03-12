@@ -99,8 +99,6 @@ func (m *ComputeDomainManager) Start(ctx context.Context) (rerr error) {
 
 	_, err = m.informer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj any) {
-			cd := obj.(*nvapi.ComputeDomain)
-			klog.Infof("ComputeDomain %s/%s added to work queue", cd.Namespace, cd.Name)
 			m.config.workQueue.Enqueue(obj, m.onAddOrUpdate)
 		},
 		UpdateFunc: func(oldObj, newObj any) {
