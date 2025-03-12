@@ -1,8 +1,8 @@
 # nvidia-dra-driver-gpu
 
-Dynamic Resource Allocation (DRA) for NVIDIA GPUs in Kubernetes
+Official Helm chart for the Kubernetes DRA driver for NVIDIA GPUs
 
-![Version: v25.3.0](https://img.shields.io/badge/Version-v25.3.0-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: v25.3.0](https://img.shields.io/badge/AppVersion-v25.3.0-informational?style=flat-square)
+![Version: 25.3.0-rc.1](https://img.shields.io/badge/Version-25.3.0--rc.1-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: 25.3.0-rc.1](https://img.shields.io/badge/AppVersion-25.3.0--rc.1-informational?style=flat-square)
 
 ## Dynamic Resource Allocation (DRA) for NVIDIA GPUs in Kubernetes
 
@@ -52,7 +52,7 @@ The [package-helm-charts.sh](./hack/package-helm-charts) helper script can be us
 | fullnameOverride | string | `""` |  |
 | gpuResourcesEnabledOverride | bool | `false` |  |
 | image.pullPolicy | string | `"IfNotPresent"` |  |
-| image.repository | string | `"nvcr.io/nvidia/cloud-native/k8s-dra-driver-gpu"` |  |
+| image.repository | string | `"nvcr.io/nvidia/k8s-dra-driver-gpu"` |  |
 | image.tag | string | `""` |  |
 | imagePullSecrets | list | `[]` |  |
 | kubeletPlugin.affinity.nodeAffinity.requiredDuringSchedulingIgnoredDuringExecution.nodeSelectorTerms[0].matchExpressions[0].key | string | `"feature.node.kubernetes.io/pci-10de.present"` |  |
