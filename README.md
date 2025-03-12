@@ -68,15 +68,15 @@ This also makes the built images available to the `kind` cluster.
 
 We now install the NVIDIA GPU DRA driver:
 ```console
-./demo/clusters/kind/install-dra-driver.sh
+./demo/clusters/kind/install-dra-driver-gpu.sh
 ```
 
-This should show two pods running in the `nvidia` namespace:
+This should show two pods running in the `nvidia-dra-driver-gpu` namespace:
 ```console
-kubectl get pods -n nvidia
+kubectl get pods -n nvidia-dra-driver-gpu
 ```
 ```
-$ kubectl get pods -n nvidia
+$ kubectl get pods -n nvidia-dra-driver-gpu 
 NAME                                                READY   STATUS    RESTARTS   AGE
 nvidia-dra-driver-gpu-controller-697898fc6b-g85zx   1/1     Running   0          40s
 nvidia-dra-driver-gpu-kubelet-plugin-kkwf7          2/2     Running   0          40s
