@@ -14,7 +14,7 @@
 
 apiVersion: v2
 name: nvidia-dra-driver-gpu
-description: A Helm chart for Kubernetes
+description: A Helm chart for the NVIDIA DRA Driver for Kubernetes
 
 # A chart can be either an 'application' or a 'library' chart.
 #
