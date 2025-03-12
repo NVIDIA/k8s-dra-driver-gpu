@@ -76,7 +76,7 @@ This should show two pods running in the `nvidia-dra-driver-gpu` namespace:
 kubectl get pods -n nvidia-dra-driver-gpu
 ```
 ```
-$ kubectl get pods -n nvidia-dra-driver-gpu 
+$ kubectl get pods -n nvidia-dra-driver-gpu
 NAME                                                READY   STATUS    RESTARTS   AGE
 nvidia-dra-driver-gpu-controller-697898fc6b-g85zx   1/1     Running   0          40s
 nvidia-dra-driver-gpu-kubelet-plugin-kkwf7          2/2     Running   0          40s
