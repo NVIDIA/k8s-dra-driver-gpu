@@ -22,6 +22,7 @@ import (
 	"sync"
 	"time"
 
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
@@ -64,7 +65,7 @@ func NewComputeDomainManager(config *ManagerConfig) *ComputeDomainManager {
 	factory := nvinformers.NewSharedInformerFactory(config.clientsets.Nvidia, informerResyncPeriod)
 	informer := factory.Resource().V1beta1().ComputeDomains().Informer()
 
-	klog.Infof("Creating new ComputeDomainManager with config %+v", config)
+	klog.Infof("Creating new ComputeDomainManager for %s/%s", config.driverName, config.driverNamespace)
 	m := &ComputeDomainManager{
 		config:   config,
 		factory:  factory,
@@ -149,7 +150,7 @@ func (m *ComputeDomainManager) Get(uid string) (*nvapi.ComputeDomain, error) {
 		return nil, fmt.Errorf("error retrieving ComputeDomain by UID: %w", err)
 	}
 	if len(cds) == 0 {
-		klog.Infof("No ComputeDomain found with UID: %s", uid)
+		klog.V(2).Infof("No ComputeDomain found with UID: %s", uid)
 		return nil, nil
 	}
 	if len(cds) != 1 {
@@ -169,7 +170,7 @@ func (m *ComputeDomainManager) RemoveFinalizer(ctx context.Context, uid string) 
 		return fmt.Errorf("error retrieving ComputeDomain: %w", err)
 	}
 	if cd == nil {
-		klog.Infof("ComputeDomain with UID %s not found, nothing to do", uid)
+		klog.V(2).Infof("ComputeDomain with UID %s not found, nothing to do", uid)
 		return nil
 	}
 
@@ -185,14 +186,29 @@ func (m *ComputeDomainManager) RemoveFinalizer(ctx context.Context, uid string) 
 		}
 	}
 	if len(cd.Finalizers) == len(newCD.Finalizers) {
-		klog.Infof("Finalizer not found on ComputeDomain %s/%s, nothing to do", cd.Namespace, cd.Name)
+		klog.V(2).Infof("Finalizer not found on ComputeDomain %s/%s, nothing to do", cd.Namespace, cd.Name)
 		return nil
 	}
 
 	if _, err = m.config.clientsets.Nvidia.ResourceV1beta1().ComputeDomains(cd.Namespace).Update(ctx, newCD, metav1.UpdateOptions{}); err != nil {
 		return fmt.Errorf("error updating ComputeDomain: %w", err)
 	}
+
 	return nil
+}
+
+// logNodesWithComputeDomainLabel logs nodes that have a ComputeDomain label and returns their names.
+func (m *ComputeDomainManager) logNodesWithComputeDomainLabel(nodes *corev1.NodeList, cdUID string) []string {
+	if len(nodes.Items) == 0 {
+		klog.Infof("No nodes found with label for ComputeDomain with UID %s", cdUID)
+		return nil
+	}
+
+	nodeNames := []string{}
+	for _, node := range nodes.Items {
+		nodeNames = append(nodeNames, node.Name)
+	}
+	return nodeNames
 }
 
 // AssertWorkloadsCompletes ensures that all workloads asssociated with a ComputeDomain have completed.
@@ -219,38 +235,9 @@ func (m *ComputeDomainManager) AssertWorkloadsCompleted(ctx context.Context, cdU
 	}
 
 	if len(nodes.Items) != 0 {
-		// show nodes with labels
-		nodeNames := []string{}
-		for _, node := range nodes.Items {
-			nodeNames = append(nodeNames, node.Name)
-		}
-		klog.Errorf("Found %d nodes with label for ComputeDomain with UID  %s: %v", len(nodes.Items), cdUID, nodeNames)
-		return fmt.Errorf("nodes exist with label for ComputeDomain %s", cdUID)
+		nodeNames := m.logNodesWithComputeDomainLabel(nodes, cdUID)
+		return fmt.Errorf("nodes %v with label for ComputeDomain %s", nodeNames, cdUID)
 	}
-
-	// check if all resource claims for workloads are gone
-	cd, err := m.Get(cdUID)
-	if err != nil {
-		return fmt.Errorf("error retrieving ComputeDomain: %w", err)
-	}
-
-	resourceClaims, err := m.config.clientsets.Core.ResourceV1beta1().ResourceClaims(cd.Namespace).List(ctx, metav1.ListOptions{
-		LabelSelector: metav1.FormatLabelSelector(labelSelector),
-	})
-	if err != nil {
-		return fmt.Errorf("error retrieving ResourceClaims: %w", err)
-	}
-
-	if len(resourceClaims.Items) != 0 {
-		claimNames := []string{}
-		for _, claim := range resourceClaims.Items {
-			claimNames = append(claimNames, claim.Name)
-		}
-		klog.Errorf("Found %d ResourceClaims for ComputeDomain with UID %s: %v",
-			len(resourceClaims.Items), cdUID, claimNames)
-		return fmt.Errorf("ResourceClaims exist for ComputeDomain %s", cdUID)
-	}
-
 	return nil
 }
 
