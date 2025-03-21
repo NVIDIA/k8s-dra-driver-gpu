@@ -26,6 +26,7 @@ type CleanupManager[T metav1.Object] struct {
 }
 
 func NewCleanupManager[T metav1.Object](informer cache.SharedIndexInformer, getComputeDomain GetComputeDomainFunc, callback CleanupCallback[T]) *CleanupManager[T] {
+	klog.Infof("Creating new Cleanup Manager for %T", *new(T))
 	return &CleanupManager[T]{
 		informer:         informer,
 		getComputeDomain: getComputeDomain,
@@ -61,19 +62,25 @@ func (m *CleanupManager[T]) periodicCleanup(ctx context.Context) {
 		case <-ticker.C:
 			klog.V(6).Infof("Running periodic sync to remove %T objects owned by stale ComputeDomain", *new(T))
 			store := m.informer.GetStore()
-			for _, item := range store.List() {
+			items := store.List()
+			klog.V(6).Infof("Found %d items to check for cleanup", len(items))
+
+			for _, item := range items {
 				obj, ok := item.(T)
 				if !ok {
+					klog.V(6).Infof("Expected object %T but got %T, skipping..", *new(T), obj)
 					continue
 				}
 
 				labels := obj.GetLabels()
 				if labels == nil {
+					klog.V(6).Infof("Object %T has no labels, skipping..", *new(T))
 					continue
 				}
 
 				uid, exists := labels[computeDomainLabelKey]
 				if !exists {
+					klog.V(6).Infof("Object %T does not have ComputeDomain label, skipping..", *new(T))
 					continue
 				}
 
@@ -84,6 +91,7 @@ func (m *CleanupManager[T]) periodicCleanup(ctx context.Context) {
 				}
 
 				if computeDomain != nil {
+					klog.V(6).Infof("ComputeDomain with UID %s still exists, skipping cleanup", uid)
 					continue
 				}
 

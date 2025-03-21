@@ -86,6 +86,7 @@ func NewDaemonSetManager(config *ManagerConfig, getComputeDomain GetComputeDomai
 
 	informer := factory.Apps().V1().DaemonSets().Informer()
 
+	klog.Infof("Creating new DaemonSetManager for driver %s/%s", config.driverNamespace, config.driverName)
 	m := &DaemonSetManager{
 		config:           config,
 		getComputeDomain: getComputeDomain,
@@ -162,7 +163,7 @@ func (m *DaemonSetManager) Create(ctx context.Context, namespace string, cd *nva
 		return nil, fmt.Errorf("error retrieving DaemonSet: %w", err)
 	}
 	if len(ds) > 1 {
-		return nil, fmt.Errorf("more than one DaemonSet found with same ComputeDomain UID")
+		return nil, fmt.Errorf("more than one DaemonSet found with same ComputeDomain UID %s", cd.UID)
 	}
 	if len(ds) == 1 {
 		return ds[0], nil
@@ -209,6 +210,7 @@ func (m *DaemonSetManager) Create(ctx context.Context, namespace string, cd *nva
 		return nil, fmt.Errorf("error creating DaemonSet: %w", err)
 	}
 
+	klog.V(2).Infof("Successfully created DaemonSet %s/%s for ComputeDomain %s/%s", d.Namespace, d.Name, cd.Namespace, cd.Name)
 	return d, nil
 }
 
@@ -218,9 +220,10 @@ func (m *DaemonSetManager) Delete(ctx context.Context, cdUID string) error {
 		return fmt.Errorf("error retrieving DaemonSet: %w", err)
 	}
 	if len(ds) > 1 {
-		return fmt.Errorf("more than one DaemonSet found with same ComputeDomain UID")
+		return fmt.Errorf("more than one DaemonSet found with same ComputeDomain UID %s", cdUID)
 	}
 	if len(ds) == 0 {
+		klog.V(2).Infof("No DaemonSet found for ComputeDomain UID %s, nothing to delete", cdUID)
 		return nil
 	}
 
@@ -231,6 +234,7 @@ func (m *DaemonSetManager) Delete(ctx context.Context, cdUID string) error {
 	}
 
 	if d.GetDeletionTimestamp() != nil {
+		klog.V(2).Infof("DaemonSet %s/%s is already marked for deletion", d.Namespace, d.Name)
 		return nil
 	}
 
@@ -239,6 +243,7 @@ func (m *DaemonSetManager) Delete(ctx context.Context, cdUID string) error {
 		return fmt.Errorf("erroring deleting DaemonSet: %w", err)
 	}
 
+	klog.V(2).Infof("Successfully deleted DaemonSet %s/%s for ComputeDomain UID %s", d.Namespace, d.Name, cdUID)
 	return nil
 }
 
@@ -271,6 +276,7 @@ func (m *DaemonSetManager) removeFinalizer(ctx context.Context, cdUID string) er
 		return fmt.Errorf("more than one DaemonSet found with same ComputeDomain UID")
 	}
 	if len(ds) == 0 {
+		klog.V(2).Infof("No DaemonSet found for ComputeDomain UID %s, nothing to remove finalizer from", cdUID)
 		return nil
 	}
 
@@ -288,6 +294,7 @@ func (m *DaemonSetManager) removeFinalizer(ctx context.Context, cdUID string) er
 		}
 	}
 	if len(d.Finalizers) == len(newD.Finalizers) {
+		klog.V(2).Infof("Finalizer %s not found on DaemonSet %s/%s", computeDomainFinalizer, d.Namespace, d.Name)
 		return nil
 	}
 
@@ -322,10 +329,12 @@ func (m *DaemonSetManager) onAddOrUpdate(ctx context.Context, obj any) error {
 		return fmt.Errorf("error getting ComputeDomain: %w", err)
 	}
 	if cd == nil {
+		klog.V(2).Info("No ComputeDomain found, skipping processing")
 		return nil
 	}
 
 	if int(d.Status.NumberReady) != cd.Spec.NumNodes {
+		klog.V(2).Infof("DaemonSet %s/%s has %d ready nodes, expecting %d, waiting for all nodes to be ready", d.Namespace, d.Name, d.Status.NumberReady, cd.Spec.NumNodes)
 		return nil
 	}
 
