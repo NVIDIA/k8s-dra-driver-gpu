@@ -236,31 +236,29 @@ func (l deviceLib) getDeviceMajor(name string) (int, error) {
 	foundCharDevices := false
 
 	for scanner.Scan() {
-		line := scanner.Text()
+		// remove any whitespace
+		line := strings.TrimSpace(scanner.Text())
 
 		// Ignore empty lines
 		if line == "" {
 			continue
 		}
 
-		// Check for any line with text followed by a colon (header)
-		if strings.Contains(line, ":") {
-			// Stop if we've already found the character devices section and reached another section
-			if foundCharDevices {
-				break
-			}
-			// Check if we entered the character devices section
-			if strings.HasSuffix(line, ":") && strings.HasPrefix(line, "Character") {
-				foundCharDevices = true
-			}
-			// Continue to the next line, regardless
+		// Detect start of Character devices section
+		if strings.HasPrefix(line, "Character") && strings.HasSuffix(line, ":") {
+			foundCharDevices = true
 			continue
 		}
 
-		// If we've passed the character devices section, check for nvidiaCapsImexChannelsDeviceName
+		// Stop searching if we've found character devices and now hit another section header
+		if foundCharDevices && strings.HasSuffix(line, ":") {
+			break
+		}
+
+		// If we're in the character devices section
 		if foundCharDevices {
 			parts := strings.Fields(line)
-			if len(parts) == 2 && parts[1] == name {
+			if len(parts) >= 2 && parts[1] == name {
 				return strconv.Atoi(parts[0])
 			}
 		}
