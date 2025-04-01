@@ -89,6 +89,7 @@ func newBaseResourceClaimTemplateManager(config *ManagerConfig, getComputeDomain
 
 	informer := factory.Resource().V1beta1().ResourceClaimTemplates().Informer()
 
+	klog.Infof("Creating new ResourceClaimTemplateManager for driver %s/%s", config.driverNamespace, config.driverName)
 	m := &BaseResourceClaimTemplateManager{
 		config:           config,
 		getComputeDomain: getComputeDomain,
@@ -167,6 +168,7 @@ func (m *BaseResourceClaimTemplateManager) Create(ctx context.Context, templateP
 		return nil, fmt.Errorf("error creating ResourceClaimTemplate: %w", err)
 	}
 
+	klog.V(2).Infof("Successfully created ResourceClaimTemplate %s/%s for ComputeDomain %s/%s", rct.Namespace, rct.Name, m.config.driverNamespace, m.config.driverName)
 	return rct, nil
 }
 
@@ -179,12 +181,14 @@ func (m *BaseResourceClaimTemplateManager) Delete(ctx context.Context, cdUID str
 		return fmt.Errorf("more than one ResourceClaimTemplate found with same ComputeDomain UID")
 	}
 	if len(rcts) == 0 {
+		klog.V(2).Infof("No ResourceClaimTemplate found for ComputeDomain UID %s, nothing to delete", cdUID)
 		return nil
 	}
 
 	rct := rcts[0]
 
 	if rct.GetDeletionTimestamp() != nil {
+		klog.V(2).Infof("ResourceClaimTemplate %s/%s is already marked for deletion", rct.Namespace, rct.Name)
 		return nil
 	}
 
@@ -193,6 +197,7 @@ func (m *BaseResourceClaimTemplateManager) Delete(ctx context.Context, cdUID str
 		return fmt.Errorf("erroring deleting ResourceClaimTemplate: %w", err)
 	}
 
+	klog.V(2).Infof("Successfully deleted ResourceClaimTemplate %s/%s for ComputeDomain UID %s", rct.Namespace, rct.Name, cdUID)
 	return nil
 }
 
@@ -205,6 +210,7 @@ func (m *BaseResourceClaimTemplateManager) RemoveFinalizer(ctx context.Context, 
 		return fmt.Errorf("more than one ResourceClaimTemplate found with same ComputeDomain UID")
 	}
 	if len(rcts) == 0 {
+		klog.V(2).Infof("No ResourceClaimTemplate found for ComputeDomain UID %s, nothing to remove finalizer from", cdUID)
 		return nil
 	}
 
@@ -222,6 +228,7 @@ func (m *BaseResourceClaimTemplateManager) RemoveFinalizer(ctx context.Context, 
 		}
 	}
 	if len(rct.Finalizers) == len(newRCT.Finalizers) {
+		klog.V(2).Infof("Finalizer %s not found on DaemonSet %s/%s", computeDomainFinalizer, rct.Namespace, rct.Name)
 		return nil
 	}
 
@@ -286,6 +293,7 @@ func (m *DaemonSetResourceClaimTemplateManager) Create(ctx context.Context, name
 		return nil, fmt.Errorf("more than one ResourceClaimTemplate found with same ComputeDomain UID")
 	}
 	if len(rcts) == 1 {
+		klog.V(2).Infof("Found ResourceClaimTemplate %s/%s for ComputeDomain UID %s", rcts[0].Namespace, rcts[0].Name, cd.UID)
 		return rcts[0], nil
 	}
 
@@ -310,6 +318,7 @@ func (m *DaemonSetResourceClaimTemplateManager) Create(ctx context.Context, name
 		return nil, fmt.Errorf("error creating ResourceClaimTemplate from base: %w", err)
 	}
 
+	klog.V(2).Infof("Successfully created ResourceClaimTemplate from base %s/%s for ComputeDomain %s/%s", rct.Namespace, rct.Name, cd.Namespace, cd.Name)
 	return rct, nil
 }
 
@@ -346,6 +355,7 @@ func (m *WorkloadResourceClaimTemplateManager) Create(ctx context.Context, names
 		return nil, fmt.Errorf("more than one ResourceClaimTemplate found with same ComputeDomain UID")
 	}
 	if len(rcts) == 1 {
+		klog.V(2).Infof("Found ResourceClaimTemplate %s/%s for ComputeDomain UID %s", rcts[0].Namespace, rcts[0].Name, cd.UID)
 		return rcts[0], nil
 	}
 
