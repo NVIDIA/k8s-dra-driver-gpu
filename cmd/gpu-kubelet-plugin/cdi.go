@@ -159,8 +159,8 @@ func (cdi *CDIHandler) CreateStandardDeviceSpecFile(allocatable AllocatableDevic
 	// Make sure that NVIDIA_VISIBLE_DEVICES is set to void to avoid the
 	// nvidia-container-runtime honoring it in addition to the underlying
 	// runtime honoring CDI.
-	commonEdits.ContainerEdits.Env = append(
-		commonEdits.ContainerEdits.Env,
+	commonEdits.Env = append(
+		commonEdits.Env,
 		"NVIDIA_VISIBLE_DEVICES=void")
 
 	// Generate device specs for all full GPUs and MIG devices.
