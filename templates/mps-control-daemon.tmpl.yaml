@@ -20,7 +20,7 @@ spec:
       hostPID: true
       containers:
       - name: mps-control-daemon
-        image: ubuntu:22.04
+        image: nvcr.io/nvidia/cuda:12.8.1-base-ubuntu22.04
         securityContext:
           privileged: true
         command: [chroot, /driver-root, sh, -c]
