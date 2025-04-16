@@ -54,9 +54,6 @@ func cleanupCRDs() {
 	crds := []string{
 		"computedomains.resource.nvidia.com",
 	}
-	if EnableGFD {
-		crds = append(crds, "nodefeatures.nfd.k8s-sigs.io", "nodefeaturerules.nfd.k8s-sigs.io")
-	}
 
 	for _, crd := range crds {
 		err := extClient.ApiextensionsV1().CustomResourceDefinitions().Delete(ctx, crd, metav1.DeleteOptions{})
@@ -252,13 +249,10 @@ func cleanupNodeLabels() error {
 			changed = true
 		}
 
-		// Conditionally remove additional labels if EnableGFD is true.
-		if EnableGFD {
-			for key := range node.Labels {
-				if strings.HasPrefix(key, "feature.node.kubernetes.io/") || strings.HasPrefix(key, "nvidia.com/") {
-					delete(node.Labels, key)
-					changed = true
-				}
+		for key := range node.Labels {
+			if strings.HasPrefix(key, "nvidia.com/") {
+				delete(node.Labels, key)
+				changed = true
 			}
 		}
 

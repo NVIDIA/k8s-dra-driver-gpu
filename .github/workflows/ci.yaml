@@ -31,3 +31,13 @@ jobs:
     secrets: inherit
     with:
       version: ${{ needs.basic.outputs.version }}
+
+  e2e-test:
+    needs:
+    - image
+    - basic
+    secrets: inherit
+    uses: ./.github/workflows/e2e.yaml
+    with:
+      version: ${{ needs.basic.outputs.version }}
+      golang_version: ${{ needs.basic.outputs.golang_version }}

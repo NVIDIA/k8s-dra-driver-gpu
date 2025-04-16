@@ -19,6 +19,7 @@ package e2e
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"os"
@@ -30,7 +31,6 @@ import (
 
 	v1beta1 "github.com/NVIDIA/k8s-dra-driver-gpu/pkg/nvidia.com/clientset/versioned"
 	"github.com/NVIDIA/k8s-test-infra/pkg/diagnostics"
-	"helm.sh/helm/v3/pkg/repo"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -41,6 +41,7 @@ import (
 	extclient "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/rand"
 	"k8s.io/apimachinery/pkg/util/wait"
 	clientset "k8s.io/client-go/kubernetes"
@@ -76,7 +77,6 @@ var (
 	resourceClient *v1beta1.Clientset
 
 	testNamespace *corev1.Namespace // Every test has at least one namespace unless creation is skipped
-	EnableGFD     bool
 
 	// Helm
 	helmClient      helm.Client
@@ -134,8 +134,8 @@ var _ = BeforeSuite(func() {
 	helmReleaseName = "nvidia-dra-driver-gpu-e2e-test" + rand.String(5)
 	getHelmClient()
 
-	// Deploy GFD + NFD
-	deployDependencies(ctx)
+	// Label the nodes with nvidia.com/gpu.present=true
+	setNodeLabels(ctx)
 
 	// Set Helm values options
 	setHelmValuesOptions()
@@ -214,7 +214,7 @@ func getTestEnv() {
 	HelmChart = os.Getenv("HELM_CHART")
 	Expect(HelmChart).NotTo(BeEmpty(), "HELM_CHART must be set")
 
-	LogArtifactDir = os.Getenv("LOG_ARTIFACT_DIR")
+	LogArtifactDir = os.Getenv("LOG_ARTIFACTS_DIR")
 
 	ImageRepo = os.Getenv("E2E_IMAGE_REPO")
 	Expect(ImageRepo).NotTo(BeEmpty(), "IMAGE_REPO must be set")
@@ -223,13 +223,9 @@ func getTestEnv() {
 	Expect(ImageTag).NotTo(BeEmpty(), "IMAGE_TAG must be set")
 
 	ImagePullPolicy = os.Getenv("E2E_IMAGE_PULL_POLICY")
-	Expect(ImagePullPolicy).NotTo(BeEmpty(), "IMAGE_PULL_POLICY must be set")
-
-	EnableGFD = getBoolEnvVar("ENABLE_GFD", true)
-	Expect(EnableGFD).NotTo(BeNil(), "ENABLE_GFD must be set")
+	Expect(ImagePullPolicy).NotTo(BeEmpty(), "E2E_IMAGE_PULL_POLICY must be set")
 
 	HostManagedDrivers = getBoolEnvVar("E2E_HOST_MANAGED_DRIVERS", true)
-	Expect(HostManagedDrivers).NotTo(BeNil(), "E2E_HOST_MANAGED_DRIVERS must be set")
 
 	CollectLogsFrom = os.Getenv("COLLECT_LOGS_FROM")
 
@@ -306,42 +302,32 @@ func CreateTestingNS(baseName string, c clientset.Interface, labels map[string]s
 	return got, nil
 }
 
-// deployDependencies installs all the dependent helm charts
-func deployDependencies(ctx context.Context) {
-	// Install dependencies if not told to skip
-	if EnableGFD {
-		// Add or Update Helm repo
-		helmRepo := repo.Entry{
-			Name: "gfd",
-			URL:  "https://nvidia.github.io/k8s-device-plugin",
-		}
-		err := helmClient.AddOrUpdateChartRepo(helmRepo)
-		Expect(err).NotTo(HaveOccurred())
-
-		err = helmClient.UpdateChartRepos()
-		Expect(err).NotTo(HaveOccurred())
-
-		values := helmValues.Options{
-			Values: []string{
-				"gfd.enabled=true",
-				"nfd.enabled=true",
-				"devicePlugin.enabled=false",
-			},
-		}
-
-		chartSpec := &helm.ChartSpec{
-			ReleaseName:     "gfd",
-			ChartName:       "gfd/nvidia-device-plugin",
-			Namespace:       testNamespace.Name,
-			CreateNamespace: false,
-			ValuesOptions:   values,
-			Wait:            true,
-			Timeout:         5 * time.Minute,
-			CleanupOnFail:   true,
-		}
-		_, err = helmClient.InstallOrUpgradeChart(ctx, chartSpec, nil)
-		Expect(err).NotTo(HaveOccurred())
+// setNodeLabels sets the node labels for the test
+func setNodeLabels(ctx context.Context) error {
+	nodes, err := clientSet.CoreV1().Nodes().List(ctx, metav1.ListOptions{})
+	if err != nil {
+		log.Fatalf("list nodes: %v", err)
 	}
+
+	// static patch payload (JSON MergePatch)
+	patch, _ := json.Marshal(map[string]any{
+		"metadata": map[string]any{
+			"labels": map[string]string{
+				"nvidia.com/gpu.present": "true",
+			},
+		},
+	})
+
+	for _, n := range nodes.Items {
+		_, err := clientSet.CoreV1().
+			Nodes().
+			Patch(ctx, n.Name, types.MergePatchType, patch, metav1.PatchOptions{})
+		if err != nil {
+			return fmt.Errorf("failed to patch node %s: %v", n.Name, err)
+		}
+	}
+
+	return nil
 }
 
 // setHelmValuesOptions sets the Helm values options
