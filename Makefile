@@ -31,7 +31,7 @@ CMDS := $(patsubst ./cmd/%/,%,$(sort $(dir $(wildcard ./cmd/*/))))
 CMD_TARGETS := $(patsubst %,cmd-%, $(CMDS))
 
 CHECK_TARGETS := golangci-lint check-generate
-MAKE_TARGETS := binaries build build-image check fmt lint-internal test examples cmds coverage generate vendor check-modules $(CHECK_TARGETS)
+MAKE_TARGETS := binaries build build-image check fmt lint-internal test test-e2e ginkgo examples cmds coverage generate vendor check-modules $(CHECK_TARGETS)
 
 TARGETS := $(MAKE_TARGETS) $(CMD_TARGETS)
 
@@ -46,6 +46,8 @@ else
 CLI_VERSION = $(VERSION)
 endif
 CLI_VERSION_PACKAGE = $(MODULE)/internal/info
+
+GINKGO_ARGS ?=
 
 binaries: cmds
 ifneq ($(PREFIX),)
@@ -98,6 +100,13 @@ test: build cmds
 coverage: test
 	cat $(COVERAGE_FILE) | grep -v "_mock.go" > $(COVERAGE_FILE).no-mocks
 	go tool cover -func=$(COVERAGE_FILE).no-mocks
+
+ginkgo:
+	mkdir -p $(CURDIR)/bin
+	GOBIN=$(CURDIR)/bin go install github.com/onsi/ginkgo/v2/ginkgo@latest
+
+test-e2e: ginkgo
+	./bin/ginkgo $(GINKGO_ARGS) -v --json-report $(LOG_ARTIFACTS_DIR)/ginkgo.json ./tests/e2e/...
 
 generate: generate-crds generate-informers fmt
 
