@@ -1,0 +1,48 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gpu-mutating-webhook
+  namespace: nvidia-dra-driver-gpu
+  labels:
+    app: gpu-mutating-webhook
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: gpu-mutating-webhook
+  template:
+    metadata:
+      labels:
+        app: gpu-mutating-webhook
+    spec:
+      nodeSelector:
+        kubernetes.io/hostname: sc-starwars-mab9-b00
+      serviceAccountName: nvidia-dra-driver-gpu-service-account
+      containers:
+      - name: webhook
+        image: localhost:5001/mutating-webhook:7.0
+        command: ["/usr/bin/gpu-mutating-webhook"]
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 8443
+          name: webhook-api
+        volumeMounts:
+        - name: webhook-tls
+          mountPath: /etc/webhook/tls
+          readOnly: true
+      volumes:
+      - name: webhook-tls
+        secret:
+          secretName: webhook-tls
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: gpu-mutating-webhook
+  namespace: nvidia-dra-driver-gpu
+spec:
+  selector:
+    app: gpu-mutating-webhook
+  ports:
+  - port: 443
+    targetPort: webhook-api
