@@ -362,6 +362,7 @@ gopkg.in/inf.v0
 gopkg.in/yaml.v3
 # k8s.io/api v0.32.0
 ## explicit; go 1.23.0
+k8s.io/api/admission/v1
 k8s.io/api/admissionregistration/v1
 k8s.io/api/admissionregistration/v1alpha1
 k8s.io/api/admissionregistration/v1beta1
