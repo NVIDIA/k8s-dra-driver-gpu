@@ -24,7 +24,6 @@ import (
 	"log"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strconv"
 	"testing"
 	"time"
@@ -93,7 +92,6 @@ var (
 	diagnosticsCollector *diagnostics.Diagnostic
 	CollectLogsFrom      string
 	LogArtifactDir       string
-	packagePath          string
 )
 
 func TestMain(t *testing.T) {
@@ -202,9 +200,6 @@ func getHelmClient() {
 func getTestEnv() {
 	defer GinkgoRecover()
 	var err error
-
-	_, thisFile, _, _ := runtime.Caller(0)
-	packagePath = filepath.Dir(thisFile)
 
 	Kubeconfig = os.Getenv("KUBECONFIG")
 	Expect(Kubeconfig).NotTo(BeEmpty(), "KUBECONFIG must be set")

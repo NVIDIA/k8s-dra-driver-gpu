@@ -124,21 +124,17 @@ var _ = Describe("K8S DRA GPU Driver", Ordered, func() {
 	When("running a pod that consumes a computeDomain", func() {
 		It("should be successful", func(ctx context.Context) {
 			By("Creating the resource claim template")
-			rct := newGpuResourceClaimTemplate("test-resourceclaim1", testNamespace.Name)
-			_, err := clientSet.ResourceV1beta1().ResourceClaimTemplates(testNamespace.Name).
-				Create(ctx, rct, metav1.CreateOptions{})
+			rct, err := CreateOrUpdateResourceClaimTemplatesFromFile(ctx, clientSet, "resourceclaimtemplate-1.yaml", testNamespace.Name)
 			Expect(err).NotTo(HaveOccurred())
 
 			By("Creating the computeDomain")
-			cd := newComputeDomain("test-computedomain1", testNamespace.Name)
-			_, err = resourceClient.ResourceV1beta1().ComputeDomains(testNamespace.Name).
-				Create(ctx, cd, metav1.CreateOptions{})
+			cd, err := CreateOrUpdateComputeDomainsFromFile(ctx, resourceClient, "computedomain-1.yaml", testNamespace.Name)
 			Expect(err).NotTo(HaveOccurred())
 
 			By("Verifying that expected resource claim templates exist")
 			expectedTemplates := []string{
-				rct.Name,
-				cd.Spec.Channel.ResourceClaimTemplate.Name,
+				rct[0],
+				cd[0],
 			}
 			for _, tmplName := range expectedTemplates {
 				Eventually(func() error {
@@ -161,26 +157,12 @@ var _ = Describe("K8S DRA GPU Driver", Ordered, func() {
 			}, 5*time.Minute, 10*time.Second).Should(BeTrue())
 
 			By("Creating the test pod")
-			pod := createPod(testNamespace.Name, "test-pod1")
-			pod.Spec.Containers[0].Command = []string{"bash", "-c"}
-			pod.Spec.Containers[0].Args = []string{"nvidia-smi -L; trap 'exit 0' TERM; sleep 9999 & wait"}
-			pod.Spec.Containers[0].Resources.Claims = []v1Core.ResourceClaim{
-				{Name: "gpu"},
-				{Name: "test-channel-0"},
-			}
-			pod.Spec.ResourceClaims = []v1Core.PodResourceClaim{
-				{Name: "gpu", ResourceClaimTemplateName: &rct.Name},
-				{Name: "test-channel-0", ResourceClaimTemplateName: &cd.Spec.Channel.ResourceClaimTemplate.Name},
-			}
-			pod.Spec.Tolerations = []v1Core.Toleration{
-				{Key: "nvidia.com/gpu", Operator: v1Core.TolerationOpExists, Effect: v1Core.TaintEffectNoSchedule},
-			}
-			_, err = clientSet.CoreV1().Pods(testNamespace.Name).Create(ctx, pod, metav1.CreateOptions{})
+			pod, err := CreateOrUpdatePodsFromFile(ctx, clientSet, "pod-1.yaml", testNamespace.Name)
 			Expect(err).NotTo(HaveOccurred())
 
 			By("Waiting for the test pod to be running")
 			Eventually(func() (v1Core.PodPhase, error) {
-				p, err := clientSet.CoreV1().Pods(testNamespace.Name).Get(ctx, pod.Name, metav1.GetOptions{})
+				p, err := clientSet.CoreV1().Pods(testNamespace.Name).Get(ctx, pod[0], metav1.GetOptions{})
 				if err != nil {
 					return "", err
 				}
@@ -189,14 +171,14 @@ var _ = Describe("K8S DRA GPU Driver", Ordered, func() {
 
 			By("Checking the test pod logs")
 			Eventually(func() bool {
-				podLogs, err := clientSet.CoreV1().Pods(testNamespace.Name).GetLogs(pod.Name, &v1Core.PodLogOptions{}).DoRaw(ctx)
+				podLogs, err := clientSet.CoreV1().Pods(testNamespace.Name).GetLogs(pod[0], &v1Core.PodLogOptions{}).DoRaw(ctx)
 				Expect(err).NotTo(HaveOccurred())
 				logs := string(podLogs)
 				return validatePodLogs(logs)
 			}, 5*time.Minute, 10*time.Second).Should(BeTrue())
 
 			By("Deleting the test1 resources")
-			err = cleanupTestResources(testNamespace.Name, pod.Name, cd.Name, rct.Name)
+			err = cleanupTestResources(testNamespace.Name, pod[0], cd[0], rct[0])
 			Expect(err).NotTo(HaveOccurred())
 		})
 	})

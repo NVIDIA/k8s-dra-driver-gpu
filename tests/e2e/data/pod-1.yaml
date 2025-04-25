@@ -1,0 +1,21 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: pod-e2e-1
+  labels:
+    app.nvidia.com: k8s-dra-driver-gpu-test-app
+spec:
+  containers:
+  - name: ctr
+    image: ubuntu:22.04
+    command: ["bash", "-c"]
+    args: ["nvidia-smi -L; trap 'exit 0' TERM; sleep 9999 & wait"]
+    resources:
+      claims:
+      - name: cd-e2e-1
+      - name: rct-e2e-1
+  resourceClaims:
+  - name: cd-e2e-1
+    resourceClaimTemplateName: cd-e2e-1
+  - name: rct-e2e-1
+    resourceClaimTemplateName: rct-e2e-1

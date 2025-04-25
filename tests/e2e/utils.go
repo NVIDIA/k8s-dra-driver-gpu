@@ -19,88 +19,28 @@ package e2e
 
 import (
 	"bufio"
+	"bytes"
+	"context"
+	"fmt"
+	"os"
+	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
 
 	"github.com/NVIDIA/k8s-dra-driver-gpu/api/nvidia.com/resource/v1beta1"
+	computeDomainV1beta1 "github.com/NVIDIA/k8s-dra-driver-gpu/pkg/nvidia.com/clientset/versioned"
+	"github.com/NVIDIA/k8s-dra-driver-gpu/pkg/nvidia.com/clientset/versioned/scheme"
 
 	v1Core "k8s.io/api/core/v1"
 	k8sV1beta1 "k8s.io/api/resource/v1beta1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	apiruntime "k8s.io/apimachinery/pkg/runtime"
+	clientset "k8s.io/client-go/kubernetes"
+	k8sscheme "k8s.io/client-go/kubernetes/scheme"
 )
 
-// newGpuResourceClaimTemplate returns a new ResourceClaimTemplate prepopulated
-func newGpuResourceClaimTemplate(name, namespace string) *k8sV1beta1.ResourceClaimTemplate {
-	return &k8sV1beta1.ResourceClaimTemplate{
-		TypeMeta: metav1.TypeMeta{
-			APIVersion: "resource.k8s.io/v1beta1",
-			Kind:       "ResourceClaimTemplate",
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      name,
-			Namespace: namespace,
-		},
-		Spec: k8sV1beta1.ResourceClaimTemplateSpec{
-			Spec: k8sV1beta1.ResourceClaimSpec{
-				Devices: k8sV1beta1.DeviceClaim{
-					Requests: []k8sV1beta1.DeviceRequest{
-						{
-							Name:            "gpu",
-							DeviceClassName: "gpu.nvidia.com",
-						},
-					},
-				},
-			},
-		},
-	}
-}
-
-// newComputeDomain returns a new ComputeDomain prepopulated
-func newComputeDomain(name, namespace string) *v1beta1.ComputeDomain {
-	return &v1beta1.ComputeDomain{
-		TypeMeta: metav1.TypeMeta{
-			APIVersion: "resource.k8s.io/v1beta1",
-			Kind:       "ComputeDomain",
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      name,
-			Namespace: namespace,
-		},
-		Spec: v1beta1.ComputeDomainSpec{
-			NumNodes: 1,
-			Channel: &v1beta1.ComputeDomainChannelSpec{
-				ResourceClaimTemplate: v1beta1.ComputeDomainResourceClaimTemplate{
-					Name: "test-channel-0",
-				},
-			},
-		},
-	}
-}
-
-// createPod creates a new Pod with the specified name and namespace
-func createPod(namespace, podName string) *v1Core.Pod {
-	// Define a minimal Pod spec.
-	return &v1Core.Pod{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      podName,
-			Namespace: namespace,
-			Labels: map[string]string{
-				"app.nvidia.com": "k8s-dra-driver-gpu-test-app",
-			},
-		},
-		Spec: v1Core.PodSpec{
-			Containers: []v1Core.Container{
-				{
-					Name:  "dra-test-container",
-					Image: "ubuntu:22.04",
-					Ports: []v1Core.ContainerPort{
-						{ContainerPort: 80},
-					},
-				},
-			},
-		},
-	}
-}
+var packagePath string
 
 // validatePodLogs checks if each non-empty line in the provided logs
 // matches the expected GPU log format:
@@ -127,4 +67,150 @@ func validatePodLogs(logs string) bool {
 		return false
 	}
 	return true
+}
+
+func CreateOrUpdateComputeDomainsFromFile(ctx context.Context, cli computeDomainV1beta1.Interface, filename, namespace string) ([]string, error) {
+	computeDomains, err := newComputeDomainFromFile(filepath.Join(packagePath, "data", filename))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create ComputeDomain from file: %w", err)
+	}
+
+	names := make([]string, len(computeDomains))
+	for i, computeDomain := range computeDomains {
+		computeDomain.Namespace = namespace
+
+		names[i] = computeDomain.Name
+
+		_, err := cli.ResourceV1beta1().ComputeDomains(namespace).Create(ctx, computeDomain, metav1.CreateOptions{})
+		if err != nil {
+			return nil, fmt.Errorf("failed to create ComputeDomain: %w", err)
+		}
+	}
+	return names, nil
+}
+
+func CreateOrUpdateResourceClaimTemplatesFromFile(ctx context.Context, cli clientset.Interface, filename, namespace string) ([]string, error) {
+	rcts, err := newResourceClaimTemplateFromFile(filepath.Join(packagePath, "data", filename))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create ResourceClaimTemplate from file: %w", err)
+	}
+
+	names := make([]string, len(rcts))
+	for i, rct := range rcts {
+		rct.Namespace = namespace
+
+		names[i] = rct.Name
+
+		_, err := cli.ResourceV1beta1().ResourceClaimTemplates(namespace).Create(ctx, rct, metav1.CreateOptions{})
+		if err != nil {
+			return nil, fmt.Errorf("failed to create ResourceClaimTemplate: %w", err)
+		}
+	}
+	return names, nil
+}
+
+func CreateOrUpdatePodsFromFile(ctx context.Context, cli clientset.Interface, filename, namespace string) ([]string, error) {
+	pods, err := newPodFromfile(filepath.Join(packagePath, "data", filename))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create Pod from file: %w", err)
+	}
+
+	names := make([]string, len(pods))
+	for i, pod := range pods {
+		pod.Namespace = namespace
+
+		names[i] = pod.Name
+
+		_, err := cli.CoreV1().Pods(namespace).Create(ctx, pod, metav1.CreateOptions{})
+		if err != nil {
+			return nil, fmt.Errorf("failed to create Pod: %w", err)
+		}
+	}
+	return names, nil
+}
+
+func newComputeDomainFromFile(path string) ([]*v1beta1.ComputeDomain, error) {
+	objs, err := apiObjsFromFile(path, scheme.Codecs.UniversalDeserializer())
+	if err != nil {
+		return nil, err
+	}
+
+	crs := make([]*v1beta1.ComputeDomain, len(objs))
+
+	for i, obj := range objs {
+		var ok bool
+		crs[i], ok = obj.(*v1beta1.ComputeDomain)
+		if !ok {
+			return nil, fmt.Errorf("unexpected type %t when reading %q", obj, path)
+		}
+	}
+
+	return crs, nil
+}
+
+func newPodFromfile(path string) ([]*v1Core.Pod, error) {
+	objs, err := apiObjsFromFile(path, k8sscheme.Codecs.UniversalDeserializer())
+	if err != nil {
+		return nil, err
+	}
+
+	pods := make([]*v1Core.Pod, len(objs))
+
+	for i, obj := range objs {
+		var ok bool
+		pods[i], ok = obj.(*v1Core.Pod)
+		if !ok {
+			return nil, fmt.Errorf("unexpected type %t when reading %q", obj, path)
+		}
+	}
+
+	return pods, nil
+}
+
+func newResourceClaimTemplateFromFile(path string) ([]*k8sV1beta1.ResourceClaimTemplate, error) {
+	objs, err := apiObjsFromFile(path, k8sscheme.Codecs.UniversalDeserializer())
+	if err != nil {
+		return nil, err
+	}
+
+	rcts := make([]*k8sV1beta1.ResourceClaimTemplate, len(objs))
+
+	for i, obj := range objs {
+		var ok bool
+		rcts[i], ok = obj.(*k8sV1beta1.ResourceClaimTemplate)
+		if !ok {
+			return nil, fmt.Errorf("unexpected type %t when reading %q", obj, path)
+		}
+	}
+
+	return rcts, nil
+}
+
+func apiObjsFromFile(path string, decoder apiruntime.Decoder) ([]apiruntime.Object, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+
+	// TODO: find out a nicer way to decode multiple api objects from a single
+	// file (K8s must have that somewhere)
+	split := bytes.Split(data, []byte("---"))
+	objs := []apiruntime.Object{}
+
+	for _, slice := range split {
+		if len(slice) == 0 {
+			continue
+		}
+		obj, _, err := decoder.Decode(slice, nil, nil)
+		if err != nil {
+			return nil, err
+		}
+		objs = append(objs, obj)
+	}
+	return objs, err
+}
+
+func init() {
+	_, thisFile, _, _ := runtime.Caller(0)
+	packagePath = filepath.Dir(thisFile)
 }
