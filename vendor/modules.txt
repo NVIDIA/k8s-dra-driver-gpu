@@ -786,7 +786,7 @@ k8s.io/kube-openapi/pkg/validation/spec
 k8s.io/kubelet/pkg/apis/dra/v1alpha4
 k8s.io/kubelet/pkg/apis/dra/v1beta1
 k8s.io/kubelet/pkg/apis/pluginregistration/v1
-# k8s.io/kubernetes v1.32.0
+# k8s.io/kubernetes v1.32.4
 ## explicit; go 1.23.0
 k8s.io/kubernetes/pkg/kubelet/checkpointmanager
 k8s.io/kubernetes/pkg/kubelet/checkpointmanager/checksum
