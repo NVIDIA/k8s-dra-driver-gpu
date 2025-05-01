@@ -46,6 +46,7 @@ type patchOperation struct {
 
 type admitFunc func(*admissionv1.AdmissionRequest) ([]patchOperation, error)
 
+// Swati: skip nvidia-dra-driver-gpu ns as well
 func isKubeNamespace(ns string) bool {
 	return (ns == metav1.NamespacePublic || ns == metav1.NamespaceSystem)
 }
