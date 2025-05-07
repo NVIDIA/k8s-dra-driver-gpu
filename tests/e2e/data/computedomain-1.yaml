@@ -1,0 +1,9 @@
+apiVersion: resource.nvidia.com/v1beta1
+kind: ComputeDomain
+metadata:
+  name: cd-e2e-1
+spec:
+  numNodes: 1
+  channel:
+    resourceClaimTemplate:
+      name: cd-e2e-1
