@@ -22,6 +22,7 @@ import (
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/cache"
+	"k8s.io/klog/v2"
 )
 
 func uidIndexer[T metav1.ObjectMetaAccessor](obj any) ([]string, error) {
@@ -43,6 +44,7 @@ func addComputeDomainLabelIndexer[T metav1.ObjectMetaAccessor](informer cache.Sh
 			if value, exists := labels[computeDomainLabelKey]; exists {
 				return []string{value}, nil
 			}
+			klog.V(2).Info("No object found with ComputeDomain Label")
 			return nil, nil
 		},
 	})
@@ -58,6 +60,7 @@ func getByComputeDomainUID[T1 *T2, T2 any](ctx context.Context, informer cache.S
 		return nil, fmt.Errorf("error getting %T via ComputeDomain label: %w", *new(T1), err)
 	}
 	if len(objs) == 0 {
+		klog.V(2).Infof("No object found with ComputeDomain Label with UID %s", cdUID)
 		return nil, nil
 	}
 
@@ -70,5 +73,6 @@ func getByComputeDomainUID[T1 *T2, T2 any](ctx context.Context, informer cache.S
 		ds = append(ds, d)
 	}
 
+	klog.V(2).Infof("Found %d objects with ComputeDomain Label with UID %s", len(ds), cdUID)
 	return ds, nil
 }

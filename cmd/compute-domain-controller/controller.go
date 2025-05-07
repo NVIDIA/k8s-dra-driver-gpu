@@ -21,6 +21,8 @@ import (
 	"context"
 	"fmt"
 
+	"k8s.io/klog/v2"
+
 	"github.com/NVIDIA/k8s-dra-driver-gpu/pkg/flags"
 	"github.com/NVIDIA/k8s-dra-driver-gpu/pkg/workqueue"
 )
@@ -57,6 +59,8 @@ func NewController(config *Config) *Controller {
 // It initializes the work queue, starts the ComputeDomain manager, and handles
 // graceful shutdown when the context is cancelled.
 func (c *Controller) Run(ctx context.Context) error {
+	klog.Info("Starting ComputeDomain Controller")
+
 	workQueue := workqueue.New(workqueue.DefaultControllerRateLimiter())
 
 	managerConfig := &ManagerConfig{
@@ -78,5 +82,6 @@ func (c *Controller) Run(ctx context.Context) error {
 		return fmt.Errorf("error stopping ComputeDomain manager: %w", err)
 	}
 
+	klog.Info("ComputeDomain Controller is shutdown")
 	return nil
 }
