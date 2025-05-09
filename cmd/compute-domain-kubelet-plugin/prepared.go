@@ -17,12 +17,16 @@
 package main
 
 import (
+	resourceapi "k8s.io/api/resource/v1beta1"
 	"k8s.io/dynamic-resource-allocation/kubeletplugin"
 )
 
 type PreparedDeviceList []PreparedDevice
 type PreparedDevices []*PreparedDeviceGroup
-type PreparedClaims map[string]PreparedDevices
+
+// key: stringified claim UUID
+type PreparedDevicesByClaimUID map[string]PreparedDevices
+type PreparedClaims map[string]resourceapi.ResourceClaim
 
 type PreparedDevice struct {
 	Channel *PreparedComputeDomainChannel `json:"channel"`

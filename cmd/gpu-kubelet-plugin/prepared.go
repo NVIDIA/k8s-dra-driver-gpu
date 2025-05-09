@@ -24,7 +24,7 @@ import (
 
 type PreparedDeviceList []PreparedDevice
 type PreparedDevices []*PreparedDeviceGroup
-type PreparedClaims map[string]PreparedDevices
+type PreparedDevicesByClaimUID map[string]PreparedDevices
 
 type PreparedDevice struct {
 	Gpu *PreparedGpu       `json:"gpu"`

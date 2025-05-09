@@ -24,7 +24,6 @@ import (
 	"time"
 
 	resourceapi "k8s.io/api/resource/v1beta1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	coreclientset "k8s.io/client-go/kubernetes"
 	"k8s.io/dynamic-resource-allocation/kubeletplugin"
@@ -204,27 +203,11 @@ func (d *driver) nodeUnprepareResource(ctx context.Context, claimRef kubeletplug
 	d.Lock()
 	defer d.Unlock()
 
-	// Fetching the resource claim should not be needed (and not be done) in the
-	// unprepare code path. Any state required during unprepare can be stored
-	// via checkpointing.
-	claim, err := d.client.ResourceV1beta1().ResourceClaims(claimRef.Namespace).Get(
-		ctx,
-		claimRef.Name,
-		metav1.GetOptions{})
-
-	if err != nil {
-		return isPermanentError(err), fmt.Errorf("failed to fetch ResourceClaim %s in namespace %s: %w", claimRef.Name, claimRef.Namespace, err)
+	if err := d.state.Unprepare(ctx, claimRef); err != nil {
+		return isPermanentError(err), fmt.Errorf("error unpreparing devices for claim '%v': %w", claimRef.String(), err)
 	}
 
-	if claim.Status.Allocation == nil {
-		return true, fmt.Errorf("no allocation set in ResourceClaim %s in namespace %s", claim.Name, claim.Namespace)
-	}
-
-	if err := d.state.Unprepare(ctx, claim); err != nil {
-		return isPermanentError(err), fmt.Errorf("error unpreparing devices for claim '%v': %w", claim.UID, err)
-	}
-
-	klog.Infof("unprepared devices for claim '%v'", claim.UID)
+	klog.Infof("unprepared devices for claim '%v'", claimRef.String())
 	return true, nil
 }
 
