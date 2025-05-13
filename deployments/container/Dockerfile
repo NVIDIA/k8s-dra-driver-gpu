@@ -13,7 +13,7 @@
 # limitations under the License.
 
 # We use an ubuntu20.04 base image to allow for a more efficient multi-arch builds.
-FROM  nvcr.io/nvidia/cuda:12.8.1-base-ubuntu20.04 AS build
+FROM  nvcr.io/nvidia/cuda:12.9.0-base-ubuntu20.04 AS build
 
 RUN apt-get update && \
     apt-get install -y wget make git gcc-aarch64-linux-gnu gcc \
@@ -53,7 +53,7 @@ RUN if [ "$TARGETARCH" = "amd64" ]; then \
     fi && \
     make CC=${cc} GOARCH=${TARGETARCH} PREFIX=/artifacts cmds
 
-FROM nvcr.io/nvidia/cuda:12.8.1-base-ubi9
+FROM nvcr.io/nvidia/cuda:12.9.0-base-ubi9
 
 ENV NVIDIA_DISABLE_REQUIRE="true"
 ENV NVIDIA_VISIBLE_DEVICES=all
