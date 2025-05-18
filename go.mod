@@ -6,7 +6,7 @@ toolchain go1.24.2
 
 require (
 	github.com/Masterminds/semver v1.5.0
-	github.com/NVIDIA/go-nvlib v0.7.1
+	github.com/NVIDIA/go-nvlib v0.7.2
 	github.com/NVIDIA/go-nvml v0.12.4-1
 	github.com/NVIDIA/nvidia-container-toolkit v1.17.6
 	github.com/google/uuid v1.6.0
