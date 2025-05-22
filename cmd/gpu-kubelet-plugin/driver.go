@@ -52,6 +52,7 @@ func NewDriver(ctx context.Context, config *Config) (*driver, error) {
 		kubeletplugin.KubeClient(driver.client),
 		kubeletplugin.NodeName(config.flags.nodeName),
 		kubeletplugin.DriverName(DriverName),
+		kubeletplugin.Serialize(false),
 	)
 	if err != nil {
 		return nil, err

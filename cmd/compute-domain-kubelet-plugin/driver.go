@@ -70,6 +70,13 @@ func NewDriver(ctx context.Context, config *Config) (*driver, error) {
 		kubeletplugin.KubeClient(driver.client),
 		kubeletplugin.NodeName(config.flags.nodeName),
 		kubeletplugin.DriverName(DriverName),
+		// By default, the DRA library serializes (un)prepare calls. That is, at
+		// most one such call is exposed to the driver at any given time.
+		// Disable that behavior: this driver has codependent prepare() actions
+		// (where for the first prepare() to eventually complete, a second
+		// prepare() must be incoming). Concurrency management for incoming
+		// requests is done with this driver's work queue abstraction.
+		kubeletplugin.Serialize(false),
 	)
 	if err != nil {
 		return nil, err
