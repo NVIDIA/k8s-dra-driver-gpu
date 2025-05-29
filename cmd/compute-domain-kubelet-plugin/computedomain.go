@@ -158,9 +158,11 @@ func (s *ComputeDomainDaemonSettings) GetDomain() string {
 }
 
 func (s *ComputeDomainDaemonSettings) GetCDIContainerEdits(devRoot string, info *nvcapDeviceInfo) *cdiapi.ContainerEdits {
-
 	return &cdiapi.ContainerEdits{
 		ContainerEdits: &cdispec.ContainerEdits{
+			Env: []string{
+				fmt.Sprintf("CLIQUE_ID=%s", s.manager.cliqueID),
+			},
 			Mounts: []*cdispec.Mount{
 				{
 					ContainerPath: "/etc/nvidia-imex",

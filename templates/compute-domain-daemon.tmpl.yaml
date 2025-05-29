@@ -21,51 +21,21 @@ spec:
       nodeSelector:
         {{ .ComputeDomainLabelKey }}: {{ .ComputeDomainLabelValue }}
       containers:
+      # Run the compute domain daemon
       - name: compute-domain-daemon
         image: {{ .ImageName }}
-        command: [sh, -c]
-        args:
-        - |-
-          trap 'exit 0' TERM
-          set -e
-          if nvidia-smi -q | grep -E "ClusterUUID|CliqueId" | grep -q "N/A" || \
-             nvidia-smi -q | grep -E "ClusterUUID" | grep -q "00000000-0000-0000-0000-000000000000"; then
-            echo "ClusterUUID and CliqueId are NOT set for GPUs on this node."
-            echo "The IMEX daemon will not be started."
-            echo "Sleeping forever..."
-            touch /etc/nvidia-imex-null
-            tail -f /dev/null & wait
-          fi
-          # Emit nodes config for facilitating debug.
-          echo "/etc/nvidia-imex/nodes_config.cfg:"
-          cat /etc/nvidia-imex/nodes_config.cfg
-          /usr/bin/nvidia-imex -c /etc/nvidia-imex/config.cfg
-          tail -n +1 -f /var/log/nvidia-imex.log & wait
+        command: ["compute-domain-daemon", "run"]
         resources:
           claims:
           - name: compute-domain-daemon
         startupProbe:
           exec:
-            command:
-            - "sh"
-            - "-c"
-            - |-
-              if [ -f /etc/nvidia-imex-null ]; then
-                exit 0
-              fi
-              test "$(nvidia-imex-ctl -q -i 127.0.0.1 50005)" = "READY"
+            command: ["compute-domain-daemon", "check"]
           initialDelaySeconds: 1
           periodSeconds: 1
         livenessProbe:
           exec:
-            command:
-              - "sh"
-              - "-c"
-              - |
-                if [ -f /etc/nvidia-imex-null ]; then
-                  exit 0
-                fi
-                test "$(nvidia-imex-ctl -q -i 127.0.0.1 50005)" = "READY"
+            command: ["compute-domain-daemon", "check"]
           initialDelaySeconds: 10
           periodSeconds: 5
       # Repel all node taints.
