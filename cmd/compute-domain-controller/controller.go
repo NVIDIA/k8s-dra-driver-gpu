@@ -29,6 +29,10 @@ import (
 // It contains essential fields for driver identification, Kubernetes client access,
 // and work queue management.
 type ManagerConfig struct {
+	// appName is the app name to use for the app.kubernetes.io/name label value
+	// to be used on manager pods
+	appName string
+
 	// driverName is the unique identifier for this DRA driver
 	driverName string
 
@@ -63,6 +67,7 @@ func (c *Controller) Run(ctx context.Context) error {
 	workQueue := workqueue.New(workqueue.DefaultControllerRateLimiter())
 
 	managerConfig := &ManagerConfig{
+		appName:         c.config.flags.appName,
 		driverName:      c.config.driverName,
 		driverNamespace: c.config.flags.namespace,
 		imageName:       c.config.flags.imageName,

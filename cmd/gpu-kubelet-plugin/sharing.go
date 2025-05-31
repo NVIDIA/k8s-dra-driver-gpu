@@ -85,6 +85,7 @@ type MpsControlDaemonTemplateData struct {
 	NodeName                        string
 	MpsControlDaemonNamespace       string
 	MpsControlDaemonName            string
+	AppLabelValue                   string
 	CUDA_VISIBLE_DEVICES            string //nolint:stylecheck
 	DefaultActiveThreadPercentage   string
 	DefaultPinnedDeviceMemoryLimits map[string]string
@@ -200,6 +201,7 @@ func (m *MpsControlDaemon) Start(ctx context.Context, config *configapi.MpsConfi
 		NodeName:                        m.nodeName,
 		MpsControlDaemonNamespace:       m.namespace,
 		MpsControlDaemonName:            m.name,
+		AppLabelValue:                   m.manager.config.flags.appName,
 		CUDA_VISIBLE_DEVICES:            strings.Join(deviceUUIDs, ","),
 		DefaultActiveThreadPercentage:   "",
 		DefaultPinnedDeviceMemoryLimits: nil,

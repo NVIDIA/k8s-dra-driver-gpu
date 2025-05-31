@@ -48,6 +48,7 @@ type Flags struct {
 	hostDriverRoot      string
 	nvidiaCTKPath       string
 	imageName           string
+	appName             string
 }
 
 type Config struct {
@@ -116,6 +117,14 @@ func newApp() *cli.App {
 			Required:    true,
 			Destination: &flags.imageName,
 			EnvVars:     []string{"IMAGE_NAME"},
+		},
+		&cli.StringFlag{
+			Name:        "app-name",
+			Usage:       "The app name to use for the app.kubernetes.io/name label value.",
+			Required:    true,
+			Destination: &flags.appName,
+			Value:       "nvidia-dra-driver-gpu",
+			EnvVars:     []string{"HELM_CHART_NAME"},
 		},
 	}
 	cliFlags = append(cliFlags, flags.kubeClientConfig.Flags()...)

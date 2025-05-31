@@ -72,6 +72,8 @@ spec:
         resources:
           {{- toYaml .Values.kubeletPlugin.containers.computeDomains.resources | nindent 10 }}
         env:
+        - name: HELM_CHART_NAME
+          value: {{ .Chart.Name }}
         - name: MASK_NVIDIA_DRIVER_PARAMS
           value: "{{ .Values.maskNvidiaDriverParams }}"
         - name: NVIDIA_CTK_PATH

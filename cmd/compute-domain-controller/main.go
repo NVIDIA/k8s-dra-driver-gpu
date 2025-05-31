@@ -53,6 +53,7 @@ type Flags struct {
 	podName   string
 	namespace string
 	imageName string
+	appName   string
 
 	httpEndpoint string
 	metricsPath  string
@@ -98,6 +99,14 @@ func newApp() *cli.App {
 			Required:    true,
 			Destination: &flags.imageName,
 			EnvVars:     []string{"IMAGE_NAME"},
+		},
+		&cli.StringFlag{
+			Name:        "chart-name",
+			Usage:       "The Helm chart name to use for the app label value.",
+			Required:    true,
+			Destination: &flags.appName,
+			Value:       "nvidia-dra-driver-gpu",
+			EnvVars:     []string{"HELM_CHART_NAME"},
 		},
 		&cli.StringFlag{
 			Category:    "HTTP server:",
