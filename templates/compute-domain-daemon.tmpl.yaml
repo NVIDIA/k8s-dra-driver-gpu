@@ -8,6 +8,7 @@ metadata:
     - {{ .Finalizer }}
   labels:
     {{ .ComputeDomainLabelKey }}: {{ .ComputeDomainLabelValue }}
+    {{ .AppLabelKey }}: {{ .AppLabelValue }}
 spec:
   selector:
     matchLabels:

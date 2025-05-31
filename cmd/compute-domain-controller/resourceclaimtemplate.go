@@ -49,6 +49,8 @@ type ResourceClaimTemplateTemplateData struct {
 	Finalizer               string
 	ComputeDomainLabelKey   string
 	ComputeDomainLabelValue types.UID
+	AppLabelKey             string
+	AppLabelValue           string
 	TargetLabelKey          string
 	TargetLabelValue        string
 	DeviceClassName         string
@@ -298,6 +300,8 @@ func (m *DaemonSetResourceClaimTemplateManager) Create(ctx context.Context, name
 		Finalizer:               computeDomainFinalizer,
 		ComputeDomainLabelKey:   computeDomainLabelKey,
 		ComputeDomainLabelValue: cd.UID,
+		AppLabelKey:             appLabelKey,
+		AppLabelValue:           appLabelValue,
 		TargetLabelKey:          computeDomainResourceClaimTemplateTargetLabelKey,
 		TargetLabelValue:        computeDomainResourceClaimTemplateTargetDaemon,
 		DeviceClassName:         computeDomainDaemonDeviceClass,

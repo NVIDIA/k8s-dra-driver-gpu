@@ -47,6 +47,8 @@ type DaemonSetTemplateData struct {
 	Finalizer                 string
 	ComputeDomainLabelKey     string
 	ComputeDomainLabelValue   types.UID
+	AppLabelKey               string
+	AppLabelValue             string
 	ResourceClaimTemplateName string
 	ImageName                 string
 }
@@ -180,6 +182,8 @@ func (m *DaemonSetManager) Create(ctx context.Context, namespace string, cd *nva
 		Finalizer:                 computeDomainFinalizer,
 		ComputeDomainLabelKey:     computeDomainLabelKey,
 		ComputeDomainLabelValue:   cd.UID,
+		AppLabelKey:               appLabelKey,
+		AppLabelValue:             appLabelValue,
 		ResourceClaimTemplateName: rct.Name,
 		ImageName:                 m.config.imageName,
 	}
@@ -189,24 +193,24 @@ func (m *DaemonSetManager) Create(ctx context.Context, namespace string, cd *nva
 		return nil, fmt.Errorf("failed to parse template file: %w", err)
 	}
 
-	var deploymentYaml bytes.Buffer
-	if err := tmpl.Execute(&deploymentYaml, templateData); err != nil {
+	var daemonSetYaml bytes.Buffer
+	if err := tmpl.Execute(&daemonSetYaml, templateData); err != nil {
 		return nil, fmt.Errorf("failed to execute template: %w", err)
 	}
 
 	var unstructuredObj unstructured.Unstructured
-	err = yaml.Unmarshal(deploymentYaml.Bytes(), &unstructuredObj)
+	err = yaml.Unmarshal(daemonSetYaml.Bytes(), &unstructuredObj)
 	if err != nil {
 		return nil, fmt.Errorf("failed to unmarshal yaml: %w", err)
 	}
 
-	var deployment appsv1.DaemonSet
-	err = runtime.DefaultUnstructuredConverter.FromUnstructured(unstructuredObj.UnstructuredContent(), &deployment)
+	var daemonSet appsv1.DaemonSet
+	err = runtime.DefaultUnstructuredConverter.FromUnstructured(unstructuredObj.UnstructuredContent(), &daemonSet)
 	if err != nil {
 		return nil, fmt.Errorf("failed to convert unstructured data to typed object: %w", err)
 	}
 
-	d, err := m.config.clientsets.Core.AppsV1().DaemonSets(deployment.Namespace).Create(ctx, &deployment, metav1.CreateOptions{})
+	d, err := m.config.clientsets.Core.AppsV1().DaemonSets(daemonSet.Namespace).Create(ctx, &daemonSet, metav1.CreateOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("error creating DaemonSet: %w", err)
 	}
