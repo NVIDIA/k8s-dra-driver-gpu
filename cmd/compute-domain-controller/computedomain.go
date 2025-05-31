@@ -35,7 +35,10 @@ type GetComputeDomainFunc func(uid string) (*nvapi.ComputeDomain, error)
 const (
 	informerResyncPeriod = 10 * time.Minute
 
-	computeDomainLabelKey  = "resource.nvidia.com/computeDomain"
+	computeDomainLabelKey = "resource.nvidia.com/computeDomain"
+	appLabelKey           = "app"
+	appLabelValue         = "nvidia-dra-driver-gpu"
+
 	computeDomainFinalizer = computeDomainLabelKey
 
 	computeDomainDefaultChannelDeviceClass = "compute-domain-default-channel.nvidia.com"
