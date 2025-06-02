@@ -20,5 +20,5 @@ DRIVER_NAME=$(from_versions_mk "DRIVER_NAME")
 export CLUSTER_NAME
 export AWS_REGION
 
-# Delete EKS cluster using eksctl
+## Delete EKS cluster using eksctl
 eksctl delete cluster --name ${CLUSTER_NAME} --region ${AWS_REGION} --wait
