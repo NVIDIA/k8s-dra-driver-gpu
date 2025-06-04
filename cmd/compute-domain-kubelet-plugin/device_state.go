@@ -18,6 +18,8 @@ package main
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"slices"
 	"sync"
@@ -27,6 +29,7 @@ import (
 	"k8s.io/dynamic-resource-allocation/kubeletplugin"
 	"k8s.io/klog/v2"
 	"k8s.io/kubernetes/pkg/kubelet/checkpointmanager"
+	cperrors "k8s.io/kubernetes/pkg/kubelet/checkpointmanager/errors"
 	cdiapi "tags.cncf.io/container-device-interface/pkg/cdi"
 
 	configapi "github.com/NVIDIA/k8s-dra-driver-gpu/api/nvidia.com/resource/v1beta1"
@@ -181,6 +184,20 @@ func (s *DeviceState) Unprepare(ctx context.Context, claimRef kubeletplugin.Name
 	// Rely on local checkpoint state for ability to clean up.
 	checkpoint := newCheckpoint()
 	if err := s.checkpointManager.GetCheckpoint(DriverPluginCheckpointFileBasename, checkpoint); err != nil {
+		// Some errors returned by `GetCheckpoint` are permanent. Some of them
+		// may be retryable. For now, handle an explicit set of errors as
+		// permanent, and treat every other error as retryable.
+
+		if errors.Is(err, &json.UnmarshalTypeError{}) {
+			// May for example happen when a different version of this program
+			// wrote the JSON doc (using a different JSON schema).
+			return permanentError{fmt.Errorf("get checkpoint: unexpected schema (treat permanent): %w", err)}
+		}
+
+		if errors.Is(err, &cperrors.CorruptCheckpointError{}) {
+			return permanentError{fmt.Errorf("get checkpoint: bad checksum (treat permanent): %w", err)}
+		}
+
 		return fmt.Errorf("unable to get checkpoint: %w", err)
 	}
 
