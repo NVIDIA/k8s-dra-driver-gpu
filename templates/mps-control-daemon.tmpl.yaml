@@ -5,16 +5,17 @@ metadata:
   namespace: {{ .MpsControlDaemonNamespace }}
   name: {{ .MpsControlDaemonName }}
   labels:
-    app: {{ .MpsControlDaemonName }}
+    app.kubernetes.io/name: {{ .AppLabelValue }}
+    component: {{ .MpsControlDaemonName }}
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: {{ .MpsControlDaemonName }}
+      component: {{ .MpsControlDaemonName }}
   template:
     metadata:
       labels:
-        app: {{ .MpsControlDaemonName }}
+        component: {{ .MpsControlDaemonName }}
     spec:
       nodeName: {{ .NodeName }}
       hostPID: true

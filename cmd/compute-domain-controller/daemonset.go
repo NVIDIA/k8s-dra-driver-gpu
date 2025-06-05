@@ -47,6 +47,7 @@ type DaemonSetTemplateData struct {
 	Finalizer                 string
 	ComputeDomainLabelKey     string
 	ComputeDomainLabelValue   types.UID
+	AppLabelValue             string
 	ResourceClaimTemplateName string
 	ImageName                 string
 }
@@ -180,6 +181,7 @@ func (m *DaemonSetManager) Create(ctx context.Context, namespace string, cd *nva
 		Finalizer:                 computeDomainFinalizer,
 		ComputeDomainLabelKey:     computeDomainLabelKey,
 		ComputeDomainLabelValue:   cd.UID,
+		AppLabelValue:             m.config.appName,
 		ResourceClaimTemplateName: rct.Name,
 		ImageName:                 m.config.imageName,
 	}
