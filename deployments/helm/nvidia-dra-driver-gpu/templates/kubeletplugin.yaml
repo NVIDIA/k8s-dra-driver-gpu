@@ -49,6 +49,22 @@ spec:
       serviceAccountName: {{ include "nvidia-dra-driver-gpu.serviceAccountName" . }}
       securityContext:
         {{- toYaml .Values.kubeletPlugin.podSecurityContext | nindent 8 }}
+      initContainers:
+      - name: init-container
+        image: {{ include "nvidia-dra-driver-gpu.fullimage" . }}
+        securityContext:
+          privileged: true
+        command: [sh, /usr/bin/kubelet-plugin-prestart.sh]
+        env:
+        - name: NVIDIA_DRIVER_ROOT
+          value: "{{ .Values.nvidiaDriverRoot }}"
+        # Explicit "void"; otherwise we inherit "all".
+        - name: NVIDIA_VISIBLE_DEVICES
+          value: void
+        volumeMounts:
+        - name: driver-root
+          mountPath: /driver-root
+          readOnly: true
       containers:
       {{- if .Values.resources.computeDomains.enabled }}
       - name: compute-domains
@@ -174,6 +190,10 @@ spec:
       - name: driver-root
         hostPath:
           path: {{ .Values.nvidiaDriverRoot }}
+          # Note: default `type`: no checks are performed before mounting the
+          # hostPath volume. Setting this to `Directory` explicitly requires
+          # this directory to exist.
+          type: Directory
       - name: host-dev
         hostPath:
           path: /dev
