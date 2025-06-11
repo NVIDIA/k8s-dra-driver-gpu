@@ -66,6 +66,8 @@ spec:
               fieldPath: metadata.namespace
         - name: IMAGE_NAME
           value: {{ include "nvidia-dra-driver-gpu.fullimage" . }}
+        - name: HELM_CHART_NAME
+          value: {{ .Chart.Name }}
       {{- with .Values.controller.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}
