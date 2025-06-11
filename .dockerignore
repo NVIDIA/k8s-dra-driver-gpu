@@ -1,1 +1,6 @@
-/deployments/container
+.dockerignore
+deployments/container
+*.tar
+*.tgz
+demo
+.git

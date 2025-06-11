@@ -87,6 +87,7 @@ $(IMAGE_TARGETS): image-%:
 		--build-arg TOOLKIT_CONTAINER_IMAGE="$(TOOLKIT_CONTAINER_IMAGE)" \
 		--build-arg VERSION="$(VERSION)" \
 		--build-arg GIT_COMMIT="$(GIT_COMMIT)" \
+		--progress=plain \
 		-f $(DOCKERFILE) \
 		$(CURDIR)
 
