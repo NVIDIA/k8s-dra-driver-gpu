@@ -27,6 +27,10 @@ import (
 	"k8s.io/utils/ptr"
 )
 
+const (
+	PcieRootDeviceAttribute = "resource.kubernetes.io/pcieRoot"
+)
+
 type GpuInfo struct {
 	UUID                  string `json:"uuid"`
 	index                 int
@@ -36,6 +40,7 @@ type GpuInfo struct {
 	productName           string
 	brand                 string
 	architecture          string
+	pcieRoot              string
 	cudaComputeCapability string
 	driverVersion         string
 	cudaDriverVersion     string
@@ -118,6 +123,11 @@ func (d *GpuInfo) GetDevice() resourceapi.Device {
 				"cudaDriverVersion": {
 					VersionValue: ptr.To(semver.MustParse(d.cudaDriverVersion).String()),
 				},
+
+				// Kubernetes standardized attributes
+				PcieRootDeviceAttribute: {
+					StringValue: &d.pcieRoot,
+				},
 			},
 			Capacity: map[resourceapi.QualifiedName]resourceapi.DeviceCapacity{
 				"memory": {
@@ -169,6 +179,11 @@ func (d *MigDeviceInfo) GetDevice() resourceapi.Device {
 				},
 				"cudaDriverVersion": {
 					VersionValue: ptr.To(semver.MustParse(d.parent.cudaDriverVersion).String()),
+				},
+
+				// Kubernetes standardized attributes
+				PcieRootDeviceAttribute: {
+					StringValue: &d.parent.pcieRoot,
 				},
 			},
 			Capacity: map[resourceapi.QualifiedName]resourceapi.DeviceCapacity{
