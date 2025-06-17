@@ -24,20 +24,23 @@ import (
 	"os/signal"
 	"path/filepath"
 	"strings"
+	"sync"
 	"syscall"
+
+	"k8s.io/klog/v2"
 
 	"github.com/Masterminds/semver"
 	"github.com/urfave/cli/v2"
 
 	nvapi "github.com/NVIDIA/k8s-dra-driver-gpu/api/nvidia.com/resource/v1beta1"
+	"github.com/NVIDIA/k8s-dra-driver-gpu/pkg/flags"
 )
 
 const (
-	nodesConfig = "/etc/nvidia-imex/nodes_config.cfg"
-	imexConfig  = "/etc/nvidia-imex/config.cfg"
-	imexLog     = "/var/log/nvidia-imex.log"
-	imexBinary  = "/usr/bin/nvidia-imex"
-	imexCtl     = "/usr/bin/nvidia-imex-ctl"
+	nodesConfigPath = "/etc/nvidia-imex/nodes_config.cfg"
+	imexConfigPath  = "/etc/nvidia-imex/config.cfg"
+	imexBinaryPath  = "/usr/bin/nvidia-imex"
+	imexCtlPath     = "/usr/bin/nvidia-imex-ctl"
 )
 
 type Flags struct {
@@ -47,6 +50,7 @@ type Flags struct {
 	computeDomainNamespace string
 	nodeName               string
 	podIP                  string
+	loggingConfig          *flags.LoggingConfig
 }
 
 func main() {
@@ -57,8 +61,9 @@ func main() {
 }
 
 func newApp() *cli.App {
-	// Create local flags variable
-	var flags Flags
+	flags := Flags{
+		loggingConfig: flags.NewLoggingConfig(),
+	}
 
 	// Create a wrapper that will be used to gracefully shut down all subcommands
 	wrapper := func(ctx context.Context, f func(ctx context.Context, cancel context.CancelFunc, flags *Flags) error) error {
@@ -66,11 +71,11 @@ func newApp() *cli.App {
 		ctx, cancel := context.WithCancel(ctx)
 		defer cancel()
 
-		// Handle SIGTERM
 		sigChan := make(chan os.Signal, 1)
 		signal.Notify(sigChan, syscall.SIGTERM)
 		go func() {
 			<-sigChan
+			klog.Infof("Received SIGTERM, initiate shutdown")
 			cancel()
 		}()
 
@@ -78,48 +83,54 @@ func newApp() *cli.App {
 		return f(ctx, cancel, &flags)
 	}
 
+	cliFlags := []cli.Flag{
+		&cli.StringFlag{
+			Name:        "cliqueid",
+			Usage:       "The clique ID for this node.",
+			EnvVars:     []string{"CLIQUE_ID"},
+			Destination: &flags.cliqueID,
+		},
+		&cli.StringFlag{
+			Name:        "compute-domain-uuid",
+			Usage:       "The UUID of the ComputeDomain to manage.",
+			EnvVars:     []string{"COMPUTE_DOMAIN_UUID"},
+			Destination: &flags.computeDomainUUID,
+		},
+		&cli.StringFlag{
+			Name:        "compute-domain-name",
+			Usage:       "The name of the ComputeDomain to manage.",
+			EnvVars:     []string{"COMPUTE_DOMAIN_NAME"},
+			Destination: &flags.computeDomainName,
+		},
+		&cli.StringFlag{
+			Name:        "compute-domain-namespace",
+			Usage:       "The namespace of the ComputeDomain to manage.",
+			Value:       "default",
+			EnvVars:     []string{"COMPUTE_DOMAIN_NAMESPACE"},
+			Destination: &flags.computeDomainNamespace,
+		},
+		&cli.StringFlag{
+			Name:        "node-name",
+			Usage:       "The name of this Kubernetes node.",
+			EnvVars:     []string{"NODE_NAME"},
+			Destination: &flags.nodeName,
+		},
+		&cli.StringFlag{
+			Name:        "pod-ip",
+			Usage:       "The IP address of this pod.",
+			EnvVars:     []string{"POD_IP"},
+			Destination: &flags.podIP,
+		},
+	}
+	cliFlags = append(cliFlags, flags.loggingConfig.Flags()...)
+
 	// Create the app
 	app := &cli.App{
 		Name:  "compute-domain-daemon",
 		Usage: "compute-domain-daemon manages the IMEX daemon for NVIDIA compute domains.",
-		Flags: []cli.Flag{
-			&cli.StringFlag{
-				Name:        "cliqueid",
-				Usage:       "The clique ID for this node.",
-				EnvVars:     []string{"CLIQUE_ID"},
-				Destination: &flags.cliqueID,
-			},
-			&cli.StringFlag{
-				Name:        "compute-domain-uuid",
-				Usage:       "The UUID of the ComputeDomain to manage.",
-				EnvVars:     []string{"COMPUTE_DOMAIN_UUID"},
-				Destination: &flags.computeDomainUUID,
-			},
-			&cli.StringFlag{
-				Name:        "compute-domain-name",
-				Usage:       "The name of the ComputeDomain to manage.",
-				EnvVars:     []string{"COMPUTE_DOMAIN_NAME"},
-				Destination: &flags.computeDomainName,
-			},
-			&cli.StringFlag{
-				Name:        "compute-domain-namespace",
-				Usage:       "The namespace of the ComputeDomain to manage.",
-				Value:       "default",
-				EnvVars:     []string{"COMPUTE_DOMAIN_NAMESPACE"},
-				Destination: &flags.computeDomainNamespace,
-			},
-			&cli.StringFlag{
-				Name:        "node-name",
-				Usage:       "The name of this Kubernetes node.",
-				EnvVars:     []string{"NODE_NAME"},
-				Destination: &flags.nodeName,
-			},
-			&cli.StringFlag{
-				Name:        "pod-ip",
-				Usage:       "The IP address of this pod.",
-				EnvVars:     []string{"POD_IP"},
-				Destination: &flags.podIP,
-			},
+		Flags: cliFlags,
+		Before: func(c *cli.Context) error {
+			return flags.loggingConfig.Apply()
 		},
 		Commands: []*cli.Command{
 			{
@@ -142,42 +153,10 @@ func newApp() *cli.App {
 	return app
 }
 
-// run runs the compute domain daemon, checking IMEX capability and managing the IMEX daemon lifecycle.
-// It returns an error if any step fails.
+// Run invokes the IMEX daemon and manages its lifecycle.
 func run(ctx context.Context, cancel context.CancelFunc, flags *Flags) error {
-	// Create controller config
-	config := &ControllerConfig{
-		cliqueID:               flags.cliqueID,
-		computeDomainUUID:      flags.computeDomainUUID,
-		computeDomainName:      flags.computeDomainName,
-		computeDomainNamespace: flags.computeDomainNamespace,
-		nodeName:               flags.nodeName,
-		podIP:                  flags.podIP,
-	}
 
-	// Create and start controller to watch for compute domain updates and keep
-	// the IPs mapped in the nodes config file in sync
-	controller, err := NewController(config)
-	if err != nil {
-		return fmt.Errorf("error creating controller: %w", err)
-	}
-
-	// Start controller in a goroutine
-	errChan := make(chan error, 1)
-	go func() {
-		err := controller.Run(ctx)
-		if err != nil {
-			cancel()
-		}
-		errChan <- err
-	}()
-
-	// Wait until all nodes have joined the compute domain
-	nodes, err := controller.BlockUntilAllNodesJoinComputeDomain(ctx)
-	if err != nil {
-		return fmt.Errorf("error waiting for all nodes to join ComputeDomain: %w", err)
-	}
-
+	// Support heterogeneous compute domain
 	if flags.cliqueID == "" {
 		fmt.Println("ClusterUUID and CliqueId are NOT set for GPUs on this node.")
 		fmt.Println("The IMEX daemon will not be started.")
@@ -186,28 +165,85 @@ func run(ctx context.Context, cancel context.CancelFunc, flags *Flags) error {
 		return nil
 	}
 
-	// Create nodes config file
-	if err := createNodesConfig(ctx, flags.cliqueID, nodes); err != nil {
-		return fmt.Errorf("error creating nodes config: %w", err)
+	config := &ControllerConfig{
+		cliqueID:               flags.cliqueID,
+		computeDomainUUID:      flags.computeDomainUUID,
+		computeDomainName:      flags.computeDomainName,
+		computeDomainNamespace: flags.computeDomainNamespace,
+		nodeName:               flags.nodeName,
+		podIP:                  flags.podIP,
+	}
+	klog.Infof("config: %v", config)
+
+	daemonCommandLine := []string{imexBinaryPath, "-c", imexConfigPath}
+	processManager := NewProcessManager(daemonCommandLine)
+	controller, err := NewController(config)
+	if err != nil {
+		return fmt.Errorf("error creating controller: %w", err)
 	}
 
-	// Print nodes config
-	if err := printNodesConfig(ctx); err != nil {
-		return fmt.Errorf("error printing nodes config: %w", err)
-	}
+	var wg sync.WaitGroup
 
-	// Run IMEX daemon
-	if err := runIMEXDaemon(ctx, imexConfig); err != nil {
-		return fmt.Errorf("error running IMEX daemon: %w", err)
-	}
+	// Start controller in goroutine
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		if err := controller.Run(ctx); err != nil {
+			klog.Errorf("controller failed, initiate shutdown: %s", err)
+			cancel()
+		}
+	}()
 
-	// Tail the log file
-	if err := tail(ctx, imexLog); err != nil {
-		return fmt.Errorf("error tailing log file: %w", err)
-	}
+	// Start processNodeUpdates() in goroutine
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		if err := IMEXDaemonUpdateLoop(ctx, controller, flags.cliqueID, processManager); err != nil {
+			klog.Errorf("processNodeUpdates failed, initiate shutdown: %s", err)
+			cancel()
+		}
+	}()
 
-	// Wait for controller to finish
-	return <-errChan
+	// Start child process watchdog in goroutine
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		// Watchdog restarts the IMEX daemon upon unexpected termination, and
+		// shuts it down gracefully upon our own shutdown.
+		if err := processManager.Watchdog(ctx); err != nil {
+			klog.Errorf("watch failed, initiate shutdown: %s", err)
+			cancel()
+		}
+	}()
+
+	wg.Wait()
+
+	// Let's not yet try to make exit code promises.
+	return nil
+}
+
+// IMEXDaemonUpdateLoop() reacts to ComputeDomain status changes by updating the
+// IMEX daemon nodes config file and (re)starting the IMEX daemon process.
+func IMEXDaemonUpdateLoop(ctx context.Context, controller *Controller, cliqueID string, pm *ProcessManager) error {
+	for {
+		klog.Infof("wait for nodes update")
+		select {
+		case <-ctx.Done():
+			klog.Infof("shutdown: stop processNodeUpdates")
+			return nil
+		case nodes := <-controller.GetNodesUpdateChan():
+			if err := writeNodesConfig(cliqueID, nodes); err != nil {
+				return fmt.Errorf("writeNodesConfig failed: %w", err)
+			}
+
+			klog.Infof("Got update, (re)start IMEX daemon")
+			if err := pm.Restart(); err != nil {
+				// This might be a permanent problem, and retrying upon next update
+				// might be pointless. Terminate us.
+				return fmt.Errorf("error (re)starting IMEX daemon: %w", err)
+			}
+		}
+	}
 }
 
 // check verifies if the node is IMEX capable and if so, checks if the IMEX daemon is ready.
@@ -233,8 +269,10 @@ func check(ctx context.Context, cancel context.CancelFunc, flags *Flags) error {
 	}
 
 	// Check if IMEX daemon is ready
-	cmd := exec.CommandContext(ctx, imexCtl, args...)
-	output, err := cmd.Output()
+	cmd := exec.CommandContext(ctx, imexCtlPath, args...)
+
+	// CombinedOutput captures both, stdout and stderr.
+	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("error checking IMEX daemon status: %w", err)
 	}
@@ -246,67 +284,53 @@ func check(ctx context.Context, cancel context.CancelFunc, flags *Flags) error {
 	return nil
 }
 
-// createNodesConfig creates a nodesConfig file with IPs for nodes in the same clique.
-func createNodesConfig(ctx context.Context, cliqueID string, nodes []*nvapi.ComputeDomainNode) error {
+// cwriteNodesConfig creates a nodesConfig file with IPs for nodes in the same clique.
+func writeNodesConfig(cliqueID string, nodes []*nvapi.ComputeDomainNode) error {
 	// Ensure the directory exists
-	dir := filepath.Dir(nodesConfig)
+	dir := filepath.Dir(nodesConfigPath)
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return fmt.Errorf("failed to create directory %s: %w", dir, err)
 	}
 
 	// Create or overwrite the nodesConfig file
-	f, err := os.Create(nodesConfig)
+	f, err := os.Create(nodesConfigPath)
 	if err != nil {
-		return fmt.Errorf("failed to read nodes config: %w", err)
+		return fmt.Errorf("failed to create nodes config file: %w", err)
 	}
 	defer f.Close()
 
 	// Write IPs for nodes in the same clique
+	//
+	// Note(JP): wo we need to apply this type of filtering also in the logic
+	// that checks if an IMEX daemon restart is required?
 	for _, node := range nodes {
 		if node.CliqueID == cliqueID {
 			if _, err := fmt.Fprintf(f, "%s\n", node.IPAddress); err != nil {
-				return fmt.Errorf("failed to write to nodesConfig file: %w", err)
+				return fmt.Errorf("failed to write to nodes config file: %w", err)
 			}
 		}
 	}
 
+	if err := logNodesConfig(); err != nil {
+		return fmt.Errorf("logNodesConfig failed: %w", err)
+	}
 	return nil
 }
 
-// printNodesConfig reads and prints the contents of the nodes configuration file.
-// It returns an error if the file cannot be read.
-func printNodesConfig(ctx context.Context) error {
-	fmt.Printf("%s:\n", nodesConfig)
-	content, err := os.ReadFile(nodesConfig)
+// Read and log the contents of the nodes configuration file. Return an error if
+// the file cannot be read.
+func logNodesConfig() error {
+	content, err := os.ReadFile(nodesConfigPath)
 	if err != nil {
 		return fmt.Errorf("failed to read nodes config: %w", err)
 	}
-	fmt.Println(string(content))
+	klog.Infof("Current %s:\n%s", nodesConfigPath, string(content))
 	return nil
-}
-
-// runIMEXDaemon starts the IMEX daemon with the specified configuration file.
-// It returns an error if the daemon fails to start or exits unexpectedly.
-func runIMEXDaemon(ctx context.Context, config string) error {
-	cmd := exec.CommandContext(ctx, imexBinary, "-c", config)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	return cmd.Run()
-}
-
-// tail continuously reads and prints new lines from the specified file using the system's tail command.
-// It starts from the beginning of the file (-n +1) and follows new lines (-f).
-// It blocks until the context is cancelled or an error occurs.
-func tail(ctx context.Context, path string) error {
-	cmd := exec.CommandContext(ctx, "tail", "-n", "+1", "-f", path)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	return cmd.Run()
 }
 
 // getIMEXVersion returns the version of the NVIDIA IMEX binary.
 func getIMEXVersion(ctx context.Context) (*semver.Version, error) {
-	cmd := exec.CommandContext(ctx, imexBinary, "--version")
+	cmd := exec.CommandContext(ctx, imexBinaryPath, "--version")
 	output, err := cmd.Output()
 	if err != nil {
 		return nil, fmt.Errorf("error running nvidia-imex: %w", err)

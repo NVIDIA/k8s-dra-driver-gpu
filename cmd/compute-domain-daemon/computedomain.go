@@ -19,6 +19,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"maps"
 	"sync"
 	"time"
 
@@ -34,6 +35,8 @@ const (
 	informerResyncPeriod = 10 * time.Minute
 )
 
+type IPSet = map[string]struct{}
+
 // ComputeDomainManager watches compute domains and updates their status with
 // info about the ComputeDomain daemon running on this node.
 type ComputeDomainManager struct {
@@ -44,8 +47,8 @@ type ComputeDomainManager struct {
 	factory  nvinformers.SharedInformerFactory
 	informer cache.SharedIndexInformer
 
-	nodes     []*nvapi.ComputeDomainNode
-	nodesChan chan struct{}
+	previousNodes    []*nvapi.ComputeDomainNode
+	updatedNodesChan chan []*nvapi.ComputeDomainNode
 }
 
 // NewComputeDomainManager creates a new ComputeDomainManager instance.
@@ -61,10 +64,11 @@ func NewComputeDomainManager(config *ManagerConfig) *ComputeDomainManager {
 	informer := factory.Resource().V1beta1().ComputeDomains().Informer()
 
 	m := &ComputeDomainManager{
-		config:    config,
-		factory:   factory,
-		informer:  informer,
-		nodesChan: make(chan struct{}),
+		config:           config,
+		factory:          factory,
+		informer:         informer,
+		previousNodes:    []*nvapi.ComputeDomainNode{},
+		updatedNodesChan: make(chan []*nvapi.ComputeDomainNode),
 	}
 
 	return m
@@ -144,20 +148,11 @@ func (m *ComputeDomainManager) UpdateComputeDomainNodeInfo(ctx context.Context, 
 	// Create a deep copy of the ComputeDomain to avoid modifying the original
 	newCD := cd.DeepCopy()
 
-	// If we've reached the expected number of nodes, assign m.nodes and close
-	// the channel as we exit this function to unblock the caller of
-	// BlockUntilAllNodesJoinComputeDomain
 	defer func() {
-		if len(newCD.Status.Nodes) != newCD.Spec.NumNodes {
-			return
-		}
-		if m.nodes == nil {
-			close(m.nodesChan)
-		}
-		m.nodes = newCD.Status.Nodes
+		m.MaybePushNodesUpdate(newCD)
 	}()
 
-	// Try to find an existing entry for the current node
+	// Try to find an existing entry for the current k8s node
 	for _, node := range newCD.Status.Nodes {
 		if node.Name == m.config.nodeName {
 			nodeInfo = node
@@ -179,7 +174,9 @@ func (m *ComputeDomainManager) UpdateComputeDomainNodeInfo(ctx context.Context, 
 		newCD.Status.Nodes = append(newCD.Status.Nodes, nodeInfo)
 	}
 
-	// Unconditionally update its IP address
+	// Unconditionally update its IP address. Note that the nodeInfo.IPAddress
+	// as of now translates into a pod IP address and may therefore change
+	// across pod restarts.
 	nodeInfo.IPAddress = m.config.podIP
 
 	// Conditionally update its status
@@ -195,13 +192,42 @@ func (m *ComputeDomainManager) UpdateComputeDomainNodeInfo(ctx context.Context, 
 	return nil
 }
 
-// BlockUntilAllNodesJoinComputeDomain waits until all nodes have joined the compute domain
-// and returns the list of nodes in the compute domain.
-func (m *ComputeDomainManager) BlockUntilAllNodesJoinComputeDomain(ctx context.Context) ([]*nvapi.ComputeDomainNode, error) {
-	select {
-	case <-ctx.Done():
-		return nil, ctx.Err()
-	case <-m.nodesChan:
-		return m.nodes, nil
+// If we've reached the expected number of nodes and if there was actually a
+// change compared to the previously known set of nodes: pass info to IMEX
+// daemon controller.
+func (m *ComputeDomainManager) MaybePushNodesUpdate(cd *nvapi.ComputeDomain) {
+	if len(cd.Status.Nodes) != cd.Spec.NumNodes {
+		klog.Infof("numNodes: %d, nodes seen: %d", cd.Spec.NumNodes, len(cd.Status.Nodes))
+		return
 	}
+
+	newIPs := getIPSet(cd.Status.Nodes)
+	previousIPs := getIPSet(m.previousNodes)
+
+	// Compare sets (i.e., without paying attention to order). Note: the order
+	// of IP addresses written to the IMEX daemon's config file might matter (in
+	// the sense that if across config files the set is equal but the order is
+	// not: that may lead to an IMEX daemon startup error). Maybe we should
+	// perform a stable sort of IP addresses before writing them to the nodes
+	// config file.
+	if !maps.Equal(newIPs, previousIPs) {
+		klog.Infof("IP set changed: previous: %v; new: %v", previousIPs, newIPs)
+		m.previousNodes = cd.Status.Nodes
+		m.updatedNodesChan <- cd.Status.Nodes
+	} else {
+		klog.Infof("IP set did not change")
+	}
+}
+
+func (m *ComputeDomainManager) GetNodesUpdateChan() chan []*nvapi.ComputeDomainNode {
+	// Yields numNodes-size nodes updates.
+	return m.updatedNodesChan
+}
+
+func getIPSet(nodeInfos []*nvapi.ComputeDomainNode) IPSet {
+	set := make(map[string]struct{})
+	for _, n := range nodeInfos {
+		set[n.IPAddress] = struct{}{}
+	}
+	return set
 }
