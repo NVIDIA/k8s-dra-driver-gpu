@@ -102,8 +102,9 @@ func (c *Controller) Run(ctx context.Context) error {
 	return nil
 }
 
-// BlockUntilAllNodesJoinComputeDomain waits until all nodes have joined the compute domain
-// and returns the list of nodes in the compute domain.
-func (c *Controller) BlockUntilAllNodesJoinComputeDomain(ctx context.Context) ([]*nvapi.ComputeDomainNode, error) {
-	return c.computeDomainManager.BlockUntilAllNodesJoinComputeDomain(ctx)
+// GetNodesUpdateChan() returns a channel that only ever yields a full set of nodes,
+// i.e. during startup this blocks until the expected number of nodes is present
+// in CD status.
+func (c *Controller) GetNodesUpdateChan() chan []*nvapi.ComputeDomainNode {
+	return c.computeDomainManager.GetNodesUpdateChan()
 }
