@@ -21,6 +21,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"k8s.io/klog/v2"
@@ -194,6 +195,14 @@ func (l deviceLib) getGpuInfo(index int, device nvdev.Device) (*GpuInfo, error) 
 	if ret != nvml.SUCCESS {
 		return nil, fmt.Errorf("error getting CUDA driver version: %w", err)
 	}
+	pciBusID, err := device.GetPCIBusID()
+	if err != nil {
+		return nil, fmt.Errorf("error getting PCIBusID for device %d: %w", index, err)
+	}
+	pcieRoot, err := resolvePCIeRootFromBusID(pciBusID)
+	if err != nil {
+		return nil, fmt.Errorf("error resolving PCIe root for device %d: %w", index, err)
+	}
 
 	var migProfiles []*MigProfileInfo
 	for i := 0; i < nvml.GPU_INSTANCE_PROFILE_COUNT; i++ {
@@ -257,6 +266,7 @@ func (l deviceLib) getGpuInfo(index int, device nvdev.Device) (*GpuInfo, error) 
 		productName:           productName,
 		brand:                 brand,
 		architecture:          architecture,
+		pcieRoot:              pcieRoot,
 		cudaComputeCapability: cudaComputeCapability,
 		driverVersion:         driverVersion,
 		cudaDriverVersion:     fmt.Sprintf("%v.%v", cudaDriverVersion/1000, (cudaDriverVersion%1000)/10),
@@ -541,3 +551,27 @@ func (l deviceLib) setComputeMode(uuids []string, mode string) error {
 // 	}
 // 	return nil
 // }
+
+// resolvePCIeRootFromBusID resolves the PCIe Root Complex in the format
+// `pci<domain>:<bus>` from the given PCI Bus ID in the format
+// `<domain>:<bus>:<device>.<function>` (e.g., `0000:01:00.0`).
+//
+// In Linux, /sys/bus/pci/devices/<pciBusID> is a symlink
+// to the actual device path in /sys/devices/pci0000:00/...<intermediate PCI devices>.../<pciBusID>,
+// where the PCIe Root Complex is represented as the third component of the path
+// (e.g., `pci0000:00`).
+//
+// ref: https://docs.kernel.org/PCI/sysfs-pci.html
+func resolvePCIeRootFromBusID(pciBusID string) (string, error) {
+	devicePath, err := os.Readlink(filepath.Join("/sys/bus/pci/devices", pciBusID))
+	if err != nil {
+		return "", fmt.Errorf("error resolving PCIe root from Bus ID '%s': %v", pciBusID, err)
+	}
+
+	regex := regexp.MustCompile(`^/sys/devices/pci[0-9a-f]{4}:[0-9a-f]{2}/.*$`)
+	if !regex.MatchString(devicePath) {
+		return "", fmt.Errorf("unexpected device path for PCIe device '%s': %s", pciBusID, devicePath)
+	}
+
+	return strings.Split(devicePath, "/")[2], nil
+}
