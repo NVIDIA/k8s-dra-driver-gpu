@@ -69,6 +69,11 @@ spec:
         # Use runc: explicit "void"; otherwise we inherit "all".
         - name: NVIDIA_VISIBLE_DEVICES
           value: void
+        {{- if .Values.featureGates }}
+        # Feature gates (includes both project-specific and logging features)
+        - name: FEATURE_GATES
+          value: "{{ range $key, $value := .Values.featureGates }}{{ $key }}={{ $value }},{{ end }}"
+        {{- end }}
       {{- with .Values.controller.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}
