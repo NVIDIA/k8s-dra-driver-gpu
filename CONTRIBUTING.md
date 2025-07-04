@@ -1,6 +1,6 @@
-# Contribute to the NVIDIA Kubernetes DRA Driver
+# Contribute to the NVIDIA DRA Driver for GPUs
 
-Want to hack on the NVIDIA Kubernetes DRA Driver Project? Awesome!
+Want to hack on the NVIDIA DRA Driver for GPUs? Awesome!
 We only require you to sign your work, the below section describes this!
 
 ## Sign your work

@@ -1,178 +1,101 @@
-# Dynamic Resource Allocation (DRA) for NVIDIA GPUs in Kubernetes
+# NVIDIA DRA Driver for GPUs
 
-This DRA resource driver is currently under active development and not yet
-designed for production use.
-We may (at times) decide to push commits over `main` until we have something more stable.
-Use at your own risk.
+This is NVIDIA's DRA Driver for GPUs, for Kubernetes version 1.32 or newer.
+It supports GPUs as well as ComputeDomains (for Multi-Node NVLink).
 
-A document and demo of the DRA support for GPUs provided by this repo can be found below:
-|                                                                                                                          Document                                                                                                                          |                                                                                                                                                                   Demo                                                                                                                                                                   |
-|:----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------:|:----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------:|
-| [<img width="300" alt="Dynamic Resource Allocation (DRA) for GPUs in Kubernetes" src="https://drive.google.com/uc?export=download&id=12EwdvHHI92FucRO2tuIqLR33OC8MwCQK">](https://docs.google.com/document/d/1BNWqgx_SmZDi-va_V31v3DnuVwYnF2EmN7D-O_fB6Oo) | [<img width="300" alt="Demo of Dynamic Resource Allocation (DRA) for GPUs in Kubernetes" src="https://drive.google.com/uc?export=download&id=1UzB-EBEVwUTRF7R0YXbGe9hvTjuKaBlm">](https://drive.google.com/file/d/1iLg2FEAEilb1dcI27TnB19VYtbcvgKhS/view?usp=sharing "Demo of Dynamic Resource Allocation (DRA) for GPUs in Kubernetes") |
+## Overview
 
-## Demo
+Dynamic Resource Allocation (DRA) is a novel concept in Kubernetes for flexibly requesting, allocating, and sharing specialized devices (like GPUs) among pods and containers.
+For background on DRA in general, we recommend the following resources: [Kubernetes docs](https://kubernetes.io/docs/concepts/scheduling-eviction/dynamic-resource-allocation/),  [GKE docs](https://cloud.google.com/kubernetes-engine/docs/concepts/about-dynamic-resource-allocation), [Kubernetes blog](https://kubernetes.io/blog/2025/05/01/kubernetes-v1-33-dra-updates/).
 
-This section describes using `kind` to demo the functionality of the NVIDIA GPU DRA Driver.
+This driver manages two resource types: **GPUs** and **ComputeDomains**. Correspondingly, it contains two DRA kubelet plugins: [gpu-kubelet-plugin](https://github.com/NVIDIA/k8s-dra-driver-gpu/tree/main/cmd/gpu-kubelet-plugin), [compute-domain-kubelet-plugin](https://github.com/NVIDIA/k8s-dra-driver-gpu/tree/main/cmd/compute-domain-kubelet-plugin). Upon driver installation, each of these two parts can be enabled or disabled separately.
 
-First since we'll launch kind with GPU support, ensure that the following prerequisites are met:
-1. `kind` is installed. See the official documentation [here](https://kind.sigs.k8s.io/docs/user/quick-start/#installation).
-1. Ensure that the NVIDIA Container Toolkit is installed on your system. This
-   can be done by following the instructions
-   [here](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html).
-1. Configure the NVIDIA Container Runtime as the **default** Docker runtime:
-   ```console
-   sudo nvidia-ctk runtime configure --runtime=docker --set-as-default
-   ```
-1. Restart Docker to apply the changes:
-   ```console
-   sudo systemctl restart docker
-   ```
-1. Set the `accept-nvidia-visible-devices-as-volume-mounts` option to `true` in
-   the `/etc/nvidia-container-runtime/config.toml` file to configure the NVIDIA
-   Container Runtime to use volume mounts to select devices to inject into a
-   container.
-   ``` console
-   sudo nvidia-ctk config --in-place --set accept-nvidia-visible-devices-as-volume-mounts=true
-   ```
+The two sections below provide a brief overview for each of these two parts of the driver.
 
-1. Show the current set of GPUs on the machine:
-   ```console
-   nvidia-smi -L
-   ```
+### `ComputeDomain`s
 
-We start by first cloning this repository and `cd`ing into it.
-All of the scripts and example Pod specs used in this demo are in the `demo`
-subdirectory, so take a moment to browse through the various files and see
-what's available:
+An abstraction for robust and secure Multi-Node NVLink (MNNVL). Officially supported.
+
+An individual `ComputeDomain` (CD) guarantees MNNVL-reachability between pods that are _in_ the CD, and secure isolation from other pods that are _not in_ the CD.
+
+In terms of placement, a CD follows the workload. In terms of lifetime, a CD is ephemeral: its lifetime is bound to the lifetime of the consuming workload.
+For more background on how `ComputeDomain`s facilitate orchestrating MNNVL workloads on Kubernetes (and on NVIDIA GB200 systems in particular), see [this](https://docs.google.com/document/d/1PrdDofsPFVJuZvcv-vtlI9n2eAh-YVf_fRQLIVmDwVY/edit?tab=t.0#heading=h.qkogm924v5so) doc and [this](https://docs.google.com/presentation/d/1Xupr8IZVAjs5bNFKJnYaK0LE7QWETnJjkz6KOfLu87E/edit?pli=1&slide=id.g28ac369118f_0_1647#slide=id.g28ac369118f_0_1647) slide deck.
+For an outlook and specific plans for improvements, please refer to [these](https://github.com/NVIDIA/k8s-dra-driver-gpu/releases/tag/v25.3.0-rc.3) release notes.
+
+If you've heard about IMEX: this DRA driver orchestrates IMEX primitives (daemons, domains, channels) under the hood.
+
+### `GPU`s
+
+The GPU allocation side of this DRA driver will enable powerful features (such as dynamic allocation of MIG devices).
+To learn about what we're planning to build, please have a look at [these](https://github.com/NVIDIA/k8s-dra-driver-gpu/releases/tag/v25.3.0-rc.3) release notes.
+
+While some GPU allocation features can be tried out, they are not yet officially supported.
+Hence, the GPU kubelet plugin is currently disabled by default in the Helm chart installation.
+
+For exploration and demonstration purposes, see the "demo" section below, and also browse the `demo/specs/quickstart` directory in this repository.
+
+## Installation
+
+As of today, the recommended installation method is via Helm.
+Detailed instructions can (for now) be found [here](https://github.com/NVIDIA/k8s-dra-driver-gpu/discussions/249).
+In the future, this driver will be included in the [NVIDIA GPU Operator](https://github.com/NVIDIA/gpu-operator) and does not need to be installed separately anymore.
+
+## Demo (kind)
+
+The example below demonstrates a basic use case -- sharing a single GPU device across two containers running in the same Kubernetes pod.
+
+**Step 1: install dependencies**
+
+Running this demo requires
+* kind (follow the official [installation docs](https://kind.sigs.k8s.io/docs/user/quick-start/#installation))
+* NVIDIA Container Toolkit & Runtime (follow a [previous version](https://github.com/NVIDIA/k8s-dra-driver-gpu/blob/5a4717f1ea613ad47bafccb467582bf2425f20f1/README.md#demo) of this readme for setup instructions)
+
+**Step 2: create kind cluster with the DRA driver installed**
+
+Start by cloning this repository, and `cd`in into it:
 
 ```console
 git clone https://github.com/NVIDIA/k8s-dra-driver-gpu.git
-```
-```console
 cd k8s-dra-driver-gpu
 ```
 
-### Setting up the infrastructure
+Next up, build this driver's container image and create a kind-based Kubernetes cluster:
 
-First, create a `kind` cluster to run the demo:
-```bash
+```console
+export KIND_CLUSTER_NAME="kind-dra-1"
+./demo/clusters/kind/build-dra-driver-gpu.sh
 ./demo/clusters/kind/create-cluster.sh
 ```
 
-From here we will build the image for the example resource driver:
-```console
-./demo/clusters/kind/build-dra-driver-gpu.sh
-```
+Now you can install the DRA driver's Helm chart into the Kubernetes cluster:
 
-This also makes the built images available to the `kind` cluster.
-
-We now install the NVIDIA GPU DRA driver:
 ```console
 ./demo/clusters/kind/install-dra-driver-gpu.sh
 ```
 
-This should show two pods running in the `nvidia-dra-driver-gpu` namespace:
-```console
-kubectl get pods -n nvidia-dra-driver-gpu
-```
-```
-$ kubectl get pods -n nvidia-dra-driver-gpu
-NAME                                                READY   STATUS    RESTARTS   AGE
-nvidia-dra-driver-gpu-controller-697898fc6b-g85zx   1/1     Running   0          40s
-nvidia-dra-driver-gpu-kubelet-plugin-kkwf7          2/2     Running   0          40s
-```
+**Step 3: run workload**
 
-### Run the examples by following the steps in the demo script
-Finally, you can run the various examples contained in the `demo/specs/quickstart` folder.
-With the most recent updates for Kubernetes v1.31, only the first 3 examples in
-this folder are currently functional.
-
-You can run them as follows:
-```console
-kubectl apply --filename=demo/specs/quickstart/gpu-test{1,2,3}.yaml
-```
-
-Get the pods' statuses. Depending on which GPUs are available, running the first three examples will produce output similar to the following...
-
-**Note:** there is a [known issue with kind](https://kind.sigs.k8s.io/docs/user/known-issues/#pod-errors-due-to-too-many-open-files). You may see an error while trying to tail the log of a running pod in the kind cluster: `failed to create fsnotify watcher: too many open files.` The issue may be resolved by increasing the value for `fs.inotify.max_user_watches`.
-```console
-kubectl get pod -A -l app=pod
-```
-```
-NAMESPACE           NAME                                       READY   STATUS    RESTARTS   AGE
-gpu-test1           pod1                                       1/1     Running   0          34s
-gpu-test1           pod2                                       1/1     Running   0          34s
-gpu-test2           pod                                        2/2     Running   0          34s
-gpu-test3           pod1                                       1/1     Running   0          34s
-gpu-test3           pod2                                       1/1     Running   0          34s
-```
-```console
-kubectl logs -n gpu-test1 -l app=pod
-```
-```
-GPU 0: A100-SXM4-40GB (UUID: GPU-662077db-fa3f-0d8f-9502-21ab0ef058a2)
-GPU 0: A100-SXM4-40GB (UUID: GPU-4cf8db2d-06c0-7d70-1a51-e59b25b2c16c)
-```
-```console
-kubectl logs -n gpu-test2 pod --all-containers
-```
-```
-GPU 0: A100-SXM4-40GB (UUID: GPU-79a2ba02-a537-ccbf-2965-8e9d90c0bd54)
-GPU 0: A100-SXM4-40GB (UUID: GPU-79a2ba02-a537-ccbf-2965-8e9d90c0bd54)
-```
+Submit workload:
 
 ```console
-kubectl logs -n gpu-test3 -l app=pod
-```
-```
-GPU 0: A100-SXM4-40GB (UUID: GPU-4404041a-04cf-1ccf-9e70-f139a9b1e23c)
-GPU 0: A100-SXM4-40GB (UUID: GPU-4404041a-04cf-1ccf-9e70-f139a9b1e23c)
+kubectl apply -f ./demo/specs/quickstart/gpu-test2.yaml
 ```
 
-### Cleaning up the environment
+If you're curious, have a look at [the `ResourceClaimTemplate`](https://github.com/jgehrcke/k8s-dra-driver-gpu/blob/526130fbaa3c8f5b1f6dcfd9ef01c9bdd5c229fe/demo/specs/quickstart/gpu-test2.yaml#L12) definition in this spec, and how the corresponding _single_ `ResourceClaim` is [being referenced](https://github.com/jgehrcke/k8s-dra-driver-gpu/blob/526130fbaa3c8f5b1f6dcfd9ef01c9bdd5c229fe/demo/specs/quickstart/gpu-test2.yaml#L46) by both containers.
 
-Remove the cluster created in the preceding steps:
-```console
-./demo/clusters/kind/delete-cluster.sh
+Container log inspection then indeed reveals that both containers operate on the same GPU device:
+
+```bash
+$ kubectl logs pod -n gpu-test2 --all-containers --prefix
+[pod/pod/ctr0] GPU 0: NVIDIA A100-SXM4-40GB (UUID: GPU-4404041a-04cf-1ccf-9e70-f139a9b1e23c)
+[pod/pod/ctr1] GPU 0: NVIDIA A100-SXM4-40GB (UUID: GPU-4404041a-04cf-1ccf-9e70-f139a9b1e23c)
 ```
 
-<!--
-TODO: This README should be extended with additional content including:
+## Contributing
 
-## Information for "real" deployment including prerequesites
+Contributions require a Developer Certificate of Origin (DCO, see [CONTRIBUTING.md](https://github.com/NVIDIA/k8s-dra-driver-gpu/blob/main/CONTRIBUTING.md)).
 
-This may include the following content from the original scripts:
-```
-set -e
+## Support
 
-export VERSION=v25.2.0
-
-REGISTRY=nvcr.io/nvidia
-IMAGE=k8s-dra-driver-gpu
-PLATFORM=ubi9
-
-sudo true
-make -f deployments/container/Makefile build-${PLATFORM}
-docker tag ${REGISTRY}/${IMAGE}:${VERSION}-${PLATFORM} ${REGISTRY}/${IMAGE}:${VERSION}
-docker save ${REGISTRY}/${IMAGE}:${VERSION} > image.tgz
-sudo ctr -n k8s.io image import image.tgz
-```
-
-## Information on advanced usage such as MIG.
-
-This includes setting configuring MIG on the host using mig-parted. Some of the demo scripts included
-in ./demo/ require this.
-
-```
-cat <<EOF | sudo -E nvidia-mig-parted apply -f -
-version: v1
-mig-configs:
-half-half:
-   - devices: [0,1,2,3]
-      mig-enabled: false
-   - devices: [4,5,6,7]
-      mig-enabled: true
-      mig-devices: {}
-EOF
-```
--->
+Please open an issue on the GitHub project for questions and for reporting problems.
+Your feedback is appreciated!
