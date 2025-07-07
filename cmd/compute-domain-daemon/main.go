@@ -51,6 +51,7 @@ type Flags struct {
 	nodeName               string
 	podIP                  string
 	loggingConfig          *flags.LoggingConfig
+	featureGateConfig      *flags.FeatureGateConfig
 }
 
 func main() {
@@ -62,7 +63,8 @@ func main() {
 
 func newApp() *cli.App {
 	flags := Flags{
-		loggingConfig: flags.NewLoggingConfig(),
+		loggingConfig:     flags.NewLoggingConfig(),
+		featureGateConfig: flags.NewFeatureGateConfig(),
 	}
 
 	// Create a wrapper that will be used to gracefully shut down all subcommands
@@ -122,6 +124,7 @@ func newApp() *cli.App {
 			Destination: &flags.podIP,
 		},
 	}
+	cliFlags = append(cliFlags, flags.featureGateConfig.Flags()...)
 	cliFlags = append(cliFlags, flags.loggingConfig.Flags()...)
 
 	// Create the app

@@ -47,8 +47,9 @@ const (
 )
 
 type Flags struct {
-	kubeClientConfig flags.KubeClientConfig
-	loggingConfig    *flags.LoggingConfig
+	kubeClientConfig  flags.KubeClientConfig
+	loggingConfig     *flags.LoggingConfig
+	featureGateConfig *flags.FeatureGateConfig
 
 	podName   string
 	namespace string
@@ -75,7 +76,8 @@ func main() {
 
 func newApp() *cli.App {
 	flags := &Flags{
-		loggingConfig: flags.NewLoggingConfig(),
+		loggingConfig:     flags.NewLoggingConfig(),
+		featureGateConfig: flags.NewFeatureGateConfig(),
 	}
 	cliFlags := []cli.Flag{
 		&cli.StringFlag{
@@ -124,6 +126,7 @@ func newApp() *cli.App {
 	}
 
 	cliFlags = append(cliFlags, flags.kubeClientConfig.Flags()...)
+	cliFlags = append(cliFlags, flags.featureGateConfig.Flags()...)
 	cliFlags = append(cliFlags, flags.loggingConfig.Flags()...)
 
 	app := &cli.App{

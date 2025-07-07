@@ -47,6 +47,7 @@ import (
 	cdispec "tags.cncf.io/container-device-interface/specs-go"
 
 	configapi "github.com/NVIDIA/k8s-dra-driver-gpu/api/nvidia.com/resource/v1beta1"
+	"github.com/NVIDIA/k8s-dra-driver-gpu/pkg/featuregates"
 )
 
 const (
@@ -93,6 +94,7 @@ type MpsControlDaemonTemplateData struct {
 	MpsPipeDirectory                string
 	MpsLogDirectory                 string
 	MpsImageName                    string
+	FeatureGates                    map[string]bool
 }
 
 func NewTimeSlicingManager(deviceLib *deviceLib) *TimeSlicingManager {
@@ -196,6 +198,7 @@ func (m *MpsControlDaemon) Start(ctx context.Context, config *configapi.MpsConfi
 	klog.Infof("Starting MPS control daemon for '%v', with settings: %+v", m.id, config)
 
 	deviceUUIDs := m.devices.UUIDs()
+
 	templateData := MpsControlDaemonTemplateData{
 		NodeName:                        m.nodeName,
 		MpsControlDaemonNamespace:       m.namespace,
@@ -208,6 +211,7 @@ func (m *MpsControlDaemon) Start(ctx context.Context, config *configapi.MpsConfi
 		MpsPipeDirectory:                m.pipeDir,
 		MpsLogDirectory:                 m.logDir,
 		MpsImageName:                    m.manager.config.flags.imageName,
+		FeatureGates:                    featuregates.ToMap(),
 	}
 
 	if config != nil && config.DefaultActiveThreadPercentage != nil {

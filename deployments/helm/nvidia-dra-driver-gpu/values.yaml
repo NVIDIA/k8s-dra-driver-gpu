@@ -55,6 +55,16 @@ resources:
   computeDomains:
     enabled: true
 
+# Feature gates configuration following Kubernetes patterns
+# Configure feature gates as key-value pairs (feature_name: true/false)
+# Examples:
+# featureGates:
+#   ExampleFeature: false              # Project-specific alpha feature
+#   ContextualLogging: true            # Kubernetes logging feature (enabled by default)
+#   LoggingAlphaOptions: false         # Kubernetes logging alpha features
+#   LoggingBetaOptions: true           # Kubernetes logging beta features
+featureGates: {}
+
 controller:
   priorityClassName: "system-node-critical"
   podAnnotations: {}
