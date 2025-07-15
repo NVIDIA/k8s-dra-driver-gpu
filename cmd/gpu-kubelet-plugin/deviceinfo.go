@@ -24,6 +24,7 @@ import (
 	"github.com/NVIDIA/go-nvml/pkg/nvml"
 	resourceapi "k8s.io/api/resource/v1beta2"
 	"k8s.io/apimachinery/pkg/api/resource"
+	"k8s.io/dynamic-resource-allocation/deviceattribute"
 	"k8s.io/utils/ptr"
 )
 
@@ -39,6 +40,8 @@ type GpuInfo struct {
 	cudaComputeCapability string
 	driverVersion         string
 	cudaDriverVersion     string
+	pcieBusID             string
+	pcieRootAttr          deviceattribute.DeviceAttribute
 	migProfiles           []*MigProfileInfo
 }
 
@@ -52,6 +55,8 @@ type MigDeviceInfo struct {
 	giInfo        *nvml.GpuInstanceInfo
 	ciProfileInfo *nvml.ComputeInstanceProfileInfo
 	ciInfo        *nvml.ComputeInstanceInfo
+	pcieBusID     string
+	pcieRootAttr  deviceattribute.DeviceAttribute
 }
 
 type MigProfileInfo struct {
@@ -117,6 +122,10 @@ func (d *GpuInfo) GetDevice() resourceapi.Device {
 			"cudaDriverVersion": {
 				VersionValue: ptr.To(semver.MustParse(d.cudaDriverVersion).String()),
 			},
+			"pcieBusID": {
+				StringValue: &d.pcieBusID,
+			},
+			resourceapi.QualifiedName(d.pcieRootAttr.Name): resourceapi.DeviceAttribute(d.pcieRootAttr.Value),
 		},
 		Capacity: map[resourceapi.QualifiedName]resourceapi.DeviceCapacity{
 			"memory": {
@@ -167,6 +176,10 @@ func (d *MigDeviceInfo) GetDevice() resourceapi.Device {
 			"cudaDriverVersion": {
 				VersionValue: ptr.To(semver.MustParse(d.parent.cudaDriverVersion).String()),
 			},
+			"pcieBusID": {
+				StringValue: &d.pcieBusID,
+			},
+			resourceapi.QualifiedName(d.pcieRootAttr.Name): resourceapi.DeviceAttribute(d.pcieRootAttr.Value),
 		},
 		Capacity: map[resourceapi.QualifiedName]resourceapi.DeviceCapacity{
 			"multiprocessors": {
