@@ -22,7 +22,7 @@ import (
 	"github.com/Masterminds/semver"
 	nvdev "github.com/NVIDIA/go-nvlib/pkg/nvlib/device"
 	"github.com/NVIDIA/go-nvml/pkg/nvml"
-	resourceapi "k8s.io/api/resource/v1beta1"
+	resourceapi "k8s.io/api/resource/v1beta2"
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/utils/ptr"
 )
@@ -86,43 +86,41 @@ func (d *MigDeviceInfo) CanonicalIndex() string {
 func (d *GpuInfo) GetDevice() resourceapi.Device {
 	device := resourceapi.Device{
 		Name: d.CanonicalName(),
-		Basic: &resourceapi.BasicDevice{
-			Attributes: map[resourceapi.QualifiedName]resourceapi.DeviceAttribute{
-				"type": {
-					StringValue: ptr.To(GpuDeviceType),
-				},
-				"uuid": {
-					StringValue: &d.UUID,
-				},
-				"minor": {
-					IntValue: ptr.To(int64(d.minor)),
-				},
-				"index": {
-					IntValue: ptr.To(int64(d.index)),
-				},
-				"productName": {
-					StringValue: &d.productName,
-				},
-				"brand": {
-					StringValue: &d.brand,
-				},
-				"architecture": {
-					StringValue: &d.architecture,
-				},
-				"cudaComputeCapability": {
-					VersionValue: ptr.To(semver.MustParse(d.cudaComputeCapability).String()),
-				},
-				"driverVersion": {
-					VersionValue: ptr.To(semver.MustParse(d.driverVersion).String()),
-				},
-				"cudaDriverVersion": {
-					VersionValue: ptr.To(semver.MustParse(d.cudaDriverVersion).String()),
-				},
+		Attributes: map[resourceapi.QualifiedName]resourceapi.DeviceAttribute{
+			"type": {
+				StringValue: ptr.To(GpuDeviceType),
 			},
-			Capacity: map[resourceapi.QualifiedName]resourceapi.DeviceCapacity{
-				"memory": {
-					Value: *resource.NewQuantity(int64(d.memoryBytes), resource.BinarySI),
-				},
+			"uuid": {
+				StringValue: &d.UUID,
+			},
+			"minor": {
+				IntValue: ptr.To(int64(d.minor)),
+			},
+			"index": {
+				IntValue: ptr.To(int64(d.index)),
+			},
+			"productName": {
+				StringValue: &d.productName,
+			},
+			"brand": {
+				StringValue: &d.brand,
+			},
+			"architecture": {
+				StringValue: &d.architecture,
+			},
+			"cudaComputeCapability": {
+				VersionValue: ptr.To(semver.MustParse(d.cudaComputeCapability).String()),
+			},
+			"driverVersion": {
+				VersionValue: ptr.To(semver.MustParse(d.driverVersion).String()),
+			},
+			"cudaDriverVersion": {
+				VersionValue: ptr.To(semver.MustParse(d.cudaDriverVersion).String()),
+			},
+		},
+		Capacity: map[resourceapi.QualifiedName]resourceapi.DeviceCapacity{
+			"memory": {
+				Value: *resource.NewQuantity(int64(d.memoryBytes), resource.BinarySI),
 			},
 		},
 	}
@@ -132,61 +130,59 @@ func (d *GpuInfo) GetDevice() resourceapi.Device {
 func (d *MigDeviceInfo) GetDevice() resourceapi.Device {
 	device := resourceapi.Device{
 		Name: d.CanonicalName(),
-		Basic: &resourceapi.BasicDevice{
-			Attributes: map[resourceapi.QualifiedName]resourceapi.DeviceAttribute{
-				"type": {
-					StringValue: ptr.To(MigDeviceType),
-				},
-				"uuid": {
-					StringValue: &d.UUID,
-				},
-				"parentUUID": {
-					StringValue: &d.parent.UUID,
-				},
-				"index": {
-					IntValue: ptr.To(int64(d.index)),
-				},
-				"parentIndex": {
-					IntValue: ptr.To(int64(d.parent.index)),
-				},
-				"profile": {
-					StringValue: &d.profile,
-				},
-				"productName": {
-					StringValue: &d.parent.productName,
-				},
-				"brand": {
-					StringValue: &d.parent.brand,
-				},
-				"architecture": {
-					StringValue: &d.parent.architecture,
-				},
-				"cudaComputeCapability": {
-					VersionValue: ptr.To(semver.MustParse(d.parent.cudaComputeCapability).String()),
-				},
-				"driverVersion": {
-					VersionValue: ptr.To(semver.MustParse(d.parent.driverVersion).String()),
-				},
-				"cudaDriverVersion": {
-					VersionValue: ptr.To(semver.MustParse(d.parent.cudaDriverVersion).String()),
-				},
+		Attributes: map[resourceapi.QualifiedName]resourceapi.DeviceAttribute{
+			"type": {
+				StringValue: ptr.To(MigDeviceType),
 			},
-			Capacity: map[resourceapi.QualifiedName]resourceapi.DeviceCapacity{
-				"multiprocessors": {
-					Value: *resource.NewQuantity(int64(d.giProfileInfo.MultiprocessorCount), resource.BinarySI),
-				},
-				"copyEngines": {Value: *resource.NewQuantity(int64(d.giProfileInfo.CopyEngineCount), resource.BinarySI)},
-				"decoders":    {Value: *resource.NewQuantity(int64(d.giProfileInfo.DecoderCount), resource.BinarySI)},
-				"encoders":    {Value: *resource.NewQuantity(int64(d.giProfileInfo.EncoderCount), resource.BinarySI)},
-				"jpegEngines": {Value: *resource.NewQuantity(int64(d.giProfileInfo.JpegCount), resource.BinarySI)},
-				"ofaEngines":  {Value: *resource.NewQuantity(int64(d.giProfileInfo.OfaCount), resource.BinarySI)},
-				"memory":      {Value: *resource.NewQuantity(int64(d.giProfileInfo.MemorySizeMB*1024*1024), resource.BinarySI)},
+			"uuid": {
+				StringValue: &d.UUID,
 			},
+			"parentUUID": {
+				StringValue: &d.parent.UUID,
+			},
+			"index": {
+				IntValue: ptr.To(int64(d.index)),
+			},
+			"parentIndex": {
+				IntValue: ptr.To(int64(d.parent.index)),
+			},
+			"profile": {
+				StringValue: &d.profile,
+			},
+			"productName": {
+				StringValue: &d.parent.productName,
+			},
+			"brand": {
+				StringValue: &d.parent.brand,
+			},
+			"architecture": {
+				StringValue: &d.parent.architecture,
+			},
+			"cudaComputeCapability": {
+				VersionValue: ptr.To(semver.MustParse(d.parent.cudaComputeCapability).String()),
+			},
+			"driverVersion": {
+				VersionValue: ptr.To(semver.MustParse(d.parent.driverVersion).String()),
+			},
+			"cudaDriverVersion": {
+				VersionValue: ptr.To(semver.MustParse(d.parent.cudaDriverVersion).String()),
+			},
+		},
+		Capacity: map[resourceapi.QualifiedName]resourceapi.DeviceCapacity{
+			"multiprocessors": {
+				Value: *resource.NewQuantity(int64(d.giProfileInfo.MultiprocessorCount), resource.BinarySI),
+			},
+			"copyEngines": {Value: *resource.NewQuantity(int64(d.giProfileInfo.CopyEngineCount), resource.BinarySI)},
+			"decoders":    {Value: *resource.NewQuantity(int64(d.giProfileInfo.DecoderCount), resource.BinarySI)},
+			"encoders":    {Value: *resource.NewQuantity(int64(d.giProfileInfo.EncoderCount), resource.BinarySI)},
+			"jpegEngines": {Value: *resource.NewQuantity(int64(d.giProfileInfo.JpegCount), resource.BinarySI)},
+			"ofaEngines":  {Value: *resource.NewQuantity(int64(d.giProfileInfo.OfaCount), resource.BinarySI)},
+			"memory":      {Value: *resource.NewQuantity(int64(d.giProfileInfo.MemorySizeMB*1024*1024), resource.BinarySI)},
 		},
 	}
 	for i := d.placement.Start; i < d.placement.Start+d.placement.Size; i++ {
 		capacity := resourceapi.QualifiedName(fmt.Sprintf("memorySlice%d", i))
-		device.Basic.Capacity[capacity] = resourceapi.DeviceCapacity{
+		device.Capacity[capacity] = resourceapi.DeviceCapacity{
 			Value: *resource.NewQuantity(1, resource.BinarySI),
 		}
 	}
