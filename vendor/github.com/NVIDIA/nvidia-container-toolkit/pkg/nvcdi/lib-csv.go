@@ -34,8 +34,8 @@ type csvlib nvcdilib
 var _ Interface = (*csvlib)(nil)
 
 // GetSpec should not be called for wsllib
-func (l *csvlib) GetSpec() (spec.Interface, error) {
-	return nil, fmt.Errorf("Unexpected call to csvlib.GetSpec()")
+func (l *csvlib) GetSpec(...string) (spec.Interface, error) {
+	return nil, fmt.Errorf("unexpected call to csvlib.GetSpec()")
 }
 
 // GetAllDeviceSpecs returns the device specs for all available devices.
@@ -44,7 +44,7 @@ func (l *csvlib) GetAllDeviceSpecs() ([]specs.Device, error) {
 		tegra.WithLogger(l.logger),
 		tegra.WithDriverRoot(l.driverRoot),
 		tegra.WithDevRoot(l.devRoot),
-		tegra.WithNVIDIACDIHookPath(l.nvidiaCDIHookPath),
+		tegra.WithHookCreator(l.hookCreator),
 		tegra.WithLdconfigPath(l.ldconfigPath),
 		tegra.WithCSVFiles(l.csvFiles),
 		tegra.WithLibrarySearchPaths(l.librarySearchPaths...),
