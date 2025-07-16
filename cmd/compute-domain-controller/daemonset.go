@@ -50,6 +50,7 @@ type DaemonSetTemplateData struct {
 	ComputeDomainLabelValue   types.UID
 	ResourceClaimTemplateName string
 	ImageName                 string
+	MaxNodesPerIMEXDomain     int
 	FeatureGates              map[string]bool
 }
 
@@ -195,6 +196,7 @@ func (m *DaemonSetManager) Create(ctx context.Context, cd *nvapi.ComputeDomain) 
 		ComputeDomainLabelValue:   cd.UID,
 		ResourceClaimTemplateName: rct.Name,
 		ImageName:                 m.config.imageName,
+		MaxNodesPerIMEXDomain:     m.config.maxNodesPerIMEXDomain,
 		FeatureGates:              featuregates.ToMap(),
 	}
 

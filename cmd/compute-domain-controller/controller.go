@@ -38,6 +38,9 @@ type ManagerConfig struct {
 	// imageName is the full image name to use when rendering templates
 	imageName string
 
+	// maxNodesPerIMEXDomain is the maximum number of nodes per IMEX domain to allocate
+	maxNodesPerIMEXDomain int
+
 	// clientsets provides access to various Kubernetes API client interfaces
 	clientsets flags.ClientSets
 
@@ -67,12 +70,13 @@ func (c *Controller) Run(ctx context.Context) error {
 	workQueue := workqueue.New(workqueue.DefaultControllerRateLimiter())
 
 	managerConfig := &ManagerConfig{
-		driverName:           c.config.driverName,
-		driverNamespace:      c.config.flags.namespace,
-		additionalNamespaces: c.config.flags.additionalNamespaces.Value(),
-		imageName:            c.config.flags.imageName,
-		clientsets:           c.config.clientsets,
-		workQueue:            workQueue,
+		driverName:            c.config.driverName,
+		driverNamespace:       c.config.flags.namespace,
+		additionalNamespaces:  c.config.flags.additionalNamespaces.Value(),
+		imageName:             c.config.flags.imageName,
+		maxNodesPerIMEXDomain: c.config.flags.maxNodesPerIMEXDomain,
+		clientsets:            c.config.clientsets,
+		workQueue:             workQueue,
 	}
 
 	cdManager := NewComputeDomainManager(managerConfig)

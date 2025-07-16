@@ -43,7 +43,8 @@ import (
 )
 
 const (
-	DriverName = "compute-domain.nvidia.com"
+	DriverName                   = "compute-domain.nvidia.com"
+	defaultMaxNodesPerIMEXDomain = 18
 )
 
 type Flags struct {
@@ -51,9 +52,10 @@ type Flags struct {
 	loggingConfig     *flags.LoggingConfig
 	featureGateConfig *flags.FeatureGateConfig
 
-	podName   string
-	namespace string
-	imageName string
+	podName               string
+	namespace             string
+	imageName             string
+	maxNodesPerIMEXDomain int
 
 	httpEndpoint string
 	metricsPath  string
@@ -102,6 +104,13 @@ func newApp() *cli.App {
 			Required:    true,
 			Destination: &flags.imageName,
 			EnvVars:     []string{"IMAGE_NAME"},
+		},
+		&cli.IntFlag{
+			Name:        "max-nodes-per-imex-domain",
+			Usage:       "The maximum number of possible nodes per IMEX domain",
+			Value:       defaultMaxNodesPerIMEXDomain,
+			EnvVars:     []string{"MAX_NODES_PER_IMEX_DOMAIN"},
+			Destination: &flags.maxNodesPerIMEXDomain,
 		},
 		&cli.StringFlag{
 			Category:    "HTTP server:",
