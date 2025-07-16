@@ -33,6 +33,9 @@ const (
 
 	// MPSSupport allows MPS (Multi-Process Service) settings to be specified.
 	MPSSupport featuregate.Feature = "MPSSupport"
+
+	// HostnameSupport allows using hostnames instead of raw IPs for IMEX daemons.
+	HostnameSupport featuregate.Feature = "HostnameSupport"
 )
 
 // FeatureGates is a singleton representing the set of all feature gates and their values.
@@ -50,6 +53,13 @@ var defaultFeatureGates = map[featuregate.Feature]featuregate.VersionedSpecs{
 		},
 	},
 	MPSSupport: {
+		{
+			Default:    false,
+			PreRelease: featuregate.Alpha,
+			Version:    version.MajorMinor(25, 8),
+		},
+	},
+	HostnameSupport: {
 		{
 			Default:    false,
 			PreRelease: featuregate.Alpha,
