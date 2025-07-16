@@ -29,7 +29,6 @@ import (
 )
 
 const (
-	maxHostnames   = 18
 	hostsFilePath  = "/etc/hosts"
 	hostnameFormat = "compute-domain-daemon-%d"
 )
@@ -37,17 +36,19 @@ const (
 // HostnameManager manages the allocation of static hostnames to IP addresses.
 type HostnameManager struct {
 	sync.Mutex
-	ipToHostname    map[string]string
-	cliqueID        string
-	nodesConfigPath string
+	ipToHostname          map[string]string
+	cliqueID              string
+	maxNodesPerIMEXDomain int
+	nodesConfigPath       string
 }
 
 // NewHostnameManager creates a new hostname manager.
-func NewHostnameManager(cliqueID string, nodesConfigPath string) *HostnameManager {
+func NewHostnameManager(cliqueID string, maxNodesPerIMEXDomain int, nodesConfigPath string) *HostnameManager {
 	return &HostnameManager{
-		ipToHostname:    make(map[string]string),
-		cliqueID:        cliqueID,
-		nodesConfigPath: nodesConfigPath,
+		ipToHostname:          make(map[string]string),
+		cliqueID:              cliqueID,
+		maxNodesPerIMEXDomain: maxNodesPerIMEXDomain,
+		nodesConfigPath:       nodesConfigPath,
 	}
 }
 
@@ -118,7 +119,7 @@ func (m *HostnameManager) allocateHostname(ip string) (string, error) {
 	}
 
 	// Find the next available hostname
-	for i := 0; i < maxHostnames; i++ {
+	for i := 0; i < m.maxNodesPerIMEXDomain; i++ {
 		hostname := fmt.Sprintf(hostnameFormat, i)
 		// Check if this hostname is already in use
 		inUse := false
@@ -135,7 +136,7 @@ func (m *HostnameManager) allocateHostname(ip string) (string, error) {
 	}
 
 	// If all hostnames are used, return an error
-	return "", fmt.Errorf("no hostnames available (max: %d)", maxHostnames)
+	return "", fmt.Errorf("no hostnames available (max: %d)", m.maxNodesPerIMEXDomain)
 }
 
 // updateHostsFile updates the /etc/hosts file with current IP to hostname mappings.
@@ -205,13 +206,13 @@ func (m *HostnameManager) WriteNodesConfig() error {
 	defer f.Close()
 
 	// Write static hostnames
-	for i := 0; i < maxHostnames; i++ {
+	for i := 0; i < m.maxNodesPerIMEXDomain; i++ {
 		hostname := fmt.Sprintf(hostnameFormat, i)
 		if _, err := fmt.Fprintf(f, "%s\n", hostname); err != nil {
 			return fmt.Errorf("failed to write to nodes config file: %w", err)
 		}
 	}
 
-	klog.Infof("Created static nodes config file with %d hostnames using format %s", maxHostnames, hostnameFormat)
+	klog.Infof("Created static nodes config file with %d hostnames using format %s", m.maxNodesPerIMEXDomain, hostnameFormat)
 	return nil
 }
