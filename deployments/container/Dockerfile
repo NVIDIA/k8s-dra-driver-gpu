@@ -102,7 +102,7 @@ LABEL org.opencontainers.image.source="https://github.com/NVIDIA/k8s-dra-driver-
 # https://docs.docker.com/build/building/multi-platform/#install-qemu-manually
 RUN mkdir /licenses && mv /NGC-DL-CONTAINER-LICENSE /licenses/NGC-DL-CONTAINER-LICENSE
 
-COPY --from=toolkit /usr/bin/nvidia-cdi-hook                 /usr/bin/nvidia-cdi-hook
+COPY --from=toolkit /artifacts/rpm/usr/bin/nvidia-cdi-hook   /usr/bin/nvidia-cdi-hook
 COPY --from=build   /artifacts/compute-domain-controller     /usr/bin/compute-domain-controller
 COPY --from=build   /artifacts/compute-domain-kubelet-plugin /usr/bin/compute-domain-kubelet-plugin
 COPY --from=build   /artifacts/compute-domain-daemon         /usr/bin/compute-domain-daemon
