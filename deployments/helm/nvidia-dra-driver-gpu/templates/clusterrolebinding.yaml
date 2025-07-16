@@ -2,7 +2,7 @@
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: {{ include "nvidia-dra-driver-gpu.name" . }}-role-binding
+  name: {{ include "nvidia-dra-driver-gpu.name" . }}-clusterrole-binding
   namespace: {{ include "nvidia-dra-driver-gpu.namespace" . }}
 subjects:
 - kind: ServiceAccount
@@ -10,5 +10,5 @@ subjects:
   namespace: {{ include "nvidia-dra-driver-gpu.namespace" . }}
 roleRef:
   kind: ClusterRole
-  name: {{ include "nvidia-dra-driver-gpu.name" . }}-role
+  name: {{ include "nvidia-dra-driver-gpu.name" . }}-clusterrole
   apiGroup: rbac.authorization.k8s.io
