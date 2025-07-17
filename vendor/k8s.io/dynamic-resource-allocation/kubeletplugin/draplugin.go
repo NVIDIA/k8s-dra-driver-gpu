@@ -29,10 +29,12 @@ import (
 	"k8s.io/klog/v2"
 
 	"go.etcd.io/etcd/client/pkg/v3/fileutil"
-	resourceapi "k8s.io/api/resource/v1beta1"
+	resourceapi "k8s.io/api/resource/v1beta2"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
+	cgoresource "k8s.io/client-go/kubernetes/typed/resource/v1beta2"
+	draclient "k8s.io/dynamic-resource-allocation/client"
 	"k8s.io/dynamic-resource-allocation/resourceclaim"
 	"k8s.io/dynamic-resource-allocation/resourceslice"
 	drapb "k8s.io/kubelet/pkg/apis/dra/v1beta1"
@@ -98,6 +100,12 @@ type DRAPlugin interface {
 	// It is the responsibility of the DRA driver to cache whatever additional
 	// information it might need about prepared resources.
 	//
+	// The DRA driver cannot assume that the matching PrepareResourceClaims
+	// call was handled by the same process:
+	// - The driver might have been restarted in the meantime.
+	// - [RollingUpdate], if enabled, can lead to PrepareResourceClaims being
+	//   called in one driver instance and UnprepareResourceClaims in another.
+	//
 	// This call must be idempotent because the kubelet might have to ask
 	// for un-preparation multiple times, for example if it gets restarted.
 	// Therefore it is not an error if this gets called for a ResourceClaim
@@ -109,6 +117,19 @@ type DRAPlugin interface {
 	// The conventions for returning one overall error and several per-ResourceClaim
 	// errors are the same as in PrepareResourceClaims.
 	UnprepareResourceClaims(ctx context.Context, claims []NamespacedObject) (result map[types.UID]error, err error)
+
+	// ErrorHandler gets called for each error encountered while publishing
+	// ResourceSlices. See [resourceslice.Options.ErrorHandler] for details.
+	//
+	// A simple implementation is to only log with k8s.io/apimachinery/pkg/util/runtime.HandleErrorWithContext:
+	//    runtime.HandleErrorWithContext(ctx, err, msg)
+	//
+	// This is a mandatory method because drivers should check for errors
+	// which won't get resolved by retrying and then fail or change the
+	// slices that they are trying to publish:
+	// - dropped fields (see [resourceslice.DroppedFieldsError])
+	// - validation errors (see [apierrors.IsInvalid])
+	ErrorHandler(ctx context.Context, err error, msg string)
 }
 
 // PrepareResult contains the result of preparing one particular ResourceClaim.
@@ -166,8 +187,9 @@ func DriverName(driverName string) Option {
 	}
 }
 
-// GRPCVerbosity sets the verbosity for logging gRPC calls. Default is 4. A negative
-// value disables logging.
+// GRPCVerbosity sets the verbosity for logging gRPC calls.
+// Default is 6, which includes gRPC calls and their responses.
+// A negative value disables logging.
 func GRPCVerbosity(level int) Option {
 	return func(o *options) error {
 		o.grpcVerbosity = level
@@ -408,6 +430,7 @@ type Helper struct {
 	nodeName         string
 	nodeUID          types.UID
 	kubeClient       kubernetes.Interface
+	resourceClient   cgoresource.ResourceV1beta2Interface
 	serialize        bool
 	grpcMutex        sync.Mutex
 	grpcLockFilePath string
@@ -426,8 +449,9 @@ type Helper struct {
 // Stop also blocks. A logger can be stored in the context to add values or
 // a name to all log entries.
 //
-// If the plugin will be used to publish resources, [KubeClient] and [NodeName]
-// options are mandatory. Otherwise only [DriverName] is mandatory.
+// [KubeClient] and [DriverName] options are mandatory.
+// If the plugin will be used to publish resources, [NodeName]
+// is also mandatory.
 func Start(ctx context.Context, plugin DRAPlugin, opts ...Option) (result *Helper, finalErr error) {
 	logger := klog.FromContext(ctx)
 	o := options{
@@ -448,6 +472,9 @@ func Start(ctx context.Context, plugin DRAPlugin, opts ...Option) (result *Helpe
 	if o.driverName == "" {
 		return nil, errors.New("driver name must be set")
 	}
+	if o.kubeClient == nil {
+		return nil, errors.New("Kubernetes client must be set")
+	}
 	if o.rollingUpdateUID != "" && o.pluginRegistrationEndpoint.file != "" {
 		return nil, errors.New("rolling updates and explicit registration socket filename are mutually exclusive")
 	}
@@ -463,12 +490,13 @@ func Start(ctx context.Context, plugin DRAPlugin, opts ...Option) (result *Helpe
 	}
 
 	d := &Helper{
-		driverName: o.driverName,
-		nodeName:   o.nodeName,
-		nodeUID:    o.nodeUID,
-		kubeClient: o.kubeClient,
-		serialize:  o.serialize,
-		plugin:     plugin,
+		driverName:     o.driverName,
+		nodeName:       o.nodeName,
+		nodeUID:        o.nodeUID,
+		kubeClient:     o.kubeClient,
+		resourceClient: draclient.New(o.kubeClient),
+		serialize:      o.serialize,
+		plugin:         plugin,
 	}
 	if o.rollingUpdateUID != "" {
 		dir := o.pluginDataDirectoryPath
@@ -582,9 +610,6 @@ func (d *Helper) Stop() {
 //
 // The caller may modify the resources after this call returns.
 func (d *Helper) PublishResources(_ context.Context, resources resourceslice.DriverResources) error {
-	if d.kubeClient == nil {
-		return errors.New("no KubeClient found to publish resources")
-	}
 	if d.nodeName == "" {
 		return errors.New("no NodeName was set to publish resources")
 	}
@@ -607,11 +632,6 @@ func (d *Helper) PublishResources(_ context.Context, resources resourceslice.Dri
 		// our background context, not the one passed into this
 		// function, and thus is connected to the lifecycle of the
 		// plugin.
-		//
-		// TODO: don't delete ResourceSlices, not even on a clean shutdown.
-		// We either support rolling updates and want to hand over seamlessly
-		// or don't and then perhaps restart the pod quickly enough that
-		// the kubelet hasn't deleted ResourceSlices yet.
 		controllerCtx := d.backgroundCtx
 		controllerLogger := klog.FromContext(controllerCtx)
 		controllerLogger = klog.LoggerWithName(controllerLogger, "ResourceSlice controller")
@@ -619,18 +639,18 @@ func (d *Helper) PublishResources(_ context.Context, resources resourceslice.Dri
 		var err error
 		if d.resourceSliceController, err = resourceslice.StartController(controllerCtx,
 			resourceslice.Options{
-				DriverName: d.driverName,
-				KubeClient: d.kubeClient,
-				Owner:      &owner,
-				Resources:  driverResources,
+				DriverName:   d.driverName,
+				KubeClient:   d.kubeClient,
+				Owner:        &owner,
+				Resources:    driverResources,
+				ErrorHandler: d.plugin.ErrorHandler,
 			}); err != nil {
 			return fmt.Errorf("start ResourceSlice controller: %w", err)
 		}
-		return nil
+	} else {
+		// Inform running controller about new information.
+		d.resourceSliceController.Update(driverResources)
 	}
-
-	// Inform running controller about new information.
-	d.resourceSliceController.Update(driverResources)
 
 	return nil
 }
@@ -642,6 +662,13 @@ func (d *Helper) RegistrationStatus() *registerapi.RegistrationStatus {
 	}
 	// TODO: protect against concurrency issues.
 	return d.registrar.status
+}
+
+// SetGetInfoError configures the registration server to make
+// GetInfo calls return the specified error.
+// To restore normal behavior, call SetGetInfoError(nil).
+func (d *Helper) SetGetInfoError(err error) {
+	d.registrar.setGetInfoError(err)
 }
 
 // serializeGRPCIfEnabled locks a mutex if serialization is enabled.
@@ -731,7 +758,7 @@ func stripSubrequestNames(names []string) []string {
 func (d *nodePluginImplementation) getResourceClaims(ctx context.Context, claims []*drapb.Claim) ([]*resourceapi.ResourceClaim, error) {
 	var resourceClaims []*resourceapi.ResourceClaim
 	for _, claimReq := range claims {
-		claim, err := d.kubeClient.ResourceV1beta1().ResourceClaims(claimReq.Namespace).Get(ctx, claimReq.Name, metav1.GetOptions{})
+		claim, err := d.resourceClient.ResourceClaims(claimReq.Namespace).Get(ctx, claimReq.Name, metav1.GetOptions{})
 		if err != nil {
 			return resourceClaims, fmt.Errorf("retrieve claim %s/%s: %w", claimReq.Namespace, claimReq.Name, err)
 		}

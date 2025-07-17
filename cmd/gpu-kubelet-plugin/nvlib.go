@@ -27,6 +27,7 @@ import (
 
 	nvdev "github.com/NVIDIA/go-nvlib/pkg/nvlib/device"
 	"github.com/NVIDIA/go-nvml/pkg/nvml"
+	"k8s.io/dynamic-resource-allocation/deviceattribute"
 )
 
 type deviceLib struct {
@@ -195,6 +196,16 @@ func (l deviceLib) getGpuInfo(index int, device nvdev.Device) (*GpuInfo, error) 
 		return nil, fmt.Errorf("error getting CUDA driver version: %w", err)
 	}
 
+	pcieBusID, err := device.GetPCIBusID()
+	if err != nil {
+		return nil, fmt.Errorf("error getting PCIe bus ID for device %d: %w", index, err)
+	}
+
+	pcieRootAttr, err := deviceattribute.GetPCIeRootAttributeByPCIBusID(pcieBusID)
+	if err != nil {
+		return nil, fmt.Errorf("error getting PCIe root for device %d: %w", index, err)
+	}
+
 	var migProfiles []*MigProfileInfo
 	for i := 0; i < nvml.GPU_INSTANCE_PROFILE_COUNT; i++ {
 		giProfileInfo, ret := device.GetGpuInstanceProfileInfo(i)
@@ -260,6 +271,8 @@ func (l deviceLib) getGpuInfo(index int, device nvdev.Device) (*GpuInfo, error) 
 		cudaComputeCapability: cudaComputeCapability,
 		driverVersion:         driverVersion,
 		cudaDriverVersion:     fmt.Sprintf("%v.%v", cudaDriverVersion/1000, (cudaDriverVersion%1000)/10),
+		pcieBusID:             pcieBusID,
+		pcieRootAttr:          pcieRootAttr,
 		migProfiles:           migProfiles,
 	}
 
@@ -353,6 +366,8 @@ func (l deviceLib) getMigDevices(gpuInfo *GpuInfo) (map[string]*MigDeviceInfo, e
 			giInfo:        &giInfo,
 			ciProfileInfo: ciProfileInfo,
 			ciInfo:        &ciInfo,
+			pcieBusID:     gpuInfo.pcieBusID,
+			pcieRootAttr:  gpuInfo.pcieRootAttr,
 		}
 		return nil
 	})
