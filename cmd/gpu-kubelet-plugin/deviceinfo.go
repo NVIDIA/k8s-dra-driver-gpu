@@ -68,11 +68,11 @@ func (p MigProfileInfo) String() string {
 }
 
 func (d *GpuInfo) CanonicalName() string {
-	return fmt.Sprintf("gpu-%d", d.index)
+	return fmt.Sprintf("gpu-%d", d.minor)
 }
 
 func (d *MigDeviceInfo) CanonicalName() string {
-	return fmt.Sprintf("gpu-%d-mig-%d-%d-%d", d.parent.index, d.giInfo.ProfileId, d.placement.Start, d.placement.Size)
+	return fmt.Sprintf("gpu-%d-mig-%d-%d-%d", d.parent.minor, d.giInfo.ProfileId, d.placement.Start, d.placement.Size)
 }
 
 func (d *GpuInfo) CanonicalIndex() string {
