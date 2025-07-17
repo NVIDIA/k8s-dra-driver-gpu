@@ -23,26 +23,26 @@ import (
 
 type additionalSymlinks struct {
 	Discover
-	version           string
-	nvidiaCDIHookPath string
+	version     string
+	hookCreator HookCreator
 }
 
 // WithDriverDotSoSymlinks decorates the provided discoverer.
 // A hook is added that checks for specific driver symlinks that need to be created.
-func WithDriverDotSoSymlinks(mounts Discover, version string, nvidiaCDIHookPath string) Discover {
+func WithDriverDotSoSymlinks(mounts Discover, version string, hookCreator HookCreator) Discover {
 	if version == "" {
 		version = "*.*"
 	}
 	return &additionalSymlinks{
-		Discover:          mounts,
-		nvidiaCDIHookPath: nvidiaCDIHookPath,
-		version:           version,
+		Discover:    mounts,
+		hookCreator: hookCreator,
+		version:     version,
 	}
 }
 
 // Hooks returns a hook to create the additional symlinks based on the mounts.
 func (d *additionalSymlinks) Hooks() ([]Hook, error) {
-	mounts, err := d.Discover.Mounts()
+	mounts, err := d.Mounts()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get library mounts: %v", err)
 	}
@@ -73,8 +73,12 @@ func (d *additionalSymlinks) Hooks() ([]Hook, error) {
 		return hooks, nil
 	}
 
-	hook := CreateCreateSymlinkHook(d.nvidiaCDIHookPath, links).(Hook)
-	return append(hooks, hook), nil
+	createSymlinkHooks, err := d.hookCreator.Create("create-symlinks", links...).Hooks()
+	if err != nil {
+		return nil, fmt.Errorf("failed to create symlink hook: %v", err)
+	}
+
+	return append(hooks, createSymlinkHooks...), nil
 }
 
 // getLinksForMount maps the path to created links if any.

@@ -22,6 +22,10 @@
 # For driver installed directly on a host, a value of `/` is used.
 nvidiaDriverRoot: /
 
+# Optional path to the nvidia-cdi-hook executable.
+# If not specified, the default path inferred from the nvidia-container-toolkit library version will be used.
+nvidiaCDIHookPath: ""
+
 nameOverride: ""
 fullnameOverride: ""
 namespaceOverride: ""

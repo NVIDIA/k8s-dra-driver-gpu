@@ -32,8 +32,8 @@ type wsllib nvcdilib
 var _ Interface = (*wsllib)(nil)
 
 // GetSpec should not be called for wsllib
-func (l *wsllib) GetSpec() (spec.Interface, error) {
-	return nil, fmt.Errorf("Unexpected call to wsllib.GetSpec()")
+func (l *wsllib) GetSpec(...string) (spec.Interface, error) {
+	return nil, fmt.Errorf("unexpected call to wsllib.GetSpec()")
 }
 
 // GetAllDeviceSpecs returns the device specs for all available devices.
@@ -54,7 +54,7 @@ func (l *wsllib) GetAllDeviceSpecs() ([]specs.Device, error) {
 
 // GetCommonEdits generates a CDI specification that can be used for ANY devices
 func (l *wsllib) GetCommonEdits() (*cdi.ContainerEdits, error) {
-	driver, err := newWSLDriverDiscoverer(l.logger, l.driverRoot, l.nvidiaCDIHookPath, l.ldconfigPath)
+	driver, err := newWSLDriverDiscoverer(l.logger, l.driverRoot, l.hookCreator, l.ldconfigPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create discoverer for WSL driver: %v", err)
 	}

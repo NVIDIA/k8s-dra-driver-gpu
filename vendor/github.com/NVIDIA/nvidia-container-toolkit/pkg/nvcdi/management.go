@@ -138,7 +138,7 @@ func (m *managementlib) newManagementDeviceDiscoverer() (discover.Discover, erro
 	deviceFolderPermissionHooks := newDeviceFolderPermissionHookDiscoverer(
 		m.logger,
 		m.devRoot,
-		m.nvidiaCDIHookPath,
+		m.hookCreator,
 		deviceNodes,
 	)
 
@@ -180,7 +180,7 @@ func (m managementDiscoverer) nodeIsBlocked(path string) bool {
 
 // GetSpec is unsppported for the managementlib specs.
 // managementlib is typically wrapped by a spec that implements GetSpec.
-func (m *managementlib) GetSpec() (spec.Interface, error) {
+func (m *managementlib) GetSpec(...string) (spec.Interface, error) {
 	return nil, fmt.Errorf("GetSpec is not supported")
 }
 
