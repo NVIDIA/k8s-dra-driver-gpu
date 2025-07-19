@@ -82,6 +82,7 @@ func NewDaemonSetManager(config *ManagerConfig, getComputeDomain GetComputeDomai
 		informers.WithTweakListOptions(func(opts *metav1.ListOptions) {
 			opts.LabelSelector = metav1.FormatLabelSelector(labelSelector)
 		}),
+		informers.WithNamespace(config.driverNamespace),
 	)
 
 	informer := factory.Apps().V1().DaemonSets().Informer()
