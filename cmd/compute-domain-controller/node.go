@@ -64,7 +64,7 @@ func NewNodeManager(config *ManagerConfig, getComputeDomain GetComputeDomainFunc
 		informer: informer,
 	}
 
-	m.labelCleanupManager = NewCleanupManager[*corev1.Node](informer, getComputeDomain, m.cleanupLabels)
+	m.labelCleanupManager = NewCleanupManager[*corev1.Node]([]cache.SharedIndexInformer{informer}, getComputeDomain, m.cleanupLabels)
 	return m
 }
 

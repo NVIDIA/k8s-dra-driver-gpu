@@ -87,6 +87,20 @@ func NewDaemonSetManager(config *ManagerConfig, getComputeDomain GetComputeDomai
 
 	informer := factory.Apps().V1().DaemonSets().Informer()
 
+	cleanupInformers := []cache.SharedIndexInformer{informer}
+	for _, namespace := range config.additionalNamespaces {
+		factory = informers.NewSharedInformerFactoryWithOptions(
+			config.clientsets.Core,
+			informerResyncPeriod,
+			informers.WithTweakListOptions(func(opts *metav1.ListOptions) {
+				opts.LabelSelector = metav1.FormatLabelSelector(labelSelector)
+			}),
+			informers.WithNamespace(namespace),
+		)
+		additionalInformer := factory.Apps().V1().DaemonSets().Informer()
+		cleanupInformers = append(cleanupInformers, additionalInformer)
+	}
+
 	m := &DaemonSetManager{
 		config:           config,
 		getComputeDomain: getComputeDomain,
@@ -94,7 +108,7 @@ func NewDaemonSetManager(config *ManagerConfig, getComputeDomain GetComputeDomai
 		informer:         informer,
 	}
 	m.resourceClaimTemplateManager = NewDaemonSetResourceClaimTemplateManager(config, getComputeDomain)
-	m.cleanupManager = NewCleanupManager[*appsv1.DaemonSet](informer, getComputeDomain, m.cleanup)
+	m.cleanupManager = NewCleanupManager[*appsv1.DaemonSet](cleanupInformers, getComputeDomain, m.cleanup)
 
 	return m
 }

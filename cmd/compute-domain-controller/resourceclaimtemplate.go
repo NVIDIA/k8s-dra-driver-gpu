@@ -94,7 +94,7 @@ func newBaseResourceClaimTemplateManager(config *ManagerConfig, getComputeDomain
 		factory:          factory,
 		informer:         informer,
 	}
-	m.cleanupManager = NewCleanupManager[*resourceapi.ResourceClaimTemplate](informer, getComputeDomain, m.cleanup)
+	m.cleanupManager = NewCleanupManager[*resourceapi.ResourceClaimTemplate]([]cache.SharedIndexInformer{informer}, getComputeDomain, m.cleanup)
 
 	return m
 }
