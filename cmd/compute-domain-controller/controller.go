@@ -43,6 +43,9 @@ type ManagerConfig struct {
 
 	// workQueue manages the asynchronous processing of tasks
 	workQueue *workqueue.WorkQueue
+
+	// additionalNamespaces are the additional Kubernetes namespaces to cleanup daemonsets in
+	additionalNamespaces []string
 }
 
 // Controller manages the lifecycle of the DRA driver and its components.
@@ -63,11 +66,12 @@ func (c *Controller) Run(ctx context.Context) error {
 	workQueue := workqueue.New(workqueue.DefaultControllerRateLimiter())
 
 	managerConfig := &ManagerConfig{
-		driverName:      c.config.driverName,
-		driverNamespace: c.config.flags.namespace,
-		imageName:       c.config.flags.imageName,
-		clientsets:      c.config.clientsets,
-		workQueue:       workQueue,
+		driverName:           c.config.driverName,
+		driverNamespace:      c.config.flags.namespace,
+		imageName:            c.config.flags.imageName,
+		clientsets:           c.config.clientsets,
+		workQueue:            workQueue,
+		additionalNamespaces: c.config.flags.additionalNamespaces.Value(),
 	}
 
 	cdManager := NewComputeDomainManager(managerConfig)

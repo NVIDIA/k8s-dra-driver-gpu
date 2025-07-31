@@ -57,6 +57,8 @@ type Flags struct {
 	httpEndpoint string
 	metricsPath  string
 	profilePath  string
+
+	additionalNamespaces cli.StringSlice
 }
 
 type Config struct {
@@ -120,6 +122,14 @@ func newApp() *cli.App {
 			Usage:       "The HTTP `path` where pprof profiling will be available, disabled if empty.",
 			Destination: &flags.profilePath,
 			EnvVars:     []string{"PPROF_PATH"},
+		},
+		&cli.StringSliceFlag{
+			Name:        "additional-namespaces",
+			Usage:       "Additional namespaces to cleanup compute-domain daemonsets in",
+			Value:       cli.NewStringSlice(),
+			Destination: &flags.additionalNamespaces,
+			EnvVars:     []string{"ADDITIONAL_NAMESPACES"},
+			Hidden:      true,
 		},
 	}
 

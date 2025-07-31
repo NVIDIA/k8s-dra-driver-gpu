@@ -37,15 +37,15 @@ type CleanupManager[T metav1.Object] struct {
 	waitGroup     sync.WaitGroup
 	cancelContext context.CancelFunc
 
-	informer         cache.SharedIndexInformer
+	informers        []cache.SharedIndexInformer
 	getComputeDomain GetComputeDomainFunc
 	callback         CleanupCallback[T]
 	queue            chan struct{}
 }
 
-func NewCleanupManager[T metav1.Object](informer cache.SharedIndexInformer, getComputeDomain GetComputeDomainFunc, callback CleanupCallback[T]) *CleanupManager[T] {
+func NewCleanupManager[T metav1.Object](informers []cache.SharedIndexInformer, getComputeDomain GetComputeDomainFunc, callback CleanupCallback[T]) *CleanupManager[T] {
 	return &CleanupManager[T]{
-		informer:         informer,
+		informers:        informers,
 		getComputeDomain: getComputeDomain,
 		callback:         callback,
 		// Buffered channel to implement a pragmatic fixed-size queue so that
@@ -94,8 +94,11 @@ func (m *CleanupManager[T]) EnqueueCleanup() bool {
 
 func (m *CleanupManager[T]) cleanup(ctx context.Context) {
 	klog.V(6).Infof("Cleanup: perform for %T objects", *new(T))
-	store := m.informer.GetStore()
-	for _, item := range store.List() {
+	list := []interface{}{}
+	for _, informer := range m.informers {
+		list = append(list, informer.GetStore().List())
+	}
+	for _, item := range list {
 		obj, ok := item.(T)
 		if !ok {
 			continue
