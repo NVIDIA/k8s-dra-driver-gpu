@@ -62,7 +62,7 @@ type ComputeDomainManager struct {
 	factory  nvinformers.SharedInformerFactory
 	informer cache.SharedIndexInformer
 
-	daemonSetManager             *DaemonSetManager
+	daemonSetManager             *MultiNamespaceDaemonSetManager
 	resourceClaimTemplateManager *WorkloadResourceClaimTemplateManager
 	nodeManager                  *NodeManager
 }
@@ -77,7 +77,8 @@ func NewComputeDomainManager(config *ManagerConfig) *ComputeDomainManager {
 		factory:  factory,
 		informer: informer,
 	}
-	m.daemonSetManager = NewDaemonSetManager(config, m.Get)
+
+	m.daemonSetManager = NewMultiNamespaceDaemonSetManager(config, m.Get)
 	m.resourceClaimTemplateManager = NewWorkloadResourceClaimTemplateManager(config, m.Get)
 	m.nodeManager = NewNodeManager(config, m.Get)
 
@@ -276,7 +277,7 @@ func (m *ComputeDomainManager) onAddOrUpdate(ctx context.Context, obj any) error
 	// Do not wait for the next periodic label cleanup to happen.
 	m.nodeManager.RemoveStaleComputeDomainLabelsAsync(ctx)
 
-	if _, err := m.daemonSetManager.Create(ctx, m.config.driverNamespace, cd); err != nil {
+	if _, err := m.daemonSetManager.Create(ctx, cd); err != nil {
 		return fmt.Errorf("error creating DaemonSet: %w", err)
 	}
 
