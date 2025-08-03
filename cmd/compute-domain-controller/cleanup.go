@@ -148,6 +148,7 @@ func (m *CleanupManager[T]) periodicCleanup(ctx context.Context) {
 	ticker := time.NewTicker(cleanupInterval)
 	defer ticker.Stop()
 
+	m.cleanup(ctx)
 	for {
 		select {
 		case <-ctx.Done():
