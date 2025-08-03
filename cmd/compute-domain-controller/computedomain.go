@@ -151,7 +151,9 @@ func (m *ComputeDomainManager) Stop() error {
 	if err := m.nodeManager.Stop(); err != nil {
 		return fmt.Errorf("error stopping Node manager: %w", err)
 	}
-	m.cancelContext()
+	if m.cancelContext != nil {
+		m.cancelContext()
+	}
 	m.waitGroup.Wait()
 	return nil
 }

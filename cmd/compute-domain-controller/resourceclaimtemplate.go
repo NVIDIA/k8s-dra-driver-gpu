@@ -150,7 +150,9 @@ func (m *BaseResourceClaimTemplateManager) Start(ctx context.Context) (rerr erro
 }
 
 func (m *BaseResourceClaimTemplateManager) Stop() error {
-	m.cancelContext()
+	if m.cancelContext != nil {
+		m.cancelContext()
+	}
 	m.waitGroup.Wait()
 	return nil
 }

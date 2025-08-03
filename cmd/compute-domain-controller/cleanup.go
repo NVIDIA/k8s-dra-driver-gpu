@@ -74,7 +74,9 @@ func (m *CleanupManager[T]) Start(ctx context.Context) error {
 }
 
 func (m *CleanupManager[T]) Stop() error {
-	m.cancelContext()
+	if m.cancelContext != nil {
+		m.cancelContext()
+	}
 	m.waitGroup.Wait()
 	return nil
 }

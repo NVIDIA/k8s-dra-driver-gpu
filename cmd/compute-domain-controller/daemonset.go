@@ -160,7 +160,9 @@ func (m *DaemonSetManager) Stop() error {
 	if err := m.resourceClaimTemplateManager.Stop(); err != nil {
 		return fmt.Errorf("error stopping ResourceClaimTemplate manager: %w", err)
 	}
-	m.cancelContext()
+	if m.cancelContext != nil {
+		m.cancelContext()
+	}
 	m.waitGroup.Wait()
 	return nil
 }

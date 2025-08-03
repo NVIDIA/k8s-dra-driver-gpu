@@ -170,14 +170,18 @@ func newApp() *cli.App {
 				errChan <- controller.Run(ctx)
 			}()
 
-			<-sigs
-			cancel()
-
-			if err := <-errChan; err != nil {
-				return fmt.Errorf("run controller: %w", err)
+			for {
+				select {
+				case <-sigs:
+					cancel()
+				case err := <-errChan:
+					cancel()
+					if err != nil {
+						return fmt.Errorf("run controller: %w", err)
+					}
+					return nil
+				}
 			}
-
-			return nil
 		},
 		Version: info.GetVersionString(),
 	}
