@@ -1,29 +1,31 @@
-apiVersion: v1
-kind: ServiceAccount
-metadata:
-  name: compute-domain-daemon-service-account
-  namespace: {{ include "nvidia-dra-driver-gpu.namespace" . }}
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
   name: compute-domain-daemon-role
-  namespace: {{ include "nvidia-dra-driver-gpu.namespace" . }}
 rules:
 - apiGroups: ["resource.nvidia.com"]
   resources: ["computedomains", "computedomains/status"]
   verbs: ["get", "list", "watch", "update", "patch"]
+
+{{- range $namespace := splitList "," (include "nvidia-dra-driver-gpu.namespaces" .) }}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: compute-domain-daemon-service-account
+  namespace: {{ $namespace }}
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: compute-domain-daemon-role-binding
-  namespace: {{ include "nvidia-dra-driver-gpu.namespace" . }}
+  name: compute-domain-daemon-role-binding-{{ $namespace }}
 subjects:
 - kind: ServiceAccount
   name: compute-domain-daemon-service-account
-  namespace: {{ include "nvidia-dra-driver-gpu.namespace" . }}
+  namespace: {{ $namespace }}
 roleRef:
   kind: ClusterRole
   name: compute-domain-daemon-role
-  apiGroup: rbac.authorization.k8s.io 
+  apiGroup: rbac.authorization.k8s.io
+{{- end }} 
