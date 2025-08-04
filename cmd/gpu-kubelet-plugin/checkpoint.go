@@ -3,7 +3,7 @@ package main
 import (
 	"encoding/json"
 
-	resourceapi "k8s.io/api/resource/v1beta1"
+	resourceapi "k8s.io/api/resource/v1"
 	"k8s.io/kubernetes/pkg/kubelet/checkpointmanager/checksum"
 )
 

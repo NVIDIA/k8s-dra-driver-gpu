@@ -17,7 +17,7 @@
 package main
 
 import (
-	resourceapi "k8s.io/api/resource/v1beta1"
+	resourceapi "k8s.io/api/resource/v1"
 )
 
 type AllocatableDevices map[string]*AllocatableDevice

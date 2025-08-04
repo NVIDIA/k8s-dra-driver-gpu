@@ -59,8 +59,9 @@ type DaemonSetManager struct {
 	cancelContext    context.CancelFunc
 	getComputeDomain GetComputeDomainFunc
 
-	factory  informers.SharedInformerFactory
-	informer cache.SharedIndexInformer
+	factory       informers.SharedInformerFactory
+	informer      cache.SharedIndexInformer
+	mutationCache cache.MutationCache
 
 	resourceClaimTemplateManager *DaemonSetResourceClaimTemplateManager
 	cleanupManager               *CleanupManager[*appsv1.DaemonSet]
@@ -114,6 +115,14 @@ func (m *DaemonSetManager) Start(ctx context.Context) (rerr error) {
 		return fmt.Errorf("error adding indexer for MulitNodeEnvironment label: %w", err)
 	}
 
+	m.mutationCache = cache.NewIntegerResourceVersionMutationCache(
+		klog.Background(),
+		m.informer.GetStore(),
+		m.informer.GetIndexer(),
+		mutationCacheTTL,
+		true,
+	)
+
 	_, err := m.informer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj any) {
 			m.config.workQueue.Enqueue(obj, m.onAddOrUpdate)
@@ -157,7 +166,7 @@ func (m *DaemonSetManager) Stop() error {
 }
 
 func (m *DaemonSetManager) Create(ctx context.Context, namespace string, cd *nvapi.ComputeDomain) (*appsv1.DaemonSet, error) {
-	ds, err := getByComputeDomainUID[*appsv1.DaemonSet](ctx, m.informer, string(cd.UID))
+	ds, err := getByComputeDomainUID[*appsv1.DaemonSet](ctx, m.mutationCache, string(cd.UID))
 	if err != nil {
 		return nil, fmt.Errorf("error retrieving DaemonSet: %w", err)
 	}
@@ -210,11 +219,15 @@ func (m *DaemonSetManager) Create(ctx context.Context, namespace string, cd *nva
 		return nil, fmt.Errorf("error creating DaemonSet: %w", err)
 	}
 
+	// Add the newly created DaemonSet to the mutation cache
+	// This ensures subsequent calls will see it immediately
+	m.mutationCache.Mutation(d)
+
 	return d, nil
 }
 
 func (m *DaemonSetManager) Delete(ctx context.Context, cdUID string) error {
-	ds, err := getByComputeDomainUID[*appsv1.DaemonSet](ctx, m.informer, cdUID)
+	ds, err := getByComputeDomainUID[*appsv1.DaemonSet](ctx, m.mutationCache, cdUID)
 	if err != nil {
 		return fmt.Errorf("error retrieving DaemonSet: %w", err)
 	}
@@ -264,7 +277,7 @@ func (m *DaemonSetManager) AssertRemoved(ctx context.Context, cdUID string) erro
 }
 
 func (m *DaemonSetManager) removeFinalizer(ctx context.Context, cdUID string) error {
-	ds, err := getByComputeDomainUID[*appsv1.DaemonSet](ctx, m.informer, cdUID)
+	ds, err := getByComputeDomainUID[*appsv1.DaemonSet](ctx, m.mutationCache, cdUID)
 	if err != nil {
 		return fmt.Errorf("error retrieving DaemonSet: %w", err)
 	}
@@ -296,11 +309,14 @@ func (m *DaemonSetManager) removeFinalizer(ctx context.Context, cdUID string) er
 		return fmt.Errorf("error updating DaemonSet: %w", err)
 	}
 
+	// Update mutation cache after successful update
+	m.mutationCache.Mutation(newD)
+
 	return nil
 }
 
 func (m *DaemonSetManager) assertRemoved(ctx context.Context, cdUID string) error {
-	ds, err := getByComputeDomainUID[*appsv1.DaemonSet](ctx, m.informer, cdUID)
+	ds, err := getByComputeDomainUID[*appsv1.DaemonSet](ctx, m.informer.GetIndexer(), cdUID)
 	if err != nil {
 		return fmt.Errorf("error retrieving DaemonSet: %w", err)
 	}

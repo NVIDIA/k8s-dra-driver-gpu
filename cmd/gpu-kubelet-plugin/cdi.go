@@ -227,6 +227,11 @@ func (cdi *CDIHandler) CreateClaimSpecFile(claimUID string, preparedDevices Prep
 		}
 	}
 
+	// If there are no claim specific deviceSpecs, just return without creating the spec file
+	if len(deviceSpecs) == 0 {
+		return nil
+	}
+
 	// Generate the claim specific device spec for this driver.
 	spec, err := spec.New(
 		spec.WithVendor(cdiVendor),

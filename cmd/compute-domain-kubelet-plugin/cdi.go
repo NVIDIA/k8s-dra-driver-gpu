@@ -164,7 +164,7 @@ func (cdi *CDIHandler) CreateStandardDeviceSpecFile(allocatable AllocatableDevic
 		"NVIDIA_VISIBLE_DEVICES=void")
 
 	// Generate device specs for all devices.
-	deviceSpecs, err := cdi.nvcdiDevice.GetAllDeviceSpecs()
+	deviceSpecs, err := cdi.nvcdiDevice.GetDeviceSpecsByID("all")
 	if err != nil {
 		return fmt.Errorf("unable to get all GPU device specs: %w", err)
 	}
@@ -220,6 +220,11 @@ func (cdi *CDIHandler) CreateClaimSpecFile(claimUID string, preparedDevices Prep
 
 			deviceSpecs = append(deviceSpecs, deviceSpec)
 		}
+	}
+
+	// If there are no claim specific deviceSpecs, just return without creating the spec file
+	if len(deviceSpecs) == 0 {
+		return nil
 	}
 
 	// Generate the claim specific device spec for this driver.

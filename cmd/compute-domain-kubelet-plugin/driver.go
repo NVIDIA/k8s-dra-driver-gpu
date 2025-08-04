@@ -23,8 +23,9 @@ import (
 	"sync"
 	"time"
 
-	resourceapi "k8s.io/api/resource/v1beta1"
+	resourceapi "k8s.io/api/resource/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/runtime"
 	coreclientset "k8s.io/client-go/kubernetes"
 	"k8s.io/dynamic-resource-allocation/kubeletplugin"
 	"k8s.io/dynamic-resource-allocation/resourceslice"
@@ -204,6 +205,12 @@ func (d *driver) UnprepareResourceClaims(ctx context.Context, claimRefs []kubele
 	workQueue.Run(ctx)
 
 	return results, nil
+}
+
+func (d *driver) HandleError(ctx context.Context, err error, msg string) {
+	// For now we just follow the advice documented in the DRAPlugin API docs.
+	// See: https://pkg.go.dev/k8s.io/apimachinery/pkg/util/runtime#HandleErrorWithContext
+	runtime.HandleErrorWithContext(ctx, err, msg)
 }
 
 func (d *driver) nodePrepareResource(ctx context.Context, claim *resourceapi.ResourceClaim) (bool, kubeletplugin.PrepareResult) {

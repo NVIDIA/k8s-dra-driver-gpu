@@ -33,7 +33,14 @@ import (
 type GetComputeDomainFunc func(uid string) (*nvapi.ComputeDomain, error)
 
 const (
+	// informerResyncPeriod defines how often the informer will resync its cache
+	// with the API server. This helps ensure eventual consistency.
 	informerResyncPeriod = 10 * time.Minute
+
+	// mutationCacheTTL defines how long mutation cache entries remain valid.
+	// This should be long enough for the informer cache to catch up but
+	// not so long that stale entries cause issues.
+	mutationCacheTTL = time.Hour
 
 	computeDomainLabelKey  = "resource.nvidia.com/computeDomain"
 	computeDomainFinalizer = computeDomainLabelKey

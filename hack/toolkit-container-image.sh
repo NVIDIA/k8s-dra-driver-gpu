@@ -13,11 +13,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Currently, this is hard-coded to the sha corresponding to the 1.17.8 release
+# Currently, this is hard-coded to the sha corresponding to the 1.18.0-rc.1 release
 # of the nvidia-container-toolkit. In the future, we should determine the exact
 # commit SHA corresponding to the version of the go module for the dependency
 # on `github.com/NVIDIA/nvidia-container-toolkit` -— whether it is a
 # tagged release or a pseudo-version -- and return that SHA instead.
-TOOLKIT_VERSION_SHA="f202b80a9b9d0db00d9b1d73c0128c8962c55f4d"
+TOOLKIT_VERSION_SHA="4f98c014bfa1222a0b1dda34ec815f5ecf87c971"
 
-echo ghcr.io/nvidia/container-toolkit:${TOOLKIT_VERSION_SHA:0:8}-ubi8
+echo ghcr.io/nvidia/container-toolkit:${TOOLKIT_VERSION_SHA:0:8}

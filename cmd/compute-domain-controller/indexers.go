@@ -24,6 +24,11 @@ import (
 	"k8s.io/client-go/tools/cache"
 )
 
+// Indexer is a minimal interface that only provides the ByIndex method.
+type Indexer interface {
+	ByIndex(indexName, indexedValue string) ([]interface{}, error)
+}
+
 func uidIndexer[T metav1.ObjectMetaAccessor](obj any) ([]string, error) {
 	d, ok := obj.(T)
 	if !ok {
@@ -48,12 +53,8 @@ func addComputeDomainLabelIndexer[T metav1.ObjectMetaAccessor](informer cache.Sh
 	})
 }
 
-func getByComputeDomainUID[T1 *T2, T2 any](ctx context.Context, informer cache.SharedIndexInformer, cdUID string) ([]T1, error) {
-	if !cache.WaitForCacheSync(ctx.Done(), informer.HasSynced) {
-		return nil, fmt.Errorf("cache sync failed for %T", *new(T1))
-	}
-
-	objs, err := informer.GetIndexer().ByIndex("computeDomainLabel", cdUID)
+func getByComputeDomainUID[T1 *T2, T2 any](ctx context.Context, indexer Indexer, cdUID string) ([]T1, error) {
+	objs, err := indexer.ByIndex("computeDomainLabel", cdUID)
 	if err != nil {
 		return nil, fmt.Errorf("error getting %T via ComputeDomain label: %w", *new(T1), err)
 	}

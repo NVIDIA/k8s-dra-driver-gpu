@@ -19,7 +19,7 @@ package main
 import (
 	"fmt"
 
-	resourceapi "k8s.io/api/resource/v1beta1"
+	resourceapi "k8s.io/api/resource/v1"
 	"k8s.io/utils/ptr"
 )
 
@@ -50,14 +50,12 @@ func (d *ComputeDomainDaemonInfo) CanonicalIndex() string {
 func (d *ComputeDomainChannelInfo) GetDevice() resourceapi.Device {
 	device := resourceapi.Device{
 		Name: d.CanonicalName(),
-		Basic: &resourceapi.BasicDevice{
-			Attributes: map[resourceapi.QualifiedName]resourceapi.DeviceAttribute{
-				"type": {
-					StringValue: ptr.To(ComputeDomainChannelType),
-				},
-				"id": {
-					IntValue: ptr.To(int64(d.ID)),
-				},
+		Attributes: map[resourceapi.QualifiedName]resourceapi.DeviceAttribute{
+			"type": {
+				StringValue: ptr.To(ComputeDomainChannelType),
+			},
+			"id": {
+				IntValue: ptr.To(int64(d.ID)),
 			},
 		},
 	}
@@ -67,14 +65,12 @@ func (d *ComputeDomainChannelInfo) GetDevice() resourceapi.Device {
 func (d *ComputeDomainDaemonInfo) GetDevice() resourceapi.Device {
 	device := resourceapi.Device{
 		Name: d.CanonicalName(),
-		Basic: &resourceapi.BasicDevice{
-			Attributes: map[resourceapi.QualifiedName]resourceapi.DeviceAttribute{
-				"type": {
-					StringValue: ptr.To(ComputeDomainDaemonType),
-				},
-				"id": {
-					IntValue: ptr.To(int64(d.ID)),
-				},
+		Attributes: map[resourceapi.QualifiedName]resourceapi.DeviceAttribute{
+			"type": {
+				StringValue: ptr.To(ComputeDomainDaemonType),
+			},
+			"id": {
+				IntValue: ptr.To(int64(d.ID)),
 			},
 		},
 	}

@@ -134,6 +134,10 @@ spec:
         - name: HEALTHCHECK_PORT
           value: {{ .Values.kubeletPlugin.containers.plugin.healthcheckPort | quote }}
         {{- end }}
+        {{- if .Values.nvidiaCDIHookPath }}
+        - name: NVIDIA_CDI_HOOK_PATH
+          value: "{{ .Values.nvidiaCDIHookPath }}"
+        {{- end }}
         volumeMounts:
         - name: plugins-registry
           mountPath: /var/lib/kubelet/plugins_registry
@@ -210,6 +214,10 @@ spec:
         {{- if .Values.kubeletPlugin.containers.plugin.healthcheckPort }}
         - name: HEALTHCHECK_PORT
           value: {{ .Values.kubeletPlugin.containers.plugin.healthcheckPort | quote }}
+        {{- end }}
+        {{- if .Values.nvidiaCDIHookPath }}
+        - name: NVIDIA_CDI_HOOK_PATH
+          value: "{{ .Values.nvidiaCDIHookPath }}"
         {{- end }}
         volumeMounts:
         - name: plugins-registry

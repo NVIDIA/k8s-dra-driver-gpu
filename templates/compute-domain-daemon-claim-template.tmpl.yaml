@@ -1,5 +1,5 @@
 ---
-apiVersion: resource.k8s.io/v1beta1
+apiVersion: resource.k8s.io/v1
 kind: ResourceClaimTemplate
 metadata:
   namespace: {{ .Namespace }}
@@ -14,7 +14,8 @@ spec:
     devices:
       requests:
       - name: daemon
-        deviceClassName: {{ .DeviceClassName }}
+        exactly:
+          deviceClassName: {{ .DeviceClassName }}
       config:
       - requests: ["daemon"]
         opaque:

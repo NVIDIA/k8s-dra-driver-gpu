@@ -22,7 +22,7 @@ import (
 	"slices"
 	"sync"
 
-	resourceapi "k8s.io/api/resource/v1beta1"
+	resourceapi "k8s.io/api/resource/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/dynamic-resource-allocation/kubeletplugin"
@@ -202,7 +202,7 @@ func (s *DeviceState) Unprepare(ctx context.Context, claimRef kubeletplugin.Name
 	// TODO: Remove this one release cycle following the v25.3.0 release
 	if pc.Status.Allocation == nil {
 		klog.Infof("PreparedClaim status was unset in Checkpoint for ResourceClaim %s: attempting to pull it from API server", claimRef.String())
-		claim, err := s.config.clientsets.Core.ResourceV1beta1().ResourceClaims(claimRef.Namespace).Get(
+		claim, err := s.config.clientsets.Resource.ResourceClaims(claimRef.Namespace).Get(
 			ctx,
 			claimRef.Name,
 			metav1.GetOptions{})

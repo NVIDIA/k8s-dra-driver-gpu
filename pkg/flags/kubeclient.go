@@ -25,6 +25,7 @@ import (
 	coreclientset "k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
+	draclient "k8s.io/dynamic-resource-allocation/client"
 
 	nvclientset "github.com/NVIDIA/k8s-dra-driver-gpu/pkg/nvidia.com/clientset/versioned"
 )
@@ -36,8 +37,9 @@ type KubeClientConfig struct {
 }
 
 type ClientSets struct {
-	Core   coreclientset.Interface
-	Nvidia nvclientset.Interface
+	Resource *draclient.Client
+	Core     coreclientset.Interface
+	Nvidia   nvclientset.Interface
 }
 
 func (k *KubeClientConfig) Flags() []cli.Flag {
@@ -109,7 +111,8 @@ func (k *KubeClientConfig) NewClientSets() (ClientSets, error) {
 	}
 
 	return ClientSets{
-		Core:   coreclient,
-		Nvidia: nvclient,
+		Resource: draclient.New(coreclient),
+		Core:     coreclient,
+		Nvidia:   nvclient,
 	}, nil
 }
