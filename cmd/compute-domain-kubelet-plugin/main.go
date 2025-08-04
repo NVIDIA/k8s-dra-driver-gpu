@@ -48,6 +48,7 @@ type Flags struct {
 	containerDriverRoot string
 	hostDriverRoot      string
 	nvidiaCDIHookPath   string
+	healthcheckPort     int
 }
 
 type Config struct {
@@ -108,6 +109,13 @@ func newApp() *cli.App {
 			Usage:       "Absolute path to the nvidia-cdi-hook executable in the host file system. Used in the generated CDI specification.",
 			Destination: &flags.nvidiaCDIHookPath,
 			EnvVars:     []string{"NVIDIA_CDI_HOOK_PATH"},
+		},
+		&cli.IntFlag{
+			Name:        "healthcheck-port",
+			Usage:       "Port to start a gRPC healthcheck service. When positive, a literal port number. When zero, a random port is allocated. When negative, the healthcheck service is disabled.",
+			Value:       -1,
+			Destination: &flags.healthcheckPort,
+			EnvVars:     []string{"HEALTHCHECK_PORT"},
 		},
 	}
 	cliFlags = append(cliFlags, flags.kubeClientConfig.Flags()...)
