@@ -41,6 +41,7 @@ type driver struct {
 	pluginhelper *kubeletplugin.Helper
 	state        *DeviceState
 	pulock       *flock.Flock
+	healthcheck  *healthcheck
 }
 
 func NewDriver(ctx context.Context, config *Config) (*driver, error) {
@@ -79,6 +80,12 @@ func NewDriver(ctx context.Context, config *Config) (*driver, error) {
 		},
 	}
 
+	healthcheck, err := startHealthcheck(ctx, config)
+	if err != nil {
+		return nil, fmt.Errorf("start healthcheck: %w", err)
+	}
+	driver.healthcheck = healthcheck
+
 	if err := driver.pluginhelper.PublishResources(ctx, resources); err != nil {
 		return nil, err
 	}
@@ -90,6 +97,10 @@ func (d *driver) Shutdown() error {
 	if d == nil {
 		return nil
 	}
+	if d.healthcheck != nil {
+		d.healthcheck.Stop()
+	}
+
 	d.pluginhelper.Stop()
 	return nil
 }
