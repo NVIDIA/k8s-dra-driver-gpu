@@ -26,7 +26,7 @@ require (
 	github.com/spf13/pflag v1.0.7
 	github.com/stretchr/testify v1.10.0
 	github.com/urfave/cli/v2 v2.27.7
-  google.golang.org/grpc v1.72.1
+  	google.golang.org/grpc v1.72.1
 	golang.org/x/sys v0.34.0
 	k8s.io/api v0.0.0
 	k8s.io/apimachinery v0.0.0
