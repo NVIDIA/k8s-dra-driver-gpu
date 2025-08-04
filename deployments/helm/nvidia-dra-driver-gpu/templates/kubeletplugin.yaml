@@ -156,6 +156,19 @@ spec:
           gpu-kubelet-plugin -v 6
         resources:
           {{- toYaml .Values.kubeletPlugin.containers.gpus.resources | nindent 10 }}
+        {{/*
+          A literal "0" will allocate a random port. Don't configure the probe
+          with the same literal "0" since that won't match where the service is
+          actually running.
+        */}}
+        {{- if (gt (int .Values.kubeletPlugin.containers.plugin.healthcheckPort) 0) }}
+        livenessProbe:
+          grpc:
+            port: {{ .Values.kubeletPlugin.containers.plugin.healthcheckPort }}
+            service: liveness
+          failureThreshold: 3
+          periodSeconds: 10
+        {{- end }}
         env:
         - name: MASK_NVIDIA_DRIVER_PARAMS
           value: "{{ .Values.maskNvidiaDriverParams }}"
@@ -177,6 +190,10 @@ spec:
               fieldPath: metadata.namespace
         - name: IMAGE_NAME
           value: {{ include "nvidia-dra-driver-gpu.fullimage" . }}
+        {{- if .Values.kubeletPlugin.containers.plugin.healthcheckPort }}
+        - name: HEALTHCHECK_PORT
+          value: {{ .Values.kubeletPlugin.containers.plugin.healthcheckPort | quote }}
+        {{- end }}
         volumeMounts:
         - name: plugins-registry
           mountPath: /var/lib/kubelet/plugins_registry
