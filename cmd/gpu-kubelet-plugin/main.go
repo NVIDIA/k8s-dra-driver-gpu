@@ -36,6 +36,7 @@ const (
 	DriverName                         = "gpu.nvidia.com"
 	DriverPluginPath                   = "/var/lib/kubelet/plugins/" + DriverName
 	DriverPluginCheckpointFileBasename = "checkpoint.json"
+	DriverRegistrarPath                = "/var/lib/kubelet/plugins_registry"
 )
 
 type Flags struct {

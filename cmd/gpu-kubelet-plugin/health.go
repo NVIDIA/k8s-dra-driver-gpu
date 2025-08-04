@@ -61,7 +61,7 @@ func startHealthcheck(ctx context.Context, config *Config) (*healthcheck, error)
 		Scheme: "unix",
 		// TODO: this needs to adapt when seamless upgrades
 		// are enabled and the filename includes a uid.
-		Path: path.Join(DriverPluginPath, "register.sock"),
+		Path: path.Join(DriverRegistrarPath, DriverName+"-reg.sock"),
 	}).String()
 	klog.V(6).Infof("connecting to registration socket path=%s", regSockPath)
 	regConn, err := grpc.NewClient(
