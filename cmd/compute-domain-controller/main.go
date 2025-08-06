@@ -57,6 +57,8 @@ type Flags struct {
 	httpEndpoint string
 	metricsPath  string
 	profilePath  string
+
+	additionalNamespaces cli.StringSlice
 }
 
 type Config struct {
@@ -121,6 +123,12 @@ func newApp() *cli.App {
 			Destination: &flags.profilePath,
 			EnvVars:     []string{"PPROF_PATH"},
 		},
+		&cli.StringSliceFlag{
+			Name:        "additional-namespaces",
+			Usage:       "Additional namespaces where the driver can manage resources.",
+			Destination: &flags.additionalNamespaces,
+			EnvVars:     []string{"ADDITIONAL_NAMESPACES"},
+		},
 	}
 
 	cliFlags = append(cliFlags, flags.kubeClientConfig.Flags()...)
@@ -170,14 +178,18 @@ func newApp() *cli.App {
 				errChan <- controller.Run(ctx)
 			}()
 
-			<-sigs
-			cancel()
-
-			if err := <-errChan; err != nil {
-				return fmt.Errorf("run controller: %w", err)
+			for {
+				select {
+				case <-sigs:
+					cancel()
+				case err := <-errChan:
+					cancel()
+					if err != nil {
+						return fmt.Errorf("run controller: %w", err)
+					}
+					return nil
+				}
 			}
-
-			return nil
 		},
 		Version: info.GetVersionString(),
 	}

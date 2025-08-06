@@ -101,7 +101,9 @@ func (m *NodeManager) Stop() error {
 	if err := m.labelCleanupManager.Stop(); err != nil {
 		return fmt.Errorf("NodeManager: error stopping labelCleanupManager: %w", err)
 	}
-	m.cancelContext()
+	if m.cancelContext != nil {
+		m.cancelContext()
+	}
 	m.waitGroup.Wait()
 	return nil
 }

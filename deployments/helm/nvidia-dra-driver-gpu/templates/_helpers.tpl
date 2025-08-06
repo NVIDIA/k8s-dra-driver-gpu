@@ -138,3 +138,21 @@ Filter a list by a set of valid values
   {{- end }}
   {{- $result -}}
 {{- end -}}
+
+{{/*
+Get all namespaces (driver namespace + additional namespaces from environment variable)
+*/}}
+{{- define "nvidia-dra-driver-gpu.namespaces" -}}
+{{- $namespaces := list (include "nvidia-dra-driver-gpu.namespace" .) }}
+{{- if .Values.controller.containers.computeDomain.env }}
+{{- range .Values.controller.containers.computeDomain.env }}
+{{- if eq .name "ADDITIONAL_NAMESPACES" }}
+{{- if .value }}
+{{- $additionalNamespaces := splitList "," .value }}
+{{- $namespaces = concat $namespaces $additionalNamespaces }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- join "," $namespaces -}}
+{{- end -}}

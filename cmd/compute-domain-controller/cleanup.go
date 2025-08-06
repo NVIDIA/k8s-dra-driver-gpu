@@ -74,7 +74,9 @@ func (m *CleanupManager[T]) Start(ctx context.Context) error {
 }
 
 func (m *CleanupManager[T]) Stop() error {
-	m.cancelContext()
+	if m.cancelContext != nil {
+		m.cancelContext()
+	}
 	m.waitGroup.Wait()
 	return nil
 }
@@ -146,6 +148,7 @@ func (m *CleanupManager[T]) periodicCleanup(ctx context.Context) {
 	ticker := time.NewTicker(cleanupInterval)
 	defer ticker.Stop()
 
+	m.cleanup(ctx)
 	for {
 		select {
 		case <-ctx.Done():

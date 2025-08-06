@@ -114,7 +114,9 @@ func (m *ComputeDomainManager) Start(ctx context.Context) (rerr error) {
 
 // Stop stops the compute domain manager.
 func (m *ComputeDomainManager) Stop() error {
-	m.cancelContext()
+	if m.cancelContext != nil {
+		m.cancelContext()
+	}
 	m.waitGroup.Wait()
 	return nil
 }
