@@ -34,10 +34,12 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	utilversion "k8s.io/apimachinery/pkg/util/version"
 
 	"k8s.io/utils/ptr"
 
 	configapi "github.com/NVIDIA/k8s-dra-driver-gpu/api/nvidia.com/resource/v1beta1"
+	"github.com/NVIDIA/k8s-dra-driver-gpu/pkg/featuregates"
 )
 
 func TestReadyEndpoint(t *testing.T) {
@@ -50,7 +52,9 @@ func TestReadyEndpoint(t *testing.T) {
 }
 
 func TestResourceClaimValidatingWebhook(t *testing.T) {
+
 	tests := map[string]struct {
+		featureGates         map[string]bool
 		admissionReview      *admissionv1.AdmissionReview
 		requestContentType   string
 		expectedResponseCode int
@@ -66,6 +70,9 @@ func TestResourceClaimValidatingWebhook(t *testing.T) {
 			expectedResponseCode: http.StatusBadRequest,
 		},
 		"valid GpuConfig in ResourceClaim": {
+			featureGates: map[string]bool{
+				string(featuregates.TimeSlicingSettings): true,
+			},
 			admissionReview: admissionReviewWithObject(
 				resourceClaimWithGpuConfigs(
 					resourceClaimResourceV1Beta1,
@@ -82,6 +89,10 @@ func TestResourceClaimValidatingWebhook(t *testing.T) {
 			expectedAllowed: true,
 		},
 		"invalid GpuConfigs in ResourceClaim": {
+			featureGates: map[string]bool{
+				string(featuregates.TimeSlicingSettings): true,
+				string(featuregates.MPSSupport):          true,
+			},
 			admissionReview: admissionReviewWithObject(
 				resourceClaimWithGpuConfigs(
 					resourceClaimResourceV1Beta1,
@@ -107,6 +118,9 @@ func TestResourceClaimValidatingWebhook(t *testing.T) {
 			expectedMessage: "2 configs failed to validate: object at spec.devices.config[0].opaque.parameters is invalid: unknown time-slice interval: Invalid Interval; object at spec.devices.config[1].opaque.parameters is invalid: active thread percentage must not be negative",
 		},
 		"valid GpuConfig in ResourceClaimTemplate": {
+			featureGates: map[string]bool{
+				string(featuregates.TimeSlicingSettings): true,
+			},
 			admissionReview: admissionReviewWithObject(
 				resourceClaimTemplateWithGpuConfigs(
 					resourceClaimTemplateResourceV1Beta1,
@@ -146,6 +160,10 @@ func TestResourceClaimValidatingWebhook(t *testing.T) {
 			),
 			expectedAllowed: false,
 			expectedMessage: "2 configs failed to validate: object at spec.spec.devices.config[0].opaque.parameters is invalid: unknown time-slice interval: Invalid Interval; object at spec.spec.devices.config[1].opaque.parameters is invalid: active thread percentage must not be negative",
+			featureGates: map[string]bool{
+				string(featuregates.TimeSlicingSettings): true,
+				string(featuregates.MPSSupport):          true,
+			},
 		},
 
 		// v1 API version tests
@@ -164,8 +182,14 @@ func TestResourceClaimValidatingWebhook(t *testing.T) {
 				),
 			),
 			expectedAllowed: true,
+			featureGates: map[string]bool{
+				string(featuregates.TimeSlicingSettings): true,
+			},
 		},
 		"valid GpuConfig in ResourceClaimTemplate v1": {
+			featureGates: map[string]bool{
+				string(featuregates.TimeSlicingSettings): true,
+			},
 			admissionReview: admissionReviewWithObject(
 				resourceClaimTemplateWithGpuConfigs(
 					resourceClaimTemplateResourceV1,
@@ -182,6 +206,9 @@ func TestResourceClaimValidatingWebhook(t *testing.T) {
 			expectedAllowed: true,
 		},
 		"invalid GpuConfig in ResourceClaim v1 (tests conversion)": {
+			featureGates: map[string]bool{
+				string(featuregates.TimeSlicingSettings): true,
+			},
 			admissionReview: admissionReviewWithObject(
 				resourceClaimWithGpuConfigs(
 					resourceClaimResourceV1,
@@ -199,6 +226,9 @@ func TestResourceClaimValidatingWebhook(t *testing.T) {
 			expectedMessage: "1 configs failed to validate: object at spec.devices.config[0].opaque.parameters is invalid: unknown time-slice interval: Invalid Interval",
 		},
 		"invalid GpuConfig in ResourceClaimTemplate v1 (tests conversion)": {
+			featureGates: map[string]bool{
+				string(featuregates.MPSSupport): true,
+			},
 			admissionReview: admissionReviewWithObject(
 				resourceClaimTemplateWithGpuConfigs(
 					resourceClaimTemplateResourceV1,
@@ -218,6 +248,9 @@ func TestResourceClaimValidatingWebhook(t *testing.T) {
 
 		// v1beta2 API version tests
 		"valid GpuConfig in ResourceClaim v1beta2": {
+			featureGates: map[string]bool{
+				string(featuregates.TimeSlicingSettings): true,
+			},
 			admissionReview: admissionReviewWithObject(
 				resourceClaimWithGpuConfigs(
 					resourceClaimResourceV1Beta2,
@@ -234,6 +267,9 @@ func TestResourceClaimValidatingWebhook(t *testing.T) {
 			expectedAllowed: true,
 		},
 		"valid GpuConfig in ResourceClaimTemplate v1beta2": {
+			featureGates: map[string]bool{
+				string(featuregates.TimeSlicingSettings): true,
+			},
 			admissionReview: admissionReviewWithObject(
 				resourceClaimTemplateWithGpuConfigs(
 					resourceClaimTemplateResourceV1Beta2,
@@ -250,6 +286,9 @@ func TestResourceClaimValidatingWebhook(t *testing.T) {
 			expectedAllowed: true,
 		},
 		"invalid GpuConfig in ResourceClaim v1beta2 (tests conversion)": {
+			featureGates: map[string]bool{
+				string(featuregates.MPSSupport): true,
+			},
 			admissionReview: admissionReviewWithObject(
 				resourceClaimWithGpuConfigs(
 					resourceClaimResourceV1Beta2,
@@ -267,6 +306,9 @@ func TestResourceClaimValidatingWebhook(t *testing.T) {
 			expectedMessage: "1 configs failed to validate: object at spec.devices.config[0].opaque.parameters is invalid: active thread percentage must not be negative",
 		},
 		"invalid GpuConfig in ResourceClaimTemplate v1beta2 (tests conversion)": {
+			featureGates: map[string]bool{
+				string(featuregates.TimeSlicingSettings): true,
+			},
 			admissionReview: admissionReviewWithObject(
 				resourceClaimTemplateWithGpuConfigs(
 					resourceClaimTemplateResourceV1Beta2,
@@ -283,6 +325,88 @@ func TestResourceClaimValidatingWebhook(t *testing.T) {
 			expectedAllowed: false,
 			expectedMessage: "1 configs failed to validate: object at spec.spec.devices.config[0].opaque.parameters is invalid: unknown time-slice interval: Invalid Interval",
 		},
+
+		// Feature gate disabled tests - these should fail when feature gates are off
+		"TimeSlicingStrategy rejected when TimeSlicingSettings feature gate is disabled": {
+			featureGates: map[string]bool{
+				string(featuregates.TimeSlicingSettings): false,
+			},
+			admissionReview: admissionReviewWithObject(
+				resourceClaimWithGpuConfigs(
+					resourceClaimResourceV1Beta1,
+					&configapi.GpuConfig{
+						Sharing: &configapi.GpuSharing{
+							Strategy: configapi.TimeSlicingStrategy,
+							TimeSlicingConfig: &configapi.TimeSlicingConfig{
+								Interval: ptr.To(configapi.DefaultTimeSlice),
+							},
+						},
+					},
+				),
+			),
+			expectedAllowed: false,
+			expectedMessage: "1 configs failed to validate: object at spec.devices.config[0].opaque.parameters is invalid: unknown GPU sharing strategy: TimeSlicing",
+		},
+		"MpsStrategy rejected when MPSSupport feature gate is disabled": {
+			featureGates: map[string]bool{
+				string(featuregates.MPSSupport): false,
+			},
+			admissionReview: admissionReviewWithObject(
+				resourceClaimWithGpuConfigs(
+					resourceClaimResourceV1Beta1,
+					&configapi.GpuConfig{
+						Sharing: &configapi.GpuSharing{
+							Strategy: configapi.MpsStrategy,
+							MpsConfig: &configapi.MpsConfig{
+								DefaultActiveThreadPercentage: ptr.To(50),
+							},
+						},
+					},
+				),
+			),
+			expectedAllowed: false,
+			expectedMessage: "1 configs failed to validate: object at spec.devices.config[0].opaque.parameters is invalid: unknown GPU sharing strategy: MPS",
+		},
+		"TimeSlicingStrategy rejected in ResourceClaimTemplate when TimeSlicingSettings feature gate is disabled": {
+			featureGates: map[string]bool{
+				string(featuregates.TimeSlicingSettings): false,
+			},
+			admissionReview: admissionReviewWithObject(
+				resourceClaimTemplateWithGpuConfigs(
+					resourceClaimTemplateResourceV1Beta1,
+					&configapi.GpuConfig{
+						Sharing: &configapi.GpuSharing{
+							Strategy: configapi.TimeSlicingStrategy,
+							TimeSlicingConfig: &configapi.TimeSlicingConfig{
+								Interval: ptr.To(configapi.DefaultTimeSlice),
+							},
+						},
+					},
+				),
+			),
+			expectedAllowed: false,
+			expectedMessage: "1 configs failed to validate: object at spec.spec.devices.config[0].opaque.parameters is invalid: unknown GPU sharing strategy: TimeSlicing",
+		},
+		"MpsStrategy rejected in ResourceClaimTemplate when MPSSupport feature gate is disabled": {
+			featureGates: map[string]bool{
+				string(featuregates.MPSSupport): false,
+			},
+			admissionReview: admissionReviewWithObject(
+				resourceClaimTemplateWithGpuConfigs(
+					resourceClaimTemplateResourceV1Beta1,
+					&configapi.GpuConfig{
+						Sharing: &configapi.GpuSharing{
+							Strategy: configapi.MpsStrategy,
+							MpsConfig: &configapi.MpsConfig{
+								DefaultActiveThreadPercentage: ptr.To(50),
+							},
+						},
+					},
+				),
+			),
+			expectedAllowed: false,
+			expectedMessage: "1 configs failed to validate: object at spec.spec.devices.config[0].opaque.parameters is invalid: unknown GPU sharing strategy: MPS",
+		},
 	}
 
 	s := httptest.NewServer(newMux())
@@ -290,6 +414,14 @@ func TestResourceClaimValidatingWebhook(t *testing.T) {
 
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
+			err := featuregates.FeatureGates.SetEmulationVersion(utilversion.MajorMinor(999, 999))
+			require.NoError(t, err)
+
+			if test.featureGates != nil {
+				err := featuregates.FeatureGates.SetFromMap(test.featureGates)
+				require.NoError(t, err)
+			}
+
 			requestBody, err := json.Marshal(test.admissionReview)
 			require.NoError(t, err)
 
