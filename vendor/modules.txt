@@ -372,6 +372,7 @@ gopkg.in/inf.v0
 gopkg.in/yaml.v3
 # k8s.io/api v0.0.0 => github.com/kubernetes/kubernetes/staging/src/k8s.io/api v0.0.0-20250730163427-032142c53e54
 ## explicit; go 1.24.0
+k8s.io/api/admission/v1
 k8s.io/api/admissionregistration/v1
 k8s.io/api/admissionregistration/v1alpha1
 k8s.io/api/admissionregistration/v1beta1

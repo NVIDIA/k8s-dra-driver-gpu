@@ -46,6 +46,22 @@ As of today, the recommended installation method is via Helm.
 Detailed instructions can (for now) be found [here](https://github.com/NVIDIA/k8s-dra-driver-gpu/discussions/249).
 In the future, this driver will be included in the [NVIDIA GPU Operator](https://github.com/NVIDIA/gpu-operator) and does not need to be installed separately anymore.
 
+### Validating Admission Webhook
+
+The validating admission webhook is disabled by default. To enable it, install cert-manager and its CRDs, then set the `webhook.enabled=true` value when the nvidia-dra-driver-gpu chart is installed.
+
+```bash
+helm install \
+  --repo https://charts.jetstack.io \
+  --version v1.16.3 \
+  --create-namespace \
+  --namespace cert-manager \
+  --wait \
+  --set crds.enabled=true \
+  cert-manager \
+  cert-manager
+```
+
 ## A (kind) demo
 
 Below, we demonstrate a basic use case: sharing a single GPU across two containers running in the same Kubernetes pod.
