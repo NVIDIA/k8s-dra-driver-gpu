@@ -108,6 +108,18 @@ Create the name of the service account to use
 {{- end }}
 
 {{/*
+Create the name of the webhook service account to use
+*/}}
+{{- define "nvidia-dra-driver-gpu.webhookServiceAccountName" -}}
+{{- $name := printf "%s-webhook-service-account" (include "nvidia-dra-driver-gpu.fullname" .) }}
+{{- if .Values.webhook.serviceAccount.create }}
+{{- default $name .Values.webhook.serviceAccount.name }}
+{{- else }}
+{{- default "default" .Values.webhook.serviceAccount.name }}
+{{- end }}
+{{- end }}
+
+{{/*
 Check for the existence of an element in a list
 */}}
 {{- define "nvidia-dra-driver-gpu.listHas" -}}

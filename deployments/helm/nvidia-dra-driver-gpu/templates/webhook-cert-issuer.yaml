@@ -1,0 +1,11 @@
+{{- if .Values.webhook.enabled }}
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: {{ include "nvidia-dra-driver-gpu.fullname" . }}-webhook-issuer
+  namespace: {{ include "nvidia-dra-driver-gpu.namespace" . }}
+  labels:
+    {{- include "nvidia-dra-driver-gpu.labels" . | nindent 4 }}
+spec:
+  selfSigned: {}
+{{- end }}

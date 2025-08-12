@@ -69,6 +69,30 @@ resources:
 #   LoggingBetaOptions: true           # Kubernetes logging beta features
 featureGates: {}
 
+# Webhook configuration
+webhook:
+  enabled: false
+  servicePort: 443
+  containerPort: 443
+  priorityClassName: "system-cluster-critical"
+  strategy:
+    type: RollingUpdate
+  podAnnotations: {}
+  podSecurityContext: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  containers:
+    webhook:
+      securityContext:
+        privileged: false
+      resources: {}
+  serviceAccount:
+    # Specifies whether a service account should be created
+    create: true
+    # Annotations to add to the service account
+    name: ""
+
 controller:
   priorityClassName: "system-node-critical"
   podAnnotations: {}
