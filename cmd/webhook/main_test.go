@@ -23,6 +23,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -67,6 +68,7 @@ func TestResourceClaimValidatingWebhook(t *testing.T) {
 		"valid GpuConfig in ResourceClaim": {
 			admissionReview: admissionReviewWithObject(
 				resourceClaimWithGpuConfigs(
+					resourceClaimResourceV1Beta1,
 					&configapi.GpuConfig{
 						Sharing: &configapi.GpuSharing{
 							Strategy: configapi.TimeSlicingStrategy,
@@ -76,13 +78,13 @@ func TestResourceClaimValidatingWebhook(t *testing.T) {
 						},
 					},
 				),
-				resourceClaimResource,
 			),
 			expectedAllowed: true,
 		},
 		"invalid GpuConfigs in ResourceClaim": {
 			admissionReview: admissionReviewWithObject(
 				resourceClaimWithGpuConfigs(
+					resourceClaimResourceV1Beta1,
 					&configapi.GpuConfig{
 						Sharing: &configapi.GpuSharing{
 							Strategy: configapi.TimeSlicingStrategy,
@@ -100,7 +102,6 @@ func TestResourceClaimValidatingWebhook(t *testing.T) {
 						},
 					},
 				),
-				resourceClaimResource,
 			),
 			expectedAllowed: false,
 			expectedMessage: "2 configs failed to validate: object at spec.devices.config[0].opaque.parameters is invalid: unknown time-slice interval: Invalid Interval; object at spec.devices.config[1].opaque.parameters is invalid: active thread percentage must not be negative",
@@ -108,6 +109,7 @@ func TestResourceClaimValidatingWebhook(t *testing.T) {
 		"valid GpuConfig in ResourceClaimTemplate": {
 			admissionReview: admissionReviewWithObject(
 				resourceClaimTemplateWithGpuConfigs(
+					resourceClaimTemplateResourceV1Beta1,
 					&configapi.GpuConfig{
 						Sharing: &configapi.GpuSharing{
 							Strategy: configapi.TimeSlicingStrategy,
@@ -117,13 +119,13 @@ func TestResourceClaimValidatingWebhook(t *testing.T) {
 						},
 					},
 				),
-				resourceClaimTemplateResource,
 			),
 			expectedAllowed: true,
 		},
 		"invalid GpuConfigs in ResourceClaimTemplate": {
 			admissionReview: admissionReviewWithObject(
 				resourceClaimTemplateWithGpuConfigs(
+					resourceClaimTemplateResourceV1Beta1,
 					&configapi.GpuConfig{
 						Sharing: &configapi.GpuSharing{
 							Strategy: configapi.TimeSlicingStrategy,
@@ -141,10 +143,145 @@ func TestResourceClaimValidatingWebhook(t *testing.T) {
 						},
 					},
 				),
-				resourceClaimTemplateResource,
 			),
 			expectedAllowed: false,
 			expectedMessage: "2 configs failed to validate: object at spec.spec.devices.config[0].opaque.parameters is invalid: unknown time-slice interval: Invalid Interval; object at spec.spec.devices.config[1].opaque.parameters is invalid: active thread percentage must not be negative",
+		},
+
+		// v1 API version tests
+		"valid GpuConfig in ResourceClaim v1": {
+			admissionReview: admissionReviewWithObject(
+				resourceClaimWithGpuConfigs(
+					resourceClaimResourceV1,
+					&configapi.GpuConfig{
+						Sharing: &configapi.GpuSharing{
+							Strategy: configapi.TimeSlicingStrategy,
+							TimeSlicingConfig: &configapi.TimeSlicingConfig{
+								Interval: ptr.To(configapi.DefaultTimeSlice),
+							},
+						},
+					},
+				),
+			),
+			expectedAllowed: true,
+		},
+		"valid GpuConfig in ResourceClaimTemplate v1": {
+			admissionReview: admissionReviewWithObject(
+				resourceClaimTemplateWithGpuConfigs(
+					resourceClaimTemplateResourceV1,
+					&configapi.GpuConfig{
+						Sharing: &configapi.GpuSharing{
+							Strategy: configapi.TimeSlicingStrategy,
+							TimeSlicingConfig: &configapi.TimeSlicingConfig{
+								Interval: ptr.To(configapi.DefaultTimeSlice),
+							},
+						},
+					},
+				),
+			),
+			expectedAllowed: true,
+		},
+		"invalid GpuConfig in ResourceClaim v1 (tests conversion)": {
+			admissionReview: admissionReviewWithObject(
+				resourceClaimWithGpuConfigs(
+					resourceClaimResourceV1,
+					&configapi.GpuConfig{
+						Sharing: &configapi.GpuSharing{
+							Strategy: configapi.TimeSlicingStrategy,
+							TimeSlicingConfig: &configapi.TimeSlicingConfig{
+								Interval: ptr.To(configapi.TimeSliceInterval("Invalid Interval")),
+							},
+						},
+					},
+				),
+			),
+			expectedAllowed: false,
+			expectedMessage: "1 configs failed to validate: object at spec.devices.config[0].opaque.parameters is invalid: unknown time-slice interval: Invalid Interval",
+		},
+		"invalid GpuConfig in ResourceClaimTemplate v1 (tests conversion)": {
+			admissionReview: admissionReviewWithObject(
+				resourceClaimTemplateWithGpuConfigs(
+					resourceClaimTemplateResourceV1,
+					&configapi.GpuConfig{
+						Sharing: &configapi.GpuSharing{
+							Strategy: configapi.MpsStrategy,
+							MpsConfig: &configapi.MpsConfig{
+								DefaultActiveThreadPercentage: ptr.To(-1),
+							},
+						},
+					},
+				),
+			),
+			expectedAllowed: false,
+			expectedMessage: "1 configs failed to validate: object at spec.spec.devices.config[0].opaque.parameters is invalid: active thread percentage must not be negative",
+		},
+
+		// v1beta2 API version tests
+		"valid GpuConfig in ResourceClaim v1beta2": {
+			admissionReview: admissionReviewWithObject(
+				resourceClaimWithGpuConfigs(
+					resourceClaimResourceV1Beta2,
+					&configapi.GpuConfig{
+						Sharing: &configapi.GpuSharing{
+							Strategy: configapi.TimeSlicingStrategy,
+							TimeSlicingConfig: &configapi.TimeSlicingConfig{
+								Interval: ptr.To(configapi.DefaultTimeSlice),
+							},
+						},
+					},
+				),
+			),
+			expectedAllowed: true,
+		},
+		"valid GpuConfig in ResourceClaimTemplate v1beta2": {
+			admissionReview: admissionReviewWithObject(
+				resourceClaimTemplateWithGpuConfigs(
+					resourceClaimTemplateResourceV1Beta2,
+					&configapi.GpuConfig{
+						Sharing: &configapi.GpuSharing{
+							Strategy: configapi.TimeSlicingStrategy,
+							TimeSlicingConfig: &configapi.TimeSlicingConfig{
+								Interval: ptr.To(configapi.DefaultTimeSlice),
+							},
+						},
+					},
+				),
+			),
+			expectedAllowed: true,
+		},
+		"invalid GpuConfig in ResourceClaim v1beta2 (tests conversion)": {
+			admissionReview: admissionReviewWithObject(
+				resourceClaimWithGpuConfigs(
+					resourceClaimResourceV1Beta2,
+					&configapi.GpuConfig{
+						Sharing: &configapi.GpuSharing{
+							Strategy: configapi.MpsStrategy,
+							MpsConfig: &configapi.MpsConfig{
+								DefaultActiveThreadPercentage: ptr.To(-1),
+							},
+						},
+					},
+				),
+			),
+			expectedAllowed: false,
+			expectedMessage: "1 configs failed to validate: object at spec.devices.config[0].opaque.parameters is invalid: active thread percentage must not be negative",
+		},
+		"invalid GpuConfig in ResourceClaimTemplate v1beta2 (tests conversion)": {
+			admissionReview: admissionReviewWithObject(
+				resourceClaimTemplateWithGpuConfigs(
+					resourceClaimTemplateResourceV1Beta2,
+					&configapi.GpuConfig{
+						Sharing: &configapi.GpuSharing{
+							Strategy: configapi.TimeSlicingStrategy,
+							TimeSlicingConfig: &configapi.TimeSlicingConfig{
+								Interval: ptr.To(configapi.TimeSliceInterval("Invalid Interval")),
+							},
+						},
+					},
+				),
+			),
+			expectedAllowed: false,
+			expectedMessage: "1 configs failed to validate: object at spec.spec.devices.config[0].opaque.parameters is invalid: unknown time-slice interval: Invalid Interval",
 		},
 	}
 
@@ -187,7 +324,15 @@ func TestResourceClaimValidatingWebhook(t *testing.T) {
 	}
 }
 
-func admissionReviewWithObject(obj runtime.Object, resource metav1.GroupVersionResource) *admissionv1.AdmissionReview {
+func admissionReviewWithObject(obj runtime.Object) *admissionv1.AdmissionReview {
+	// Extract GVR from the object's GVK
+	gvk := obj.GetObjectKind().GroupVersionKind()
+	resource := metav1.GroupVersionResource{
+		Group:    gvk.Group,
+		Version:  gvk.Version,
+		Resource: strings.ToLower(gvk.Kind) + "s", // Convert Kind to resource name
+	}
+
 	requestedAdmissionReview := &admissionv1.AdmissionReview{
 		Request: &admissionv1.AdmissionRequest{
 			Resource: resource,
@@ -200,21 +345,27 @@ func admissionReviewWithObject(obj runtime.Object, resource metav1.GroupVersionR
 	return requestedAdmissionReview
 }
 
-func resourceClaimWithGpuConfigs(gpuConfigs ...*configapi.GpuConfig) *resourceapi.ResourceClaim {
+func resourceClaimWithGpuConfigs(gvr metav1.GroupVersionResource, gpuConfigs ...*configapi.GpuConfig) *resourceapi.ResourceClaim {
 	resourceClaim := &resourceapi.ResourceClaim{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: gvr.Group + "/" + gvr.Version,
+			Kind:       "ResourceClaim",
+		},
 		Spec: resourceClaimSpecWithGpuConfigs(gpuConfigs...),
 	}
-	resourceClaim.SetGroupVersionKind(resourceapi.SchemeGroupVersion.WithKind("ResourceClaim"))
 	return resourceClaim
 }
 
-func resourceClaimTemplateWithGpuConfigs(gpuConfigs ...*configapi.GpuConfig) *resourceapi.ResourceClaimTemplate {
+func resourceClaimTemplateWithGpuConfigs(gvr metav1.GroupVersionResource, gpuConfigs ...*configapi.GpuConfig) *resourceapi.ResourceClaimTemplate {
 	resourceClaimTemplate := &resourceapi.ResourceClaimTemplate{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: gvr.Group + "/" + gvr.Version,
+			Kind:       "ResourceClaimTemplate",
+		},
 		Spec: resourceapi.ResourceClaimTemplateSpec{
 			Spec: resourceClaimSpecWithGpuConfigs(gpuConfigs...),
 		},
 	}
-	resourceClaimTemplate.SetGroupVersionKind(resourceapi.SchemeGroupVersion.WithKind("ResourceClaimTemplate"))
 	return resourceClaimTemplate
 }
 
