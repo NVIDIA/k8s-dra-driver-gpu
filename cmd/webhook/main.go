@@ -254,13 +254,31 @@ func admitResourceClaimParameters(ar admissionv1.AdmissionReview) *admissionv1.A
 			errs = append(errs, fmt.Errorf("error decoding object at %s: %w", fieldPath, err))
 			continue
 		}
-		gpuConfig, ok := decodedConfig.(*configapi.GpuConfig)
-		if !ok {
-			errs = append(errs, fmt.Errorf("expected v1beta1.GpuConfig at %s but got: %T", fieldPath, decodedConfig))
+
+		// Cast the opaque config to a configapi.Interface type and validate it
+		var configInterface configapi.Interface
+		switch castConfig := decodedConfig.(type) {
+		case *configapi.GpuConfig:
+			configInterface = castConfig
+		case *configapi.MigDeviceConfig:
+			configInterface = castConfig
+		case *configapi.ComputeDomainChannelConfig:
+			configInterface = castConfig
+		case *configapi.ComputeDomainDaemonConfig:
+			configInterface = castConfig
+		default:
+			errs = append(errs, fmt.Errorf("expected a recognized configuration type at %s but got: %T", fieldPath, decodedConfig))
 			continue
 		}
-		err = gpuConfig.Validate()
-		if err != nil {
+
+		// Normalize the config to set any implied defaults
+		if err := configInterface.Normalize(); err != nil {
+			errs = append(errs, fmt.Errorf("error normalizing config at %s: %w", fieldPath, err))
+			continue
+		}
+
+		// Validate the config to ensure its integrity
+		if err := configInterface.Validate(); err != nil {
 			errs = append(errs, fmt.Errorf("object at %s is invalid: %w", fieldPath, err))
 		}
 	}
