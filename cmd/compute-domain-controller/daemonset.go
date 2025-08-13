@@ -49,6 +49,7 @@ type DaemonSetTemplateData struct {
 	ComputeDomainLabelValue   types.UID
 	ResourceClaimTemplateName string
 	ImageName                 string
+	MaxNodesPerIMEXDomain     int
 }
 
 type DaemonSetManager struct {
@@ -190,6 +191,7 @@ func (m *DaemonSetManager) Create(ctx context.Context, namespace string, cd *nva
 		ComputeDomainLabelValue:   cd.UID,
 		ResourceClaimTemplateName: rct.Name,
 		ImageName:                 m.config.imageName,
+		MaxNodesPerIMEXDomain:     m.config.maxNodesPerIMEXDomain,
 	}
 
 	tmpl, err := template.ParseFiles(DaemonSetTemplatePath)

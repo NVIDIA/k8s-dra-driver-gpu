@@ -22,7 +22,6 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
-	"path/filepath"
 	"strings"
 	"sync"
 	"syscall"
@@ -32,7 +31,6 @@ import (
 	"github.com/Masterminds/semver"
 	"github.com/urfave/cli/v2"
 
-	nvapi "github.com/NVIDIA/k8s-dra-driver-gpu/api/nvidia.com/resource/v1beta1"
 	"github.com/NVIDIA/k8s-dra-driver-gpu/pkg/flags"
 )
 
@@ -50,6 +48,7 @@ type Flags struct {
 	computeDomainNamespace string
 	nodeName               string
 	podIP                  string
+	maxNodesPerIMEXDomain  int
 	loggingConfig          *flags.LoggingConfig
 }
 
@@ -121,6 +120,12 @@ func newApp() *cli.App {
 			EnvVars:     []string{"POD_IP"},
 			Destination: &flags.podIP,
 		},
+		&cli.IntFlag{
+			Name:        "max-nodes-per-imex-domain",
+			Usage:       "The maximum number of possible nodes per IMEX domain",
+			EnvVars:     []string{"MAX_NODES_PER_IMEX_DOMAIN"},
+			Destination: &flags.maxNodesPerIMEXDomain,
+		},
 	}
 	cliFlags = append(cliFlags, flags.loggingConfig.Flags()...)
 
@@ -155,7 +160,6 @@ func newApp() *cli.App {
 
 // Run invokes the IMEX daemon and manages its lifecycle.
 func run(ctx context.Context, cancel context.CancelFunc, flags *Flags) error {
-
 	// Support heterogeneous compute domain
 	if flags.cliqueID == "" {
 		fmt.Println("ClusterUUID and CliqueId are NOT set for GPUs on this node.")
@@ -175,7 +179,15 @@ func run(ctx context.Context, cancel context.CancelFunc, flags *Flags) error {
 	}
 	klog.Infof("config: %v", config)
 
-	// Prepare IMEX daemon process manager (not invoking the process yet).
+	// Prepare Hostname manager
+	hostnameManager := NewHostnameManager(flags.cliqueID, flags.maxNodesPerIMEXDomain, nodesConfigPath)
+
+	// Create static nodes config file with hostnames
+	if err := hostnameManager.WriteNodesConfig(); err != nil {
+		return fmt.Errorf("failed to create static nodes config: %w", err)
+	}
+
+	// Prepare IMEX daemon process manager.
 	daemonCommandLine := []string{imexBinaryPath, "-c", imexConfigPath}
 	processManager := NewProcessManager(daemonCommandLine)
 
@@ -198,11 +210,11 @@ func run(ctx context.Context, cancel context.CancelFunc, flags *Flags) error {
 	}()
 
 	// Start IMEXDaemonUpdateLoop() in goroutine (watches for CD status
-	// changes, and restarts the IMEX daemon as needed).
+	// changes, and updates /etc/hosts with IP to hostname mappings).
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		if err := IMEXDaemonUpdateLoop(ctx, controller, flags.cliqueID, processManager); err != nil {
+		if err := IMEXDaemonUpdateLoop(ctx, controller, processManager, hostnameManager); err != nil {
 			klog.Errorf("IMEXDaemonUpdateLoop failed, initiate shutdown: %s", err)
 			cancel()
 		}
@@ -227,8 +239,8 @@ func run(ctx context.Context, cancel context.CancelFunc, flags *Flags) error {
 }
 
 // IMEXDaemonUpdateLoop() reacts to ComputeDomain status changes by updating the
-// IMEX daemon nodes config file and (re)starting the IMEX daemon process.
-func IMEXDaemonUpdateLoop(ctx context.Context, controller *Controller, cliqueID string, pm *ProcessManager) error {
+// /etc/hosts file with IP to hostname mappings and restarting the IMEX daemon.
+func IMEXDaemonUpdateLoop(ctx context.Context, controller *Controller, processManager *ProcessManager, hostnameManager *HostnameManager) error {
 	for {
 		klog.Infof("wait for nodes update")
 		select {
@@ -236,16 +248,13 @@ func IMEXDaemonUpdateLoop(ctx context.Context, controller *Controller, cliqueID 
 			klog.Infof("shutdown: stop IMEXDaemonUpdateLoop")
 			return nil
 		case nodes := <-controller.GetNodesUpdateChan():
-			if err := writeNodesConfig(cliqueID, nodes); err != nil {
-				return fmt.Errorf("writeNodesConfig failed: %w", err)
+			if err := hostnameManager.UpdateHostnameMappings(nodes); err != nil {
+				return fmt.Errorf("failed to update hostname => IP mappings: %w", err)
 			}
-
-			klog.Infof("Got update, (re)start IMEX daemon")
-			if err := pm.Restart(); err != nil {
-				// This might be a permanent problem, and retrying upon next update
-				// might be pointless. Terminate us.
-				return fmt.Errorf("error (re)starting IMEX daemon: %w", err)
+			if err := processManager.EnsureStarted(); err != nil {
+				return fmt.Errorf("failed to ensure IMEX daemon is started: %w", err)
 			}
+			hostnameManager.LogHostnameMappings()
 		}
 	}
 }
@@ -285,50 +294,6 @@ func check(ctx context.Context, cancel context.CancelFunc, flags *Flags) error {
 		return fmt.Errorf("IMEX daemon not ready: %s", string(output))
 	}
 
-	return nil
-}
-
-// cwriteNodesConfig creates a nodesConfig file with IPs for nodes in the same clique.
-func writeNodesConfig(cliqueID string, nodes []*nvapi.ComputeDomainNode) error {
-	// Ensure the directory exists
-	dir := filepath.Dir(nodesConfigPath)
-	if err := os.MkdirAll(dir, 0755); err != nil {
-		return fmt.Errorf("failed to create directory %s: %w", dir, err)
-	}
-
-	// Create or overwrite the nodesConfig file
-	f, err := os.Create(nodesConfigPath)
-	if err != nil {
-		return fmt.Errorf("failed to create nodes config file: %w", err)
-	}
-	defer f.Close()
-
-	// Write IPs for nodes in the same clique
-	//
-	// Note(JP): wo we need to apply this type of filtering also in the logic
-	// that checks if an IMEX daemon restart is required?
-	for _, node := range nodes {
-		if node.CliqueID == cliqueID {
-			if _, err := fmt.Fprintf(f, "%s\n", node.IPAddress); err != nil {
-				return fmt.Errorf("failed to write to nodes config file: %w", err)
-			}
-		}
-	}
-
-	if err := logNodesConfig(); err != nil {
-		return fmt.Errorf("logNodesConfig failed: %w", err)
-	}
-	return nil
-}
-
-// Read and log the contents of the nodes configuration file. Return an error if
-// the file cannot be read.
-func logNodesConfig() error {
-	content, err := os.ReadFile(nodesConfigPath)
-	if err != nil {
-		return fmt.Errorf("failed to read nodes config: %w", err)
-	}
-	klog.Infof("Current %s:\n%s", nodesConfigPath, string(content))
 	return nil
 }
 
