@@ -90,13 +90,13 @@ func NewDeviceState(ctx context.Context, config *Config) (*DeviceState, error) {
 		return nil, fmt.Errorf("error getting cliqueID: %w", err)
 	}
 
-	computeDomainManager := NewComputeDomainManager(config, ComputeDomainDaemonSettingsRoot, cliqueID)
+	computeDomainManager := NewComputeDomainManager(config, config.ComputeDomainDaemonSettingsRoot(), cliqueID)
 
 	if err := cdi.CreateStandardDeviceSpecFile(allocatable); err != nil {
 		return nil, fmt.Errorf("unable to create base CDI spec file: %v", err)
 	}
 
-	checkpointManager, err := checkpointmanager.NewCheckpointManager(DriverPluginPath)
+	checkpointManager, err := checkpointmanager.NewCheckpointManager(config.DriverPluginPath())
 	if err != nil {
 		return nil, fmt.Errorf("unable to create checkpoint manager: %v", err)
 	}
