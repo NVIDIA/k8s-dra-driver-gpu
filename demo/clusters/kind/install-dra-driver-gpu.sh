@@ -27,7 +27,6 @@ kubectl label node -l node-role.x-k8s.io/worker --overwrite nvidia.com/gpu.prese
 helm upgrade -i --create-namespace --namespace nvidia-dra-driver-gpu nvidia-dra-driver-gpu ${PROJECT_DIR}/deployments/helm/nvidia-dra-driver-gpu \
     ${NVIDIA_DRIVER_ROOT:+--set nvidiaDriverRoot=${NVIDIA_DRIVER_ROOT}} \
     ${MASK_NVIDIA_DRIVER_PARAMS:+--set maskNvidiaDriverParams=${MASK_NVIDIA_DRIVER_PARAMS}} \
-    --set gpuResourcesEnabledOverride=true \
     --wait
 
 set +x

@@ -30,7 +30,6 @@ nameOverride: ""
 fullnameOverride: ""
 namespaceOverride: ""
 selectorLabelsOverride: {}
-gpuResourcesEnabledOverride: false
 
 allowDefaultNamespace: false
 

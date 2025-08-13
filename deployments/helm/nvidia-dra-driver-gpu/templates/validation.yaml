@@ -30,15 +30,6 @@
 {{- fail $error }}
 {{- end }}
 
-{{- if and .Values.resources.gpus.enabled (not .Values.gpuResourcesEnabledOverride) }}
-{{- $error := "" }}
-{{- $error = printf "%s\nThe default value of 'resources.gpus.enabled=true' is not yet supported." $error }}
-{{- $error = printf "%s\nIt is set to true by default to future proof it as the default once support for it becomes available." $error }}
-{{- $error = printf "%s\nUntil then, please explicitly set 'resources.gpus.enabled=false' when installing this chart." $error }}
-{{- $error = printf "%s\nIf you truly want to force 'resources.gpus.enabled=true' to apply, you must also set 'gpuResourcesEnabledOverride=true'." $error }}
-{{- fail $error }}
-{{- end }}
-
 {{- if .Values.nvidiaCtkPath }}
 {{- $error := "" }}
 {{- $error = printf "%s\nSetting a user-defined nvidiaCtkPath is no longer supported. It can simply be removed without consequence." $error }}
