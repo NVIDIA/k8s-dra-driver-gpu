@@ -69,6 +69,9 @@ spec:
         # Use runc: explicit "void"; otherwise we inherit "all".
         - name: NVIDIA_VISIBLE_DEVICES
           value: void
+        {{- with .Values.controller.containers.computeDomain.env }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
       {{- with .Values.controller.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}

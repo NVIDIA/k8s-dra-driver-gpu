@@ -83,6 +83,7 @@ func NewDaemonSetManager(config *ManagerConfig, getComputeDomain GetComputeDomai
 		informers.WithTweakListOptions(func(opts *metav1.ListOptions) {
 			opts.LabelSelector = metav1.FormatLabelSelector(labelSelector)
 		}),
+		informers.WithNamespace(config.driverNamespace),
 	)
 
 	informer := factory.Apps().V1().DaemonSets().Informer()
@@ -160,12 +161,14 @@ func (m *DaemonSetManager) Stop() error {
 	if err := m.resourceClaimTemplateManager.Stop(); err != nil {
 		return fmt.Errorf("error stopping ResourceClaimTemplate manager: %w", err)
 	}
-	m.cancelContext()
+	if m.cancelContext != nil {
+		m.cancelContext()
+	}
 	m.waitGroup.Wait()
 	return nil
 }
 
-func (m *DaemonSetManager) Create(ctx context.Context, namespace string, cd *nvapi.ComputeDomain) (*appsv1.DaemonSet, error) {
+func (m *DaemonSetManager) Create(ctx context.Context, cd *nvapi.ComputeDomain) (*appsv1.DaemonSet, error) {
 	ds, err := getByComputeDomainUID[*appsv1.DaemonSet](ctx, m.mutationCache, string(cd.UID))
 	if err != nil {
 		return nil, fmt.Errorf("error retrieving DaemonSet: %w", err)
@@ -177,7 +180,7 @@ func (m *DaemonSetManager) Create(ctx context.Context, namespace string, cd *nva
 		return ds[0], nil
 	}
 
-	rct, err := m.resourceClaimTemplateManager.Create(ctx, namespace, cd)
+	rct, err := m.resourceClaimTemplateManager.Create(ctx, cd)
 	if err != nil {
 		return nil, fmt.Errorf("error creating ResourceClaimTemplate: %w", err)
 	}
@@ -224,6 +227,20 @@ func (m *DaemonSetManager) Create(ctx context.Context, namespace string, cd *nva
 	m.mutationCache.Mutation(d)
 
 	return d, nil
+}
+
+func (m *DaemonSetManager) Get(ctx context.Context, cdUID string) (*appsv1.DaemonSet, error) {
+	ds, err := getByComputeDomainUID[*appsv1.DaemonSet](ctx, m.mutationCache, cdUID)
+	if err != nil {
+		return nil, fmt.Errorf("error retrieving DaemonSet: %w", err)
+	}
+	if len(ds) > 1 {
+		return nil, fmt.Errorf("more than one DaemonSet found with same ComputeDomain UID")
+	}
+	if len(ds) == 0 {
+		return nil, nil
+	}
+	return ds[0], nil
 }
 
 func (m *DaemonSetManager) Delete(ctx context.Context, cdUID string) error {
@@ -330,11 +347,6 @@ func (m *DaemonSetManager) onAddOrUpdate(ctx context.Context, obj any) error {
 	d, ok := obj.(*appsv1.DaemonSet)
 	if !ok {
 		return fmt.Errorf("failed to cast to DaemonSet")
-	}
-
-	// Only process events from the driver namespace
-	if d.Namespace != m.config.driverNamespace {
-		return nil
 	}
 
 	klog.Infof("Processing added or updated DaemonSet: %s/%s", d.Namespace, d.Name)

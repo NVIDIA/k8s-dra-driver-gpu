@@ -150,7 +150,9 @@ func (m *BaseResourceClaimTemplateManager) Start(ctx context.Context) (rerr erro
 }
 
 func (m *BaseResourceClaimTemplateManager) Stop() error {
-	m.cancelContext()
+	if m.cancelContext != nil {
+		m.cancelContext()
+	}
 	m.waitGroup.Wait()
 	return nil
 }
@@ -300,7 +302,7 @@ func NewDaemonSetResourceClaimTemplateManager(config *ManagerConfig, getComputeD
 	return m
 }
 
-func (m *DaemonSetResourceClaimTemplateManager) Create(ctx context.Context, namespace string, cd *nvapi.ComputeDomain) (*resourceapi.ResourceClaimTemplate, error) {
+func (m *DaemonSetResourceClaimTemplateManager) Create(ctx context.Context, cd *nvapi.ComputeDomain) (*resourceapi.ResourceClaimTemplate, error) {
 	rcts, err := getByComputeDomainUID[*resourceapi.ResourceClaimTemplate](ctx, m.mutationCache, string(cd.UID))
 	if err != nil {
 		return nil, fmt.Errorf("error retrieving ResourceClaimTemplate: %w", err)
@@ -316,7 +318,7 @@ func (m *DaemonSetResourceClaimTemplateManager) Create(ctx context.Context, name
 	daemonConfig.DomainID = string(cd.UID)
 
 	templateData := ResourceClaimTemplateTemplateData{
-		Namespace:               namespace,
+		Namespace:               m.config.driverNamespace,
 		GenerateName:            fmt.Sprintf("%s-daemon-claim-template-", cd.Name),
 		Finalizer:               computeDomainFinalizer,
 		ComputeDomainLabelKey:   computeDomainLabelKey,
