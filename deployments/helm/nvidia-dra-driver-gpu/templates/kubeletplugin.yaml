@@ -121,6 +121,10 @@ spec:
         - name: NVIDIA_CDI_HOOK_PATH
           value: "{{ .Values.nvidiaCDIHookPath }}"
         {{- end }}
+        {{- if .Values.featureGates }}
+        - name: FEATURE_GATES
+          value: "{{ range $key, $value := .Values.featureGates }}{{ $key }}={{ $value }},{{ end }}"
+        {{- end }}
         volumeMounts:
         - name: plugins-registry
           mountPath: /var/lib/kubelet/plugins_registry
@@ -184,6 +188,10 @@ spec:
         {{- if .Values.nvidiaCDIHookPath }}
         - name: NVIDIA_CDI_HOOK_PATH
           value: "{{ .Values.nvidiaCDIHookPath }}"
+        {{- end }}
+        {{- if .Values.featureGates }}
+        - name: FEATURE_GATES
+          value: "{{ range $key, $value := .Values.featureGates }}{{ $key }}={{ $value }},{{ end }}"
         {{- end }}
         volumeMounts:
         - name: plugins-registry

@@ -18,12 +18,16 @@ package v1beta1
 
 import (
 	"fmt"
+
+	"github.com/NVIDIA/k8s-dra-driver-gpu/pkg/featuregates"
 )
 
 // Validate ensures that GpuSharingStrategy has a valid set of values.
 func (s GpuSharingStrategy) Validate() error {
-	switch s {
-	case TimeSlicingStrategy, MpsStrategy:
+	if featuregates.Enabled(featuregates.TimeSlicingSettings) && s == TimeSlicingStrategy {
+		return nil
+	}
+	if featuregates.Enabled(featuregates.MPSSupport) && s == MpsStrategy {
 		return nil
 	}
 	return fmt.Errorf("unknown GPU sharing strategy: %v", s)
@@ -31,8 +35,10 @@ func (s GpuSharingStrategy) Validate() error {
 
 // Validate ensures that MigDeviceSharingStrategy has a valid set of values.
 func (s MigDeviceSharingStrategy) Validate() error {
-	switch s {
-	case TimeSlicingStrategy, MpsStrategy:
+	if featuregates.Enabled(featuregates.TimeSlicingSettings) && s == TimeSlicingStrategy {
+		return nil
+	}
+	if featuregates.Enabled(featuregates.MPSSupport) && s == MpsStrategy {
 		return nil
 	}
 	return fmt.Errorf("unknown GPU sharing strategy: %v", s)
@@ -71,9 +77,9 @@ func (s *GpuSharing) Validate() error {
 		return err
 	}
 	switch {
-	case s.IsTimeSlicing():
+	case featuregates.Enabled(featuregates.TimeSlicingSettings) && s.IsTimeSlicing():
 		return s.TimeSlicingConfig.Validate()
-	case s.IsMps():
+	case featuregates.Enabled(featuregates.MPSSupport) && s.IsMps():
 		return s.MpsConfig.Validate()
 	}
 	return fmt.Errorf("invalid GPU sharing settings: %v", s)
@@ -84,10 +90,10 @@ func (s *MigDeviceSharing) Validate() error {
 	if err := s.Strategy.Validate(); err != nil {
 		return err
 	}
-	if s.IsTimeSlicing() {
+	switch {
+	case featuregates.Enabled(featuregates.TimeSlicingSettings) && s.IsTimeSlicing():
 		return nil
-	}
-	if s.IsMps() {
+	case featuregates.Enabled(featuregates.MPSSupport) && s.IsMps():
 		return s.MpsConfig.Validate()
 	}
 	return fmt.Errorf("invalid MIG device sharing settings: %v", s)

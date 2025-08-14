@@ -30,6 +30,7 @@ import (
 	cdiapi "tags.cncf.io/container-device-interface/pkg/cdi"
 
 	configapi "github.com/NVIDIA/k8s-dra-driver-gpu/api/nvidia.com/resource/v1beta1"
+	"github.com/NVIDIA/k8s-dra-driver-gpu/pkg/featuregates"
 )
 
 type OpaqueDeviceConfig struct {
@@ -84,8 +85,15 @@ func NewDeviceState(ctx context.Context, config *Config) (*DeviceState, error) {
 		return nil, fmt.Errorf("unable to create CDI handler: %w", err)
 	}
 
-	tsManager := NewTimeSlicingManager(nvdevlib)
-	mpsManager := NewMpsManager(config, nvdevlib, MpsRoot, hostDriverRoot, MpsControlDaemonTemplatePath)
+	var tsManager *TimeSlicingManager
+	if featuregates.Enabled(featuregates.TimeSlicingSettings) {
+		tsManager = NewTimeSlicingManager(nvdevlib)
+	}
+
+	var mpsManager *MpsManager
+	if featuregates.Enabled(featuregates.MPSSupport) {
+		mpsManager = NewMpsManager(config, nvdevlib, MpsRoot, hostDriverRoot, MpsControlDaemonTemplatePath)
+	}
 
 	if err := cdi.CreateStandardDeviceSpecFile(allocatable); err != nil {
 		return nil, fmt.Errorf("unable to create base CDI spec file: %v", err)
@@ -353,15 +361,19 @@ func (s *DeviceState) prepareDevices(ctx context.Context, claim *resourceapi.Res
 func (s *DeviceState) unprepareDevices(ctx context.Context, claimUID string, devices PreparedDevices) error {
 	for _, group := range devices {
 		// Stop any MPS control daemons started for each group of prepared devices.
-		mpsControlDaemon := s.mpsManager.NewMpsControlDaemon(claimUID, group)
-		if err := mpsControlDaemon.Stop(ctx); err != nil {
-			return fmt.Errorf("error stopping MPS control daemon: %w", err)
+		if featuregates.Enabled(featuregates.MPSSupport) {
+			mpsControlDaemon := s.mpsManager.NewMpsControlDaemon(claimUID, group)
+			if err := mpsControlDaemon.Stop(ctx); err != nil {
+				return fmt.Errorf("error stopping MPS control daemon: %w", err)
+			}
 		}
 
 		// Go back to default time-slicing for all full GPUs.
-		tsc := configapi.DefaultGpuConfig().Sharing.TimeSlicingConfig
-		if err := s.tsManager.SetTimeSlice(group.Devices.Gpus(), tsc); err != nil {
-			return fmt.Errorf("error setting timeslice for devices: %w", err)
+		if featuregates.Enabled(featuregates.TimeSlicingSettings) {
+			tsc := configapi.DefaultGpuConfig().Sharing.TimeSlicingConfig
+			if err := s.tsManager.SetTimeSlice(group.Devices.Gpus(), tsc); err != nil {
+				return fmt.Errorf("error setting timeslice for devices: %w", err)
+			}
 		}
 	}
 	return nil
@@ -394,8 +406,8 @@ func (s *DeviceState) applySharingConfig(ctx context.Context, config configapi.S
 	// Declare a device group state object to populate.
 	var configState DeviceConfigState
 
-	// Apply time-slicing settings (if available).
-	if config.IsTimeSlicing() {
+	// Apply time-slicing settings (if available and feature gate enabled).
+	if featuregates.Enabled(featuregates.TimeSlicingSettings) && config.IsTimeSlicing() {
 		tsc, err := config.GetTimeSlicingConfig()
 		if err != nil {
 			return nil, fmt.Errorf("error getting timeslice config for requests '%v' in claim '%v': %w", requests, claim.UID, err)
@@ -408,8 +420,8 @@ func (s *DeviceState) applySharingConfig(ctx context.Context, config configapi.S
 		}
 	}
 
-	// Apply MPS settings.
-	if config.IsMps() {
+	// Apply MPS settings (if available and feature gate enabled).
+	if featuregates.Enabled(featuregates.MPSSupport) && config.IsMps() {
 		mpsc, err := config.GetMpsConfig()
 		if err != nil {
 			return nil, fmt.Errorf("error getting MPS configuration: %w", err)

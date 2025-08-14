@@ -35,6 +35,7 @@ import (
 	"k8s.io/klog/v2"
 
 	nvapi "github.com/NVIDIA/k8s-dra-driver-gpu/api/nvidia.com/resource/v1beta1"
+	"github.com/NVIDIA/k8s-dra-driver-gpu/pkg/featuregates"
 )
 
 const (
@@ -49,6 +50,7 @@ type DaemonSetTemplateData struct {
 	ComputeDomainLabelValue   types.UID
 	ResourceClaimTemplateName string
 	ImageName                 string
+	FeatureGates              map[string]bool
 }
 
 type DaemonSetManager struct {
@@ -190,6 +192,7 @@ func (m *DaemonSetManager) Create(ctx context.Context, namespace string, cd *nva
 		ComputeDomainLabelValue:   cd.UID,
 		ResourceClaimTemplateName: rct.Name,
 		ImageName:                 m.config.imageName,
+		FeatureGates:              featuregates.ToMap(),
 	}
 
 	tmpl, err := template.ParseFiles(DaemonSetTemplatePath)

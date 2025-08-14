@@ -93,7 +93,9 @@ check-modules: vendor
 
 COVERAGE_FILE := coverage.out
 test: build cmds
-	go test -race -cover -v -coverprofile=$(COVERAGE_FILE) $(MODULE)/...
+	go test -race -cover -v -coverprofile=$(COVERAGE_FILE) \
+		-ldflags "-X $(CLI_VERSION_PACKAGE).version=$(CLI_VERSION)" \
+		$(MODULE)/...
 
 coverage: test
 	cat $(COVERAGE_FILE) | grep -v "_mock.go" > $(COVERAGE_FILE).no-mocks
