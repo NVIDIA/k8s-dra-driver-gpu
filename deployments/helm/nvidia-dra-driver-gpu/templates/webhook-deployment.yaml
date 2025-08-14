@@ -85,7 +85,16 @@ spec:
       volumes:
       - name: cert
         secret:
+          {{- if eq .Values.webhook.tls.mode "secret" }}
+          secretName: {{ .Values.webhook.tls.secret.name }}
+          {{- if .Values.webhook.tls.secret.namespace }}
+          namespace: {{ .Values.webhook.tls.secret.namespace }}
+          {{- else }}
+          namespace: {{ include "nvidia-dra-driver-gpu.namespace" . }}
+          {{- end }}
+          {{- else }}
           secretName: {{ include "nvidia-dra-driver-gpu.name" . }}-webhook-cert
+          {{- end }}
       {{- with .Values.webhook.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}

@@ -1,4 +1,4 @@
-{{- if .Values.webhook.enabled }}
+{{- if and .Values.webhook.enabled (eq .Values.webhook.tls.mode "cert-manager") (eq .Values.webhook.tls.certManager.issuerType "selfsigned") }}
 apiVersion: cert-manager.io/v1
 kind: Issuer
 metadata:

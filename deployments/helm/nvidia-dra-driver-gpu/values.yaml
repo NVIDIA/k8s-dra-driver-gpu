@@ -93,6 +93,24 @@ webhook:
     create: true
     # Annotations to add to the service account
     name: ""
+  # TLS certificate configuration
+  tls:
+    # Certificate management mode: "cert-manager" or "secret"
+    # - "cert-manager": Use cert-manager to automatically generate and manage certificates
+    # - "secret": Use a user-provided secret containing tls.crt and tls.key
+    mode: "cert-manager"
+    certManager:
+      # Issuer type: "selfsigned", "clusterissuer", or "issuer"
+      issuerType: "selfsigned"
+      # Issuer name (required when issuerType is "clusterissuer" or "issuer")
+      issuerName: ""
+      # Additional DNS names for the certificate
+      dnsNames: []
+    secret:
+      # Name of the secret containing tls.crt and tls.key
+      name: ""
+      # Namespace of the secret (if different from webhook namespace)
+      namespace: ""
 
 controller:
   priorityClassName: "system-node-critical"
