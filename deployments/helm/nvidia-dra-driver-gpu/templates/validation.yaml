@@ -48,3 +48,72 @@
 {{- $error = printf "%s\nThis renders the need for passing this user-defined flag obsolete." $error }}
 {{- fail $error }}
 {{- end }}
+
+{{- if .Values.webhook.enabled }}
+{{- if not .Values.webhook.tls }}
+{{- $error := "" }}
+{{- $error = printf "%s\nWebhook TLS configuration is required when webhook is enabled." $error }}
+{{- $error = printf "%s\nPlease configure webhook.tls.mode and related settings." $error }}
+{{- fail $error }}
+{{- end }}
+
+{{- if not .Values.webhook.tls.mode }}
+{{- $error := "" }}
+{{- $error = printf "%s\nWebhook TLS mode is required when webhook is enabled." $error }}
+{{- $error = printf "%s\nSet webhook.tls.mode to either 'cert-manager' or 'secret'." $error }}
+{{- fail $error }}
+{{- end }}
+
+{{- if not (or (eq .Values.webhook.tls.mode "cert-manager") (eq .Values.webhook.tls.mode "secret")) }}
+{{- $error := "" }}
+{{- $error = printf "%s\nInvalid webhook TLS mode: %s" $error .Values.webhook.tls.mode }}
+{{- $error = printf "%s\nWebhook TLS mode must be either 'cert-manager' or 'secret'." $error }}
+{{- fail $error }}
+{{- end }}
+
+{{- if eq .Values.webhook.tls.mode "cert-manager" }}
+{{- if not .Values.webhook.tls.certManager }}
+{{- $error := "" }}
+{{- $error = printf "%s\nCert-manager configuration is required when using cert-manager mode." $error }}
+{{- $error = printf "%s\nPlease configure webhook.tls.certManager settings." $error }}
+{{- fail $error }}
+{{- end }}
+
+{{- if not .Values.webhook.tls.certManager.issuerType }}
+{{- $error := "" }}
+{{- $error = printf "%s\nCert-manager issuer type is required when using cert-manager mode." $error }}
+{{- $error = printf "%s\nSet webhook.tls.certManager.issuerType to 'selfsigned', 'clusterissuer', or 'issuer'." $error }}
+{{- fail $error }}
+{{- end }}
+
+{{- if not (or (eq .Values.webhook.tls.certManager.issuerType "selfsigned") (eq .Values.webhook.tls.certManager.issuerType "clusterissuer") (eq .Values.webhook.tls.certManager.issuerType "issuer")) }}
+{{- $error := "" }}
+{{- $error = printf "%s\nInvalid cert-manager issuer type: %s" $error .Values.webhook.tls.certManager.issuerType }}
+{{- $error = printf "%s\nIssuer type must be 'selfsigned', 'clusterissuer', or 'issuer'." $error }}
+{{- fail $error }}
+{{- end }}
+
+{{- if and (ne .Values.webhook.tls.certManager.issuerType "selfsigned") (not .Values.webhook.tls.certManager.issuerName) }}
+{{- $error := "" }}
+{{- $error = printf "%s\nCert-manager issuer name is required when issuer type is not 'selfsigned'." $error }}
+{{- $error = printf "%s\nSet webhook.tls.certManager.issuerName to the name of your issuer." $error }}
+{{- fail $error }}
+{{- end }}
+{{- end }}
+
+{{- if eq .Values.webhook.tls.mode "secret" }}
+{{- if not .Values.webhook.tls.secret }}
+{{- $error := "" }}
+{{- $error = printf "%s\nSecret configuration is required when using secret mode." $error }}
+{{- $error = printf "%s\nPlease configure webhook.tls.secret settings." $error }}
+{{- fail $error }}
+{{- end }}
+
+{{- if not .Values.webhook.tls.secret.name }}
+{{- $error := "" }}
+{{- $error = printf "%s\nSecret name is required when using secret mode." $error }}
+{{- $error = printf "%s\nSet webhook.tls.secret.name to the name of your TLS secret." $error }}
+{{- fail $error }}
+{{- end }}
+{{- end }}
+{{- end }}
