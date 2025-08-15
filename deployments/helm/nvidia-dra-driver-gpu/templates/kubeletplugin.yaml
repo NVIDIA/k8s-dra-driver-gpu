@@ -61,6 +61,10 @@ spec:
         # Use runc: explicit "void"; otherwise we inherit "all".
         - name: NVIDIA_VISIBLE_DEVICES
           value: void
+        - name: KUBELET_REGISTRAR_DIRECTORY_PATH
+          value: {{ .Values.kubeletPlugin.kubeletRegistrarDirectoryPath | quote }}
+        - name: KUBELET_PLUGINS_DIRECTORY_PATH
+          value: {{ .Values.kubeletPlugin.kubeletPluginsDirectoryPath | quote }}
         volumeMounts:
         - name: driver-root-parent
           mountPath: /driver-root-parent
@@ -121,6 +125,10 @@ spec:
         - name: NVIDIA_CDI_HOOK_PATH
           value: "{{ .Values.nvidiaCDIHookPath }}"
         {{- end }}
+        - name: KUBELET_REGISTRAR_DIRECTORY_PATH
+          value: {{ .Values.kubeletPlugin.kubeletRegistrarDirectoryPath | quote }}
+        - name: KUBELET_PLUGINS_DIRECTORY_PATH
+          value: {{ .Values.kubeletPlugin.kubeletPluginsDirectoryPath | quote }}
         volumeMounts:
         - name: plugins-registry
           mountPath: {{ .Values.kubeletPlugin.kubeletRegistrarDirectoryPath | quote }}
@@ -185,6 +193,10 @@ spec:
         - name: NVIDIA_CDI_HOOK_PATH
           value: "{{ .Values.nvidiaCDIHookPath }}"
         {{- end }}
+        - name: KUBELET_REGISTRAR_DIRECTORY_PATH
+          value: {{ .Values.kubeletPlugin.kubeletRegistrarDirectoryPath | quote }}
+        - name: KUBELET_PLUGINS_DIRECTORY_PATH
+          value: {{ .Values.kubeletPlugin.kubeletPluginsDirectoryPath | quote }}
         volumeMounts:
         - name: plugins-registry
           mountPath: {{ .Values.kubeletPlugin.kubeletRegistrarDirectoryPath | quote }}
