@@ -43,7 +43,6 @@ const (
 	informerResyncPeriod = 10 * time.Minute
 	cleanupInterval      = 10 * time.Minute
 
-	ComputeDomainDaemonSettingsRoot       = DriverPluginPath + "/domains"
 	ComputeDomainDaemonConfigTemplatePath = "/templates/compute-domain-daemon-config.tmpl.cfg"
 )
 
@@ -65,6 +64,10 @@ type ComputeDomainDaemonSettings struct {
 	rootDir         string
 	configPath      string
 	nodesConfigPath string
+}
+
+func (c Config) ComputeDomainDaemonSettingsRoot() string {
+	return filepath.Join(c.DriverPluginPath(), "domains")
 }
 
 func NewComputeDomainManager(config *Config, configFilesRoot, cliqueID string) *ComputeDomainManager {

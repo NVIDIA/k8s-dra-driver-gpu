@@ -19,6 +19,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"path/filepath"
 	"time"
 
 	resourceapi "k8s.io/api/resource/v1"
@@ -32,11 +33,6 @@ import (
 	"github.com/NVIDIA/k8s-dra-driver-gpu/pkg/flock"
 )
 
-// DriverPrepUprepFlockPath is the path to a lock file used to make sure
-// that calls to nodePrepareResource() / nodeUnprepareResource() never
-// interleave, node-globally.
-const DriverPrepUprepFlockPath = DriverPluginPath + "/pu.lock"
-
 type driver struct {
 	client       coreclientset.Interface
 	pluginhelper *kubeletplugin.Helper
@@ -44,15 +40,23 @@ type driver struct {
 	pulock       *flock.Flock
 }
 
+// DriverPrepUprepFlockPath is the path to a lock file used to make sure
+// that calls to nodePrepareResource() / nodeUnprepareResource() never
+// interleave, node-globally.
+func (c Config) DriverPrepUprepFlockPath() string {
+	return filepath.Join(c.DriverPluginPath(), "pu.lock")
+}
+
 func NewDriver(ctx context.Context, config *Config) (*driver, error) {
 	state, err := NewDeviceState(ctx, config)
 	if err != nil {
 		return nil, err
 	}
+
 	driver := &driver{
 		client: config.clientsets.Core,
 		state:  state,
-		pulock: flock.NewFlock(DriverPrepUprepFlockPath),
+		pulock: flock.NewFlock(config.DriverPrepUprepFlockPath()),
 	}
 
 	helper, err := kubeletplugin.Start(
@@ -62,6 +66,8 @@ func NewDriver(ctx context.Context, config *Config) (*driver, error) {
 		kubeletplugin.NodeName(config.flags.nodeName),
 		kubeletplugin.DriverName(DriverName),
 		kubeletplugin.Serialize(false),
+		kubeletplugin.RegistrarDirectoryPath(config.flags.kubeletRegistrarDirectoryPath),
+		kubeletplugin.PluginDataDirectoryPath(config.DriverPluginPath()),
 	)
 	if err != nil {
 		return nil, err
@@ -91,6 +97,7 @@ func (d *driver) Shutdown() error {
 	if d == nil {
 		return nil
 	}
+
 	d.pluginhelper.Stop()
 	return nil
 }

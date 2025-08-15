@@ -26,6 +26,7 @@ import (
 
 	"github.com/urfave/cli/v2"
 
+	"k8s.io/dynamic-resource-allocation/kubeletplugin"
 	"k8s.io/klog/v2"
 
 	"github.com/NVIDIA/k8s-dra-driver-gpu/internal/info"
@@ -34,7 +35,6 @@ import (
 
 const (
 	DriverName                         = "compute-domain.nvidia.com"
-	DriverPluginPath                   = "/var/lib/kubelet/plugins/" + DriverName
 	DriverPluginCheckpointFileBasename = "checkpoint.json"
 )
 
@@ -43,17 +43,23 @@ type Flags struct {
 	loggingConfig     *flags.LoggingConfig
 	featureGateConfig *flags.FeatureGateConfig
 
-	nodeName            string
-	namespace           string
-	cdiRoot             string
-	containerDriverRoot string
-	hostDriverRoot      string
-	nvidiaCDIHookPath   string
+	nodeName                      string
+	namespace                     string
+	cdiRoot                       string
+	containerDriverRoot           string
+	hostDriverRoot                string
+	nvidiaCDIHookPath             string
+	kubeletRegistrarDirectoryPath string
+	kubeletPluginsDirectoryPath   string
 }
 
 type Config struct {
 	flags      *Flags
 	clientsets flags.ClientSets
+}
+
+func (c Config) DriverPluginPath() string {
+	return filepath.Join(c.flags.kubeletPluginsDirectoryPath, DriverName)
 }
 
 func main() {
@@ -111,6 +117,20 @@ func newApp() *cli.App {
 			Destination: &flags.nvidiaCDIHookPath,
 			EnvVars:     []string{"NVIDIA_CDI_HOOK_PATH"},
 		},
+		&cli.StringFlag{
+			Name:        "kubelet-registrar-directory-path",
+			Usage:       "Absolute path to the directory where kubelet stores plugin registrations.",
+			Value:       kubeletplugin.KubeletRegistryDir,
+			Destination: &flags.kubeletRegistrarDirectoryPath,
+			EnvVars:     []string{"KUBELET_REGISTRAR_DIRECTORY_PATH"},
+		},
+		&cli.StringFlag{
+			Name:        "kubelet-plugins-directory-path",
+			Usage:       "Absolute path to the directory where kubelet stores plugin data.",
+			Value:       kubeletplugin.KubeletPluginsDir,
+			Destination: &flags.kubeletPluginsDirectoryPath,
+			EnvVars:     []string{"KUBELET_PLUGINS_DIRECTORY_PATH"},
+		},
 	}
 	cliFlags = append(cliFlags, flags.kubeClientConfig.Flags()...)
 	cliFlags = append(cliFlags, flags.featureGateConfig.Flags()...)
@@ -158,13 +178,13 @@ func newApp() *cli.App {
 // StartPlugin initializes and runs the compute domain kubelet plugin.
 func StartPlugin(ctx context.Context, config *Config) error {
 	// Create the plugin directory
-	err := os.MkdirAll(DriverPluginPath, 0750)
+	err := os.MkdirAll(config.DriverPluginPath(), 0750)
 	if err != nil {
 		return err
 	}
 
 	// Setup nvidia-cdi-hook binary
-	if err := config.flags.setNvidiaCDIHookPath(); err != nil {
+	if err := config.setNvidiaCDIHookPath(); err != nil {
 		return fmt.Errorf("error setting up nvidia-cdi-hook: %w", err)
 	}
 
@@ -215,13 +235,13 @@ func StartPlugin(ctx context.Context, config *Config) error {
 // to this path. The /usr/bin/nvidia-cdi-hook is present in the current
 // container image because it is copied from the toolkit image into this
 // container at build time.
-func (f *Flags) setNvidiaCDIHookPath() error {
-	if f.nvidiaCDIHookPath != "" {
+func (c Config) setNvidiaCDIHookPath() error {
+	if c.flags.nvidiaCDIHookPath != "" {
 		return nil
 	}
 
 	sourcePath := "/usr/bin/nvidia-cdi-hook"
-	targetPath := filepath.Join(DriverPluginPath, "nvidia-cdi-hook")
+	targetPath := filepath.Join(c.DriverPluginPath(), "nvidia-cdi-hook")
 
 	input, err := os.ReadFile(sourcePath)
 	if err != nil {
@@ -232,7 +252,7 @@ func (f *Flags) setNvidiaCDIHookPath() error {
 		return fmt.Errorf("error copying nvidia-cdi-hook: %w", err)
 	}
 
-	f.nvidiaCDIHookPath = targetPath
+	c.flags.nvidiaCDIHookPath = targetPath
 
 	return nil
 }

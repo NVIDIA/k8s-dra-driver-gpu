@@ -127,9 +127,9 @@ spec:
         {{- end }}
         volumeMounts:
         - name: plugins-registry
-          mountPath: /var/lib/kubelet/plugins_registry
+          mountPath: {{ .Values.kubeletPlugin.kubeletRegistrarDirectoryPath | quote }}
         - name: plugins
-          mountPath: /var/lib/kubelet/plugins
+          mountPath: {{ .Values.kubeletPlugin.kubeletPluginsDirectoryPath | quote }}
           mountPropagation: Bidirectional
         - name: cdi
           mountPath: /var/run/cdi
@@ -195,9 +195,9 @@ spec:
         {{- end }}
         volumeMounts:
         - name: plugins-registry
-          mountPath: /var/lib/kubelet/plugins_registry
+          mountPath: {{ .Values.kubeletPlugin.kubeletRegistrarDirectoryPath | quote }}
         - name: plugins
-          mountPath: /var/lib/kubelet/plugins
+          mountPath: {{ .Values.kubeletPlugin.kubeletPluginsDirectoryPath | quote }}
           mountPropagation: Bidirectional
         - name: cdi
           mountPath: /var/run/cdi
@@ -209,10 +209,10 @@ spec:
       volumes:
       - name: plugins-registry
         hostPath:
-          path: /var/lib/kubelet/plugins_registry
+          path: {{ .Values.kubeletPlugin.kubeletRegistrarDirectoryPath | quote }}
       - name: plugins
         hostPath:
-          path: /var/lib/kubelet/plugins
+          path: {{ .Values.kubeletPlugin.kubeletPluginsDirectoryPath | quote }}
       - name: cdi
         hostPath:
           path: /var/run/cdi

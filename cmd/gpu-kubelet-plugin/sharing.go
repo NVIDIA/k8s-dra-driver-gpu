@@ -25,6 +25,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
@@ -51,7 +52,6 @@ import (
 )
 
 const (
-	MpsRoot                      = DriverPluginPath + "/mps"
 	MpsControlDaemonTemplatePath = "/templates/mps-control-daemon.tmpl.yaml"
 	MpsControlDaemonNameFmt      = "mps-control-daemon-%v" // Fill with ClaimUID
 )
@@ -95,6 +95,10 @@ type MpsControlDaemonTemplateData struct {
 	MpsLogDirectory                 string
 	MpsImageName                    string
 	FeatureGates                    map[string]bool
+}
+
+func (c Config) MpsRoot() string {
+	return filepath.Join(c.DriverPluginPath(), "mps")
 }
 
 func NewTimeSlicingManager(deviceLib *deviceLib) *TimeSlicingManager {
