@@ -21,7 +21,7 @@ metadata:
   labels:
     {{- include "nvidia-dra-driver-gpu.labels" . | nindent 4 }}
 spec:
-  replicas: 1
+  replicas: {{ .Values.webhook.replicas }}
   selector:
     matchLabels:
       {{- include "nvidia-dra-driver-gpu.selectorLabels" (dict "context" . "componentName" "webhook") | nindent 6 }}

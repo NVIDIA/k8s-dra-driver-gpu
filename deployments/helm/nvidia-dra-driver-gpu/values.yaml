@@ -72,6 +72,7 @@ featureGates: {}
 # Webhook configuration
 webhook:
   enabled: false
+  replicas: 1
   servicePort: 443
   containerPort: 443
   priorityClassName: "system-cluster-critical"
