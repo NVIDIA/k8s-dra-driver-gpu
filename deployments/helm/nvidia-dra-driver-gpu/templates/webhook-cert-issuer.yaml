@@ -1,0 +1,11 @@
+{{- if and .Values.webhook.enabled (eq .Values.webhook.tls.mode "cert-manager") (eq .Values.webhook.tls.certManager.issuerType "selfsigned") }}
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: {{ include "nvidia-dra-driver-gpu.fullname" . }}-webhook-issuer
+  namespace: {{ include "nvidia-dra-driver-gpu.namespace" . }}
+  labels:
+    {{- include "nvidia-dra-driver-gpu.labels" . | nindent 4 }}
+spec:
+  selfSigned: {}
+{{- end }}

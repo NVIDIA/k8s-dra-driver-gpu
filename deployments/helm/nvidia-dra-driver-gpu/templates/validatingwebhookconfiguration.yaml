@@ -1,0 +1,28 @@
+{{- if .Values.webhook.enabled }}
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingWebhookConfiguration
+metadata:
+  name: {{ include "nvidia-dra-driver-gpu.name" . }}-webhook-config
+  labels:
+    {{- include "nvidia-dra-driver-gpu.labels" . | nindent 4 }}
+  {{- if eq .Values.webhook.tls.mode "cert-manager" }}
+  annotations:
+    cert-manager.io/inject-ca-from: "{{ include "nvidia-dra-driver-gpu.namespace" . }}/{{ include "nvidia-dra-driver-gpu.name" . }}-webhook-cert"
+  {{- end }}
+webhooks:
+  - name: "gpu.nvidia.com"
+    rules:
+    - apiGroups:   ["resource.k8s.io"]
+      apiVersions: ["v1beta1"]
+      operations:  ["CREATE", "UPDATE"]
+      resources:   ["resourceclaims", "resourceclaimtemplates"]
+      scope:       "Namespaced"
+    clientConfig:
+      service:
+        namespace: {{ include "nvidia-dra-driver-gpu.namespace" . }}
+        name: {{ include "nvidia-dra-driver-gpu.name" . }}-webhook
+        port: {{ .Values.webhook.servicePort }}
+        path: /validate-resource-claim-parameters
+    admissionReviewVersions: ["v1"]
+    sideEffects: None
+{{- end }}
