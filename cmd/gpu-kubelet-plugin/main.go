@@ -18,6 +18,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/signal"
@@ -169,7 +170,7 @@ func newApp() *cli.App {
 				clientsets: clientSets,
 			}
 
-			return StartPlugin(ctx, config)
+			return RunPlugin(ctx, config)
 		},
 		Version: info.GetVersionString(),
 	}
@@ -183,8 +184,8 @@ func newApp() *cli.App {
 	return app
 }
 
-// StartPlugin initializes and runs the GPU kubelet plugin.
-func StartPlugin(ctx context.Context, config *Config) error {
+// RunPlugin initializes and runs the GPU kubelet plugin.
+func RunPlugin(ctx context.Context, config *Config) error {
 	// Create the plugin directory
 	err := os.MkdirAll(config.DriverPluginPath(), 0750)
 	if err != nil {
@@ -210,9 +211,8 @@ func StartPlugin(ctx context.Context, config *Config) error {
 		return fmt.Errorf("path for cdi file generation is not a directory: '%v'", config.flags.cdiRoot)
 	}
 
-	// Setup signal handling for graceful shutdown
-	sigs := make(chan os.Signal, 1)
-	signal.Notify(sigs, syscall.SIGHUP, syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT)
+	ctx, stop := signal.NotifyContext(ctx, syscall.SIGHUP, syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT)
+	defer stop()
 
 	// Create a cancellable context for cleanup
 	var driver *driver
@@ -230,8 +230,15 @@ func StartPlugin(ctx context.Context, config *Config) error {
 		return fmt.Errorf("error creating driver: %w", err)
 	}
 
-	// Wait for shutdown signal
-	<-sigs
+	<-ctx.Done()
+	// restore default signal behavior as soon as possible in case graceful
+	// shutdown gets stuck.
+	stop()
+	if err := ctx.Err(); err != nil && !errors.Is(err, context.Canceled) {
+		// A canceled context is the normal case here when the process receives
+		// a signal. Only log the error for more interesting cases.
+		klog.Errorf("error from context: %v", err)
+	}
 
 	return nil
 }
