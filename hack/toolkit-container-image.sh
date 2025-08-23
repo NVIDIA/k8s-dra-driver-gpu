@@ -13,11 +13,35 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Currently, this is hard-coded to the sha corresponding to the 1.18.0-rc.1 release
-# of the nvidia-container-toolkit. In the future, we should determine the exact
-# commit SHA corresponding to the version of the go module for the dependency
-# on `github.com/NVIDIA/nvidia-container-toolkit` -— whether it is a
-# tagged release or a pseudo-version -- and return that SHA instead.
-TOOLKIT_VERSION_SHA="4f98c014bfa1222a0b1dda34ec815f5ecf87c971"
+# Determines nvidia-container-toolkit image URL based on go.mod version.
+# - Pseudo-versions: uses ghcr.io with commit SHA (dev builds)
+# - Tagged releases: uses nvcr.io with version tag (stable releases)
+# Output is used to pull nvidia-cdi-hook binary from the container.
 
-echo ghcr.io/nvidia/container-toolkit:${TOOLKIT_VERSION_SHA:0:8}
+set -euo pipefail
+
+# Get the resolved version from go.mod using go tooling
+TOOLKIT_VERSION=$(go list -m -f '{{.Version}}' github.com/NVIDIA/nvidia-container-toolkit 2>/dev/null || true)
+
+if [ -z "${TOOLKIT_VERSION}" ]; then
+    echo "Error: Could not find nvidia-container-toolkit dependency" >&2
+    exit 1
+fi
+
+
+if [[ "${TOOLKIT_VERSION}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-[0-9]{14}-([a-f0-9]{12})$ ]]; then
+    TOOLKIT_VERSION_SHA="${BASH_REMATCH[1]}"
+    SHORT_SHA="${TOOLKIT_VERSION_SHA:0:8}"
+    IMAGE_URL="ghcr.io/nvidia/container-toolkit:${SHORT_SHA}"
+    
+# Check if this is a release-version (format: vx.y.z)
+# Remove the 'v' prefix for the image tag (nvcr.io uses x.y.z format)
+elif [[ "${TOOLKIT_VERSION}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$ ]]; then
+    IMAGE_TAG="${TOOLKIT_VERSION#v}"
+    IMAGE_URL="nvcr.io/nvidia/k8s/container-toolkit:v${IMAGE_TAG}"
+else
+    echo "Error: Unexpected version format: ${TOOLKIT_VERSION}" >&2
+    exit 1
+fi
+
+echo "${IMAGE_URL}"
