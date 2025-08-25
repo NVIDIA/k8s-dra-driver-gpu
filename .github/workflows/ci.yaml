@@ -19,7 +19,7 @@ on:
       - "pull-request/[0-9]+"
       - main
       - release-*
-  
+
 jobs:
   basic:
     uses: ./.github/workflows/basic-checks.yaml
@@ -31,3 +31,10 @@ jobs:
     secrets: inherit
     with:
       version: ${{ needs.basic.outputs.version }}
+
+  chart:
+    # For faster CI signal, do not wait for `image`.
+    needs:
+    - basic
+    secrets: inherit
+    uses: ./.github/workflows/chart.yaml

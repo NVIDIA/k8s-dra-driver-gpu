@@ -80,7 +80,8 @@ TOOD: remove the override feature, or make the override work per-component.
 {{- if .context.Values.selectorLabelsOverride -}}
 {{ toYaml .context.Values.selectorLabelsOverride }}
 {{- else -}}
-{{ .context.Chart.Name }}-component: {{ .componentName }}
+{{- $name := default .context.Chart.Name .context.Values.nameOverride -}}
+{{ $name }}-component: {{ .componentName }}
 {{- end }}
 {{- else -}}
 fail "selectorLabels: both arguments are required: context, componentName"

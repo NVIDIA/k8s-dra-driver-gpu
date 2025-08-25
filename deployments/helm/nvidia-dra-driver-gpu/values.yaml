@@ -26,7 +26,7 @@ nvidiaDriverRoot: /
 # If not specified, the default path inferred from the nvidia-container-toolkit library version will be used.
 nvidiaCDIHookPath: ""
 
-nameOverride: ""
+nameOverride: "nvidia-dra-driver-gpu"
 fullnameOverride: ""
 namespaceOverride: ""
 selectorLabelsOverride: {}
