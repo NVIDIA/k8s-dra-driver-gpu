@@ -19,7 +19,7 @@ on:
       - "pull-request/[0-9]+"
       - main
       - release-*
-  
+
 jobs:
   basic:
     uses: ./.github/workflows/basic-checks.yaml
@@ -31,3 +31,4 @@ jobs:
     secrets: inherit
     with:
       version: ${{ needs.basic.outputs.version }}
+      golang_version: ${{ needs.basic.outputs.golang_version }}
