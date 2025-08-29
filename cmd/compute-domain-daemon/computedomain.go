@@ -113,7 +113,19 @@ func (m *ComputeDomainManager) Start(ctx context.Context) (rerr error) {
 }
 
 // Stop stops the compute domain manager.
+//
+//nolint:contextcheck
 func (m *ComputeDomainManager) Stop() error {
+	// Create a new context for cleanup operations since the original context might be cancelled
+	cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cleanupCancel()
+
+	// Attempt to remove this node from the ComputeDomain status before shutting down
+	// Don't return error here as we still want to proceed with shutdown
+	if err := m.removeNodeFromComputeDomain(cleanupCtx); err != nil {
+		klog.Errorf("Failed to remove node from ComputeDomain during shutdown: %v", err)
+	}
+
 	if m.cancelContext != nil {
 		m.cancelContext()
 	}
@@ -224,6 +236,48 @@ func (m *ComputeDomainManager) MaybePushNodesUpdate(cd *nvapi.ComputeDomain) {
 func (m *ComputeDomainManager) GetNodesUpdateChan() chan []*nvapi.ComputeDomainNode {
 	// Yields numNodes-size nodes updates.
 	return m.updatedNodesChan
+}
+
+// removeNodeFromComputeDomain removes the current node's entry from the ComputeDomain status.
+func (m *ComputeDomainManager) removeNodeFromComputeDomain(ctx context.Context) error {
+	objs := m.informer.GetIndexer().List()
+	if len(objs) == 0 {
+		klog.Infof("No ComputeDomain objects found in informer cache during cleanup")
+		return nil
+	}
+
+	cd, ok := objs[0].(*nvapi.ComputeDomain)
+	if !ok {
+		return fmt.Errorf("failed to cast object to ComputeDomain")
+	}
+
+	newCD := cd.DeepCopy()
+
+	// Filter out the node with the current pod's IP address
+	var updatedNodes []*nvapi.ComputeDomainNode
+	for _, node := range newCD.Status.Nodes {
+		if node.IPAddress != m.config.podIP {
+			updatedNodes = append(updatedNodes, node)
+		}
+	}
+
+	// Exit early if no nodes were removed
+	if len(updatedNodes) == len(newCD.Status.Nodes) {
+		return nil
+	}
+
+	// If the number of nodes is now less than required, set status to NotReady
+	if len(updatedNodes) < newCD.Spec.NumNodes {
+		newCD.Status.Status = nvapi.ComputeDomainStatusNotReady
+	}
+
+	newCD.Status.Nodes = updatedNodes
+	if _, err := m.config.clientsets.Nvidia.ResourceV1beta1().ComputeDomains(newCD.Namespace).UpdateStatus(ctx, newCD, metav1.UpdateOptions{}); err != nil {
+		return fmt.Errorf("error removing node from ComputeDomain status: %w", err)
+	}
+
+	klog.Infof("Successfully removed node with IP %s from ComputeDomain %s/%s", m.config.podIP, newCD.Namespace, newCD.Name)
+	return nil
 }
 
 func getIPSet(nodeInfos []*nvapi.ComputeDomainNode) IPSet {
