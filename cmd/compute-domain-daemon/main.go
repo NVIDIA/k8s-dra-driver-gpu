@@ -185,11 +185,11 @@ func run(ctx context.Context, cancel context.CancelFunc, flags *Flags) error {
 	}
 	klog.Infof("config: %v", config)
 
-	// Prepare Hostname manager
-	hostnameManager := NewHostnameManager(flags.cliqueID, flags.maxNodesPerIMEXDomain, nodesConfigPath)
+	// Prepare DNS name manager
+	dnsNameManager := NewDNSNameManager(flags.cliqueID, flags.maxNodesPerIMEXDomain, nodesConfigPath)
 
-	// Create static nodes config file with hostnames
-	if err := hostnameManager.WriteNodesConfig(); err != nil {
+	// Create static nodes config file with DNS names
+	if err := dnsNameManager.WriteNodesConfig(); err != nil {
 		return fmt.Errorf("failed to create static nodes config: %w", err)
 	}
 
@@ -220,9 +220,9 @@ func run(ctx context.Context, cancel context.CancelFunc, flags *Flags) error {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		if featuregates.Enabled(featuregates.HostnameSupport) {
-			// Use new hostname-based functionality
-			if err := IMEXDaemonUpdateLoopWithHostnames(ctx, controller, processManager, hostnameManager); err != nil {
+		if featuregates.Enabled(featuregates.IMEXDaemonsWithDNSNames) {
+			// Use new DNS name-based functionality
+			if err := IMEXDaemonUpdateLoopWithDNSNames(ctx, controller, processManager, dnsNameManager); err != nil {
 				klog.Errorf("IMEXDaemonUpdateLoop failed, initiate shutdown: %s", err)
 				cancel()
 			}
@@ -277,23 +277,23 @@ func IMEXDaemonUpdateLoopWithIPs(ctx context.Context, controller *Controller, cl
 	}
 }
 
-// IMEXDaemonUpdateLoopWithHostnames reacts to ComputeDomain status changes by updating the
-// /etc/hosts file with IP to hostname mappings and restarting the IMEX daemon.
-func IMEXDaemonUpdateLoopWithHostnames(ctx context.Context, controller *Controller, processManager *ProcessManager, hostnameManager *HostnameManager) error {
+// IMEXDaemonUpdateLoopWithDNSNames reacts to ComputeDomain status changes by updating the
+// /etc/hosts file with IP to DNS name mappings and restarting the IMEX daemon.
+func IMEXDaemonUpdateLoopWithDNSNames(ctx context.Context, controller *Controller, processManager *ProcessManager, dnsNameManager *DNSNameManager) error {
 	for {
 		klog.Infof("wait for nodes update")
 		select {
 		case <-ctx.Done():
-			klog.Infof("shutdown: stop IMEXDaemonUpdateLoopWithHostnames")
+			klog.Infof("shutdown: stop IMEXDaemonUpdateLoopWithDNSNames")
 			return nil
 		case nodes := <-controller.GetNodesUpdateChan():
-			if err := hostnameManager.UpdateHostnameMappings(nodes); err != nil {
-				return fmt.Errorf("failed to update hostname => IP mappings: %w", err)
+			if err := dnsNameManager.UpdateDNSNameMappings(nodes); err != nil {
+				return fmt.Errorf("failed to update DNS name => IP mappings: %w", err)
 			}
 			if err := processManager.EnsureStarted(); err != nil {
 				return fmt.Errorf("failed to ensure IMEX daemon is started: %w", err)
 			}
-			hostnameManager.LogHostnameMappings()
+			dnsNameManager.LogDNSNameMappings()
 		}
 	}
 }
