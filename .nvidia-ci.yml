@@ -77,15 +77,12 @@ workflow:
     - export PATH=$(pwd)/bin:${PATH}
 
 # .copy-images copies the required application and packaging images from the
-# IN_IMAGE="${IN_IMAGE_NAME}:${IN_IMAGE_TAG}${TAG_SUFFIX}"
+# IN_IMAGE="${IN_IMAGE_NAME}:${IN_IMAGE_TAG}"
 # to
-# OUT_IMAGE="${OUT_IMAGE_NAME}:${OUT_IMAGE_TAG}${TAG_SUFFIX}"
+# OUT_IMAGE="${OUT_IMAGE_NAME}:${OUT_IMAGE_TAG}"
 # The script also logs into IN_REGISTRY and OUT_REGISTRY using the supplied
 # username and tokens.
 .copy-images:
-  parallel:
-    matrix:
-      - TAG_SUFFIX: ["-ubi9"]
   before_script:
     - !reference [.regctl-setup, before_script]
     - apk add --no-cache make bash
@@ -103,8 +100,8 @@ workflow:
         ${REGCTL} registry login "${OUT_REGISTRY}" -u "${OUT_REGISTRY_USER}" -p "${OUT_REGISTRY_TOKEN}" || exit 1
       fi
 
-      export IN_IMAGE="${IN_IMAGE_NAME}:${IN_IMAGE_TAG}${TAG_SUFFIX}"
-      export OUT_IMAGE="${OUT_IMAGE_NAME}:${OUT_IMAGE_TAG}${TAG_SUFFIX}"
+      export IN_IMAGE="${IN_IMAGE_NAME}:${IN_IMAGE_TAG}"
+      export OUT_IMAGE="${OUT_IMAGE_NAME}:${OUT_IMAGE_TAG}"
 
       echo "Copying ${IN_IMAGE} to ${OUT_IMAGE}"
       ${REGCTL} image copy ${IN_IMAGE} ${OUT_IMAGE}
@@ -158,7 +155,6 @@ scan-images:
   image: "${PULSE_IMAGE}"
   parallel:
     matrix:
-      - TAG_SUFFIX: ["-ubi9"]
         PLATFORM: ["linux/amd64", "linux/arm64"]
   variables:
     IMAGE: "${CI_REGISTRY_IMAGE}/k8s-dra-driver-gpu:${CI_COMMIT_SHORT_SHA}"
@@ -167,10 +163,9 @@ scan-images:
   script:
     - |
       docker login -u "${CI_REGISTRY_USER}" -p "${CI_REGISTRY_PASSWORD}" "${CI_REGISTRY}"
-      export SCAN_IMAGE=${IMAGE}${TAG_SUFFIX}
-      echo "Scanning image ${SCAN_IMAGE} for ${PLATFORM}"
-      docker pull --platform="${PLATFORM}" "${SCAN_IMAGE}"
-      docker save "${SCAN_IMAGE}" -o "${IMAGE_ARCHIVE}"
+      echo "Scanning image ${IMAGE} for ${PLATFORM}"
+      docker pull --platform="${PLATFORM}" "${IMAGE}"
+      docker save "${IMAGE}" -o "${IMAGE_ARCHIVE}"
       AuthHeader=$(echo -n $SSA_CLIENT_ID:$SSA_CLIENT_SECRET | base64 -w0)
       export SSA_TOKEN=$(curl --request POST --header "Authorization: Basic $AuthHeader" --header "Content-Type: application/x-www-form-urlencoded" ${SSA_ISSUER_URL} | jq ".access_token" |  tr -d '"')
       if [ -z "$SSA_TOKEN" ]; then exit 1; else echo "SSA_TOKEN set!"; fi
@@ -243,8 +238,7 @@ push-images-to-staging:
       echo "publishing to ${NGC_PUBLISHING_PROJECT_PATH}"
 
       rm -f ${VERSION_FILE}
-      echo "${IN_IMAGE_TAG}-ubi9 ${OUT_IMAGE_TAG}-ubi9" >> ${VERSION_FILE}
-      echo "${IN_IMAGE_TAG}-ubi9 ${OUT_IMAGE_TAG}" >> ${VERSION_FILE}
+      echo "${IN_IMAGE_TAG} ${OUT_IMAGE_TAG}" >> ${VERSION_FILE}
       cat ${VERSION_FILE}
   script:
     - |

@@ -18,17 +18,10 @@ PUSH_ON_BUILD ?= false
 ARCH ?= $(shell uname -m | sed -e 's,aarch64,arm64,' -e 's,x86_64,amd64,')
 DOCKER_BUILD_PLATFORM_OPTIONS = --platform=linux/$(ARCH)
 
+# Build target depends on image
 ifeq ($(PUSH_ON_BUILD),true)
-$(BUILD_TARGETS): build-%: image-%
+build: image
 	$(DOCKER) push "$(IMAGE)"
 else
-$(BUILD_TARGETS): build-%: image-%
-endif
-
-# For the default distribution we also retag the image.
-# Note: This needs to be updated for multi-arch images.
-ifeq ($(IMAGE_TAG),$(VERSION)-$(DIST))
-$(DEFAULT_PUSH_TARGET):
-	$(DOCKER) image inspect $(IMAGE) > /dev/null || $(DOCKER) pull $(IMAGE)
-	$(DOCKER) tag $(IMAGE) $(subst :$(IMAGE_TAG),:$(VERSION),$(IMAGE))
+build: image
 endif
