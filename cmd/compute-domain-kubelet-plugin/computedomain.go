@@ -212,9 +212,17 @@ func (s *ComputeDomainDaemonSettings) Prepare(ctx context.Context) error {
 }
 
 func (s *ComputeDomainDaemonSettings) Unprepare(ctx context.Context) error {
-	if err := os.RemoveAll(s.rootDir); err != nil {
-		return fmt.Errorf("error removing directory %v: %w", s.rootDir, err)
-	}
+	// TODO: Only actually remove this directory once the ComputeDomain has
+	// been deleted. There is a (rare) chance when a pod gets force deleted
+	// and a new pod associated with the same compute domain gets started
+	// that deleting this here will occur *after* the creation from the new
+	// pod, rendering this directory invalid when trying to be used by the
+	// new pod. For now, just wait for the cleanup loop to take care of
+	// this, but in the future let's do this cleanup on ComputeDomain
+	// deletion (in addition to the cleanup loop).
+	// err := os.RemoveAll(s.rootDir); err != nil {
+	//	return fmt.Errorf("error removing directory %v: %w", s.rootDir, err)
+	//}
 	return nil
 }
 
