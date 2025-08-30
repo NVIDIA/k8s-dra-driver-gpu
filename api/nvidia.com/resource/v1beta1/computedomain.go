@@ -91,4 +91,5 @@ type ComputeDomainNode struct {
 	Name      string `json:"name"`
 	IPAddress string `json:"ipAddress"`
 	CliqueID  string `json:"cliqueID"`
+	Index     int    `json:"index"`
 }

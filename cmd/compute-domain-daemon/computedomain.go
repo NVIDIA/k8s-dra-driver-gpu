@@ -181,9 +181,16 @@ func (m *ComputeDomainManager) UpdateComputeDomainNodeInfo(ctx context.Context, 
 
 	// If there isn't one, create one and append it to the list
 	if nodeInfo == nil {
+		// Get the next available index for this new node
+		nextIndex, err := getNextAvailableIndex(newCD.Status.Nodes, m.config.maxNodesPerIMEXDomain)
+		if err != nil {
+			return fmt.Errorf("error getting next available index: %w", err)
+		}
+
 		nodeInfo = &nvapi.ComputeDomainNode{
 			Name:     m.config.nodeName,
 			CliqueID: m.config.cliqueID,
+			Index:    nextIndex,
 		}
 		newCD.Status.Nodes = append(newCD.Status.Nodes, nodeInfo)
 	}
@@ -204,6 +211,38 @@ func (m *ComputeDomainManager) UpdateComputeDomainNodeInfo(ctx context.Context, 
 	}
 
 	return nil
+}
+
+// getNextAvailableIndex finds the next available index for a new node,
+// filling gaps before extending the sequence. Returns an error if no
+// index is available within maxNodesPerIMEXDomain.
+func getNextAvailableIndex(nodes []*nvapi.ComputeDomainNode, maxNodesPerIMEXDomain int) (int, error) {
+	if len(nodes) >= maxNodesPerIMEXDomain {
+		return -1, fmt.Errorf("cannot add more nodes, already at maximum (%d)", maxNodesPerIMEXDomain)
+	}
+
+	// Create a map to track used indices
+	usedIndices := make(map[int]bool)
+
+	// Collect all currently used indices
+	for _, node := range nodes {
+		if node.Index >= 0 && node.Index < maxNodesPerIMEXDomain {
+			usedIndices[node.Index] = true
+		}
+	}
+
+	// Find the next available index, starting from 0 and filling gaps
+	nextIndex := 0
+	for usedIndices[nextIndex] {
+		nextIndex++
+	}
+
+	// Ensure we don't exceed maxNodesPerIMEXDomain
+	if nextIndex >= maxNodesPerIMEXDomain {
+		return -1, fmt.Errorf("no available indices within maxNodesPerIMEXDomain (%d)", maxNodesPerIMEXDomain)
+	}
+
+	return nextIndex, nil
 }
 
 // If we've reached the expected number of nodes and if there was actually a

@@ -182,6 +182,7 @@ func run(ctx context.Context, cancel context.CancelFunc, flags *Flags) error {
 		computeDomainNamespace: flags.computeDomainNamespace,
 		nodeName:               flags.nodeName,
 		podIP:                  flags.podIP,
+		maxNodesPerIMEXDomain:  flags.maxNodesPerIMEXDomain,
 	}
 	klog.Infof("config: %v", config)
 
