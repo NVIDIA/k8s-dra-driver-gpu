@@ -87,7 +87,14 @@ func (m *ComputeDomainManager) Start(ctx context.Context) (rerr error) {
 		}
 	}()
 
-	_, err := m.informer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+	err := m.informer.AddIndexers(cache.Indexers{
+		"uid": uidIndexer[*nvapi.ComputeDomain],
+	})
+	if err != nil {
+		return fmt.Errorf("error adding indexer for ComputeDomain UID: %w", err)
+	}
+
+	_, err = m.informer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj any) {
 			m.config.workQueue.Enqueue(obj, m.onAddOrUpdate)
 		},
@@ -133,11 +140,41 @@ func (m *ComputeDomainManager) Stop() error {
 	return nil
 }
 
+// Get gets the ComputeDomain by UID from the informer cache.
+func (m *ComputeDomainManager) Get(uid string) (*nvapi.ComputeDomain, error) {
+	objs, err := m.informer.GetIndexer().ByIndex("uid", uid)
+	if err != nil {
+		return nil, fmt.Errorf("error retrieving ComputeDomain by UID: %w", err)
+	}
+	if len(objs) == 0 {
+		return nil, nil
+	}
+	if len(objs) != 1 {
+		return nil, fmt.Errorf("multiple ComputeDomains with the same UID")
+	}
+	cd, ok := objs[0].(*nvapi.ComputeDomain)
+	if !ok {
+		return nil, fmt.Errorf("error casting to ComputeDomain")
+	}
+	return cd, nil
+}
+
 // onAddOrUpdate handles the addition or update of a ComputeDomain.
 func (m *ComputeDomainManager) onAddOrUpdate(ctx context.Context, obj any) error {
-	cd, ok := obj.(*nvapi.ComputeDomain)
+	// Cast the object to a ComputeDomain object
+	o, ok := obj.(*nvapi.ComputeDomain)
 	if !ok {
 		return fmt.Errorf("failed to cast to ComputeDomain")
+	}
+
+	// Get the latest ComputeDomain object from the informer cache since we
+	// plan to update it later and always *must* have the latest version.
+	cd, err := m.Get(string(o.GetUID()))
+	if err != nil {
+		return fmt.Errorf("error getting latest ComputeDomain: %w", err)
+	}
+	if cd == nil {
+		return nil
 	}
 
 	// Skip ComputeDomains that don't match on UUID
