@@ -87,7 +87,14 @@ func (m *ComputeDomainManager) Start(ctx context.Context) (rerr error) {
 		}
 	}()
 
-	_, err := m.informer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+	err := m.informer.AddIndexers(cache.Indexers{
+		"uid": uidIndexer[*nvapi.ComputeDomain],
+	})
+	if err != nil {
+		return fmt.Errorf("error adding indexer for ComputeDomain UID: %w", err)
+	}
+
+	_, err = m.informer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj any) {
 			m.config.workQueue.Enqueue(obj, m.onAddOrUpdate)
 		},
@@ -113,7 +120,19 @@ func (m *ComputeDomainManager) Start(ctx context.Context) (rerr error) {
 }
 
 // Stop stops the compute domain manager.
+//
+//nolint:contextcheck
 func (m *ComputeDomainManager) Stop() error {
+	// Create a new context for cleanup operations since the original context might be cancelled
+	cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cleanupCancel()
+
+	// Attempt to remove this node from the ComputeDomain status before shutting down
+	// Don't return error here as we still want to proceed with shutdown
+	if err := m.removeNodeFromComputeDomain(cleanupCtx); err != nil {
+		klog.Errorf("Failed to remove node from ComputeDomain during shutdown: %v", err)
+	}
+
 	if m.cancelContext != nil {
 		m.cancelContext()
 	}
@@ -121,11 +140,41 @@ func (m *ComputeDomainManager) Stop() error {
 	return nil
 }
 
+// Get gets the ComputeDomain by UID from the informer cache.
+func (m *ComputeDomainManager) Get(uid string) (*nvapi.ComputeDomain, error) {
+	objs, err := m.informer.GetIndexer().ByIndex("uid", uid)
+	if err != nil {
+		return nil, fmt.Errorf("error retrieving ComputeDomain by UID: %w", err)
+	}
+	if len(objs) == 0 {
+		return nil, nil
+	}
+	if len(objs) != 1 {
+		return nil, fmt.Errorf("multiple ComputeDomains with the same UID")
+	}
+	cd, ok := objs[0].(*nvapi.ComputeDomain)
+	if !ok {
+		return nil, fmt.Errorf("error casting to ComputeDomain")
+	}
+	return cd, nil
+}
+
 // onAddOrUpdate handles the addition or update of a ComputeDomain.
 func (m *ComputeDomainManager) onAddOrUpdate(ctx context.Context, obj any) error {
-	cd, ok := obj.(*nvapi.ComputeDomain)
+	// Cast the object to a ComputeDomain object
+	o, ok := obj.(*nvapi.ComputeDomain)
 	if !ok {
 		return fmt.Errorf("failed to cast to ComputeDomain")
+	}
+
+	// Get the latest ComputeDomain object from the informer cache since we
+	// plan to update it later and always *must* have the latest version.
+	cd, err := m.Get(string(o.GetUID()))
+	if err != nil {
+		return fmt.Errorf("error getting latest ComputeDomain: %w", err)
+	}
+	if cd == nil {
+		return nil
 	}
 
 	// Skip ComputeDomains that don't match on UUID
@@ -169,9 +218,16 @@ func (m *ComputeDomainManager) UpdateComputeDomainNodeInfo(ctx context.Context, 
 
 	// If there isn't one, create one and append it to the list
 	if nodeInfo == nil {
+		// Get the next available index for this new node
+		nextIndex, err := getNextAvailableIndex(newCD.Status.Nodes, m.config.maxNodesPerIMEXDomain)
+		if err != nil {
+			return fmt.Errorf("error getting next available index: %w", err)
+		}
+
 		nodeInfo = &nvapi.ComputeDomainNode{
 			Name:     m.config.nodeName,
 			CliqueID: m.config.cliqueID,
+			Index:    nextIndex,
 		}
 		newCD.Status.Nodes = append(newCD.Status.Nodes, nodeInfo)
 	}
@@ -192,6 +248,38 @@ func (m *ComputeDomainManager) UpdateComputeDomainNodeInfo(ctx context.Context, 
 	}
 
 	return nil
+}
+
+// getNextAvailableIndex finds the next available index for a new node,
+// filling gaps before extending the sequence. Returns an error if no
+// index is available within maxNodesPerIMEXDomain.
+func getNextAvailableIndex(nodes []*nvapi.ComputeDomainNode, maxNodesPerIMEXDomain int) (int, error) {
+	if len(nodes) >= maxNodesPerIMEXDomain {
+		return -1, fmt.Errorf("cannot add more nodes, already at maximum (%d)", maxNodesPerIMEXDomain)
+	}
+
+	// Create a map to track used indices
+	usedIndices := make(map[int]bool)
+
+	// Collect all currently used indices
+	for _, node := range nodes {
+		if node.Index >= 0 && node.Index < maxNodesPerIMEXDomain {
+			usedIndices[node.Index] = true
+		}
+	}
+
+	// Find the next available index, starting from 0 and filling gaps
+	nextIndex := 0
+	for usedIndices[nextIndex] {
+		nextIndex++
+	}
+
+	// Ensure we don't exceed maxNodesPerIMEXDomain
+	if nextIndex >= maxNodesPerIMEXDomain {
+		return -1, fmt.Errorf("no available indices within maxNodesPerIMEXDomain (%d)", maxNodesPerIMEXDomain)
+	}
+
+	return nextIndex, nil
 }
 
 // If we've reached the expected number of nodes and if there was actually a
@@ -224,6 +312,48 @@ func (m *ComputeDomainManager) MaybePushNodesUpdate(cd *nvapi.ComputeDomain) {
 func (m *ComputeDomainManager) GetNodesUpdateChan() chan []*nvapi.ComputeDomainNode {
 	// Yields numNodes-size nodes updates.
 	return m.updatedNodesChan
+}
+
+// removeNodeFromComputeDomain removes the current node's entry from the ComputeDomain status.
+func (m *ComputeDomainManager) removeNodeFromComputeDomain(ctx context.Context) error {
+	objs := m.informer.GetIndexer().List()
+	if len(objs) == 0 {
+		klog.Infof("No ComputeDomain objects found in informer cache during cleanup")
+		return nil
+	}
+
+	cd, ok := objs[0].(*nvapi.ComputeDomain)
+	if !ok {
+		return fmt.Errorf("failed to cast object to ComputeDomain")
+	}
+
+	newCD := cd.DeepCopy()
+
+	// Filter out the node with the current pod's IP address
+	var updatedNodes []*nvapi.ComputeDomainNode
+	for _, node := range newCD.Status.Nodes {
+		if node.IPAddress != m.config.podIP {
+			updatedNodes = append(updatedNodes, node)
+		}
+	}
+
+	// Exit early if no nodes were removed
+	if len(updatedNodes) == len(newCD.Status.Nodes) {
+		return nil
+	}
+
+	// If the number of nodes is now less than required, set status to NotReady
+	if len(updatedNodes) < newCD.Spec.NumNodes {
+		newCD.Status.Status = nvapi.ComputeDomainStatusNotReady
+	}
+
+	newCD.Status.Nodes = updatedNodes
+	if _, err := m.config.clientsets.Nvidia.ResourceV1beta1().ComputeDomains(newCD.Namespace).UpdateStatus(ctx, newCD, metav1.UpdateOptions{}); err != nil {
+		return fmt.Errorf("error removing node from ComputeDomain status: %w", err)
+	}
+
+	klog.Infof("Successfully removed node with IP %s from ComputeDomain %s/%s", m.config.podIP, newCD.Namespace, newCD.Name)
+	return nil
 }
 
 func getIPSet(nodeInfos []*nvapi.ComputeDomainNode) IPSet {

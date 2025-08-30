@@ -46,12 +46,20 @@ func NewProcessManager(cmd []string) *ProcessManager {
 	return m
 }
 
-// Restart() starts or restarts the process.
+// Restart starts or restarts the process.
 func (m *ProcessManager) Restart() error {
 	if m.handle != nil {
 		if err := m.stop(); err != nil {
 			return fmt.Errorf("restart: stop failed: %w", err)
 		}
+	}
+	return m.start()
+}
+
+// EnsureStarted starts the process if it is not already running. If the process is already started, this is a no-op.
+func (m *ProcessManager) EnsureStarted() error {
+	if m.handle != nil {
+		return nil
 	}
 	return m.start()
 }

@@ -33,6 +33,9 @@ const (
 
 	// MPSSupport allows MPS (Multi-Process Service) settings to be specified.
 	MPSSupport featuregate.Feature = "MPSSupport"
+
+	// IMEXDaemonsWithDNSNames allows using DNS names instead of raw IPs for IMEX daemons.
+	IMEXDaemonsWithDNSNames featuregate.Feature = "IMEXDaemonsWithDNSNames"
 )
 
 // FeatureGates is a singleton representing the set of all feature gates and their values.
@@ -50,6 +53,13 @@ var defaultFeatureGates = map[featuregate.Feature]featuregate.VersionedSpecs{
 		},
 	},
 	MPSSupport: {
+		{
+			Default:    false,
+			PreRelease: featuregate.Alpha,
+			Version:    version.MajorMinor(25, 8),
+		},
+	},
+	IMEXDaemonsWithDNSNames: {
 		{
 			Default:    false,
 			PreRelease: featuregate.Alpha,

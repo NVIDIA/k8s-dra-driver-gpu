@@ -26,6 +26,8 @@ spec:
         image: {{ .ImageName }}
         command: ["compute-domain-daemon", "-v", "6", "run"]
         env:
+        - name: MAX_NODES_PER_IMEX_DOMAIN
+          value: "{{ .MaxNodesPerIMEXDomain }}"
         - name: NODE_NAME
           valueFrom:
             fieldRef:

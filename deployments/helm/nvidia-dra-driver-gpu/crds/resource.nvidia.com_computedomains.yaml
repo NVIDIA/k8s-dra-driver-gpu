@@ -85,12 +85,15 @@ spec:
                   properties:
                     cliqueID:
                       type: string
+                    index:
+                      type: integer
                     ipAddress:
                       type: string
                     name:
                       type: string
                   required:
                   - cliqueID
+                  - index
                   - ipAddress
                   - name
                   type: object
