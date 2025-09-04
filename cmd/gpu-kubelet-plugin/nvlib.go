@@ -129,7 +129,8 @@ func (l deviceLib) enumerateGpusAndMigDevices(config *Config) (AllocatableDevice
 		}
 
 		deviceInfo := &AllocatableDevice{
-			Gpu: gpuInfo,
+			Gpu:    gpuInfo,
+			Health: Healthy,
 		}
 		devices[gpuInfo.CanonicalName()] = deviceInfo
 
@@ -140,7 +141,8 @@ func (l deviceLib) enumerateGpusAndMigDevices(config *Config) (AllocatableDevice
 
 		for _, migDeviceInfo := range migs {
 			deviceInfo := &AllocatableDevice{
-				Mig: migDeviceInfo,
+				Mig:    migDeviceInfo,
+				Health: Healthy,
 			}
 			devices[migDeviceInfo.CanonicalName()] = deviceInfo
 		}
