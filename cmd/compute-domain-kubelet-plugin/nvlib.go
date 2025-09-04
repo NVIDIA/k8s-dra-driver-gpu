@@ -349,7 +349,7 @@ func (l deviceLib) unmountRecursively(root string) error {
 	// Get a reference to the mount executable.
 	mountExecutable, err := exec.LookPath("mount")
 	if err != nil {
-		return fmt.Errorf("error looking up mpunt executable: %w", err)
+		return fmt.Errorf("error looking up mount executable: %w", err)
 	}
 	mounter := mount.New(mountExecutable)
 

@@ -218,9 +218,16 @@ func (m *ComputeDomainManager) UpdateComputeDomainNodeInfo(ctx context.Context, 
 
 	// If there isn't one, create one and append it to the list
 	if nodeInfo == nil {
+		// Get the next available index for this new node
+		nextIndex, err := getNextAvailableIndex(newCD.Status.Nodes, m.config.maxNodesPerIMEXDomain)
+		if err != nil {
+			return fmt.Errorf("error getting next available index: %w", err)
+		}
+
 		nodeInfo = &nvapi.ComputeDomainNode{
 			Name:     m.config.nodeName,
 			CliqueID: m.config.cliqueID,
+			Index:    nextIndex,
 		}
 		newCD.Status.Nodes = append(newCD.Status.Nodes, nodeInfo)
 	}
@@ -241,6 +248,46 @@ func (m *ComputeDomainManager) UpdateComputeDomainNodeInfo(ctx context.Context, 
 	}
 
 	return nil
+}
+
+// The Index field in the Nodes section of the ComputeDomain status ensures a
+// consistent IP-to-DNS name mapping across all machines within a given IMEX
+// domain. Each node's index directly determines its DNS name using the format
+// "compute-domain-daemon-{index}".
+//
+// getNextAvailableIndex finds the next available index for the current node by
+// seeing which ones are already taken by other nodes in the ComputeDomain
+// status. It fills in gaps where it can, and returns an error if no index is
+// available within maxNodesPerIMEXDomain.
+//
+// By filling gaps in the index sequence (rather than always appending), we
+// maintain stable DNS names for existing nodes even when intermediate nodes
+// are removed from the compute domain and new ones are added.
+func getNextAvailableIndex(nodes []*nvapi.ComputeDomainNode, maxNodesPerIMEXDomain int) (int, error) {
+	if len(nodes) >= maxNodesPerIMEXDomain {
+		return -1, fmt.Errorf("cannot add more nodes, already at maximum (%d)", maxNodesPerIMEXDomain)
+	}
+
+	// Create a map to track used indices
+	usedIndices := make(map[int]bool)
+
+	// Collect all currently used indices
+	for _, node := range nodes {
+		usedIndices[node.Index] = true
+	}
+
+	// Find the next available index, starting from 0 and filling gaps
+	nextIndex := 0
+	for usedIndices[nextIndex] {
+		nextIndex++
+	}
+
+	// Ensure nextIndex is within the range 0..maxNodesPerIMEXDomain
+	if nextIndex < 0 || nextIndex >= maxNodesPerIMEXDomain {
+		return -1, fmt.Errorf("no available indices within maxNodesPerIMEXDomain (%d)", maxNodesPerIMEXDomain)
+	}
+
+	return nextIndex, nil
 }
 
 // If we've reached the expected number of nodes and if there was actually a

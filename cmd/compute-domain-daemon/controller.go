@@ -35,6 +35,7 @@ type ManagerConfig struct {
 	computeDomainNamespace string
 	cliqueID               string
 	podIP                  string
+	maxNodesPerIMEXDomain  int
 }
 
 // ControllerConfig holds the configuration for the controller.
@@ -45,6 +46,7 @@ type ControllerConfig struct {
 	computeDomainNamespace string
 	cliqueID               string
 	podIP                  string
+	maxNodesPerIMEXDomain  int
 }
 
 // Controller manages the lifecycle of compute domain operations.
@@ -73,6 +75,7 @@ func NewController(config *ControllerConfig) (*Controller, error) {
 		computeDomainNamespace: config.computeDomainNamespace,
 		cliqueID:               config.cliqueID,
 		podIP:                  config.podIP,
+		maxNodesPerIMEXDomain:  config.maxNodesPerIMEXDomain,
 	}
 
 	controller := &Controller{
