@@ -14,10 +14,13 @@
 
 BUILD_MULTI_ARCH_IMAGES ?= no
 DOCKER ?= docker
-BUILDX  =
+REGCTL ?= regctl
+BUILDX =
+
 ifeq ($(BUILD_MULTI_ARCH_IMAGES),true)
 BUILDX = buildx
 endif
+
 MKDIR    ?= mkdir
 
 ##### Global variables #####
@@ -33,24 +36,17 @@ endif
 # is not v-prefixed.
 IMAGE_VERSION := $(VERSION)
 
-IMAGE_TAG ?= $(IMAGE_VERSION)-$(DIST)
+IMAGE_TAG ?= $(IMAGE_VERSION)
 IMAGE = $(IMAGE_NAME):$(IMAGE_TAG)
 
 OUT_IMAGE_NAME ?= $(IMAGE_NAME)
 OUT_IMAGE_VERSION ?= $(IMAGE_VERSION)
-OUT_IMAGE_TAG = $(OUT_IMAGE_VERSION)-$(DIST)
+OUT_IMAGE_TAG = $(OUT_IMAGE_VERSION)
 OUT_IMAGE = $(OUT_IMAGE_NAME):$(OUT_IMAGE_TAG)
 
 ##### Public rules #####
-DEFAULT_PUSH_TARGET := ubi9
-DISTRIBUTIONS = $(DEFAULT_PUSH_TARGET)
-
-IMAGE_TARGETS := $(patsubst %,image-%,$(DISTRIBUTIONS))
-BUILD_TARGETS := $(patsubst %,build-%,$(DISTRIBUTIONS))
-PUSH_TARGETS := $(patsubst %,push-%,$(DISTRIBUTIONS))
-TEST_TARGETS := $(patsubst %,test-%, $(DISTRIBUTIONS))
-
-.PHONY: $(DISTRIBUTIONS) $(PUSH_TARGETS) $(BUILD_TARGETS) $(TEST_TARGETS) $(BUILD_TARGETS)
+# Direct targets without distribution abstraction
+.PHONY: image build push test push-short
 
 ifneq ($(BUILD_MULTI_ARCH_IMAGES),true)
 include $(CURDIR)/deployments/container/native-only.mk
@@ -58,7 +54,7 @@ else
 include $(CURDIR)/deployments/container/multi-arch.mk
 endif
 
-# For the default push target we also push a short tag equal to the version.
+# For the main push target we also push a short tag equal to the version.
 # We skip this for the development release
 DEVEL_RELEASE_IMAGE_VERSION ?= devel
 PUSH_MULTIPLE_TAGS ?= true
@@ -66,17 +62,13 @@ ifeq ($(strip $(OUT_IMAGE_VERSION)),$(DEVEL_RELEASE_IMAGE_VERSION))
 PUSH_MULTIPLE_TAGS = false
 endif
 ifeq ($(PUSH_MULTIPLE_TAGS),true)
-push-$(DEFAULT_PUSH_TARGET): push-short
+push: push-short
 endif
 
-push-%: DIST = $(*)
-push-short: DIST = $(DEFAULT_PUSH_TARGET)
+DOCKERFILE = $(CURDIR)/deployments/container/Dockerfile
 
-build-%: DIST = $(*)
-build-%: DOCKERFILE = $(CURDIR)/deployments/container/Dockerfile
-
-# Use a generic build target to build the relevant images
-$(IMAGE_TARGETS): image-%:
+# Build the container image
+image:
 	DOCKER_BUILDKIT=1 \
 		$(DOCKER) $(BUILDX) build --pull \
 		--provenance=false --sbom=false \
@@ -92,14 +84,8 @@ $(IMAGE_TARGETS): image-%:
 		-f $(DOCKERFILE) \
 		$(CURDIR)
 
-# Handle the default build target.
-.PHONY: build
-build: $(DEFAULT_PUSH_TARGET)
-$(DEFAULT_PUSH_TARGET): build-$(DEFAULT_PUSH_TARGET)
-$(DEFAULT_PUSH_TARGET): DIST = $(DEFAULT_PUSH_TARGET)
-
-REGCTL ?= regctl
-$(PUSH_TARGETS): push-%:
+# Push the image to the registry
+push:
 	$(REGCTL) \
 		image copy \
 		$(IMAGE) $(OUT_IMAGE)
