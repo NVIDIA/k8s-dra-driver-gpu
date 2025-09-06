@@ -81,6 +81,16 @@ func (d *AllocatableDevice) IsHealthy() bool {
 	return d.Health == Healthy
 }
 
+func (d *AllocatableDevice) GetUUID() string {
+	if d.Gpu != nil {
+		return d.Gpu.UUID
+	}
+	if d.Mig != nil {
+		return d.Mig.UUID
+	}
+	return ""
+}
+
 func (d AllocatableDevices) GpuUUIDs() []string {
 	var uuids []string
 	for _, device := range d {

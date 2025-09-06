@@ -94,10 +94,11 @@ func NewDriver(ctx context.Context, config *Config) (*driver, error) {
 	}
 	driver.healthcheck = healthcheck
 
-	deviceHealthMonitor, err := newDeviceHealthMonitor(ctx, config)
+	deviceHealthMonitor, err := newDeviceHealthMonitor(ctx, config, state.allocatable, state.nvdevlib)
 	if err != nil {
 		return nil, fmt.Errorf("start deviceHealthMonitor: %w", err)
 	}
+	klog.Info("[SWATI DEBUGS] Started device health monitor")
 	driver.deviceHealthMonitor = deviceHealthMonitor
 
 	if err := driver.pluginhelper.PublishResources(ctx, resources); err != nil {
@@ -191,6 +192,7 @@ func (d *driver) nodeUnprepareResource(ctx context.Context, claimNs kubeletplugi
 }
 
 func (d *driver) handleHealthNotifications(ctx context.Context, nodeName string) {
+	klog.Info("[SWATI DEBUG] handling Health Notifications")
 	for {
 		select {
 		case <-ctx.Done():
@@ -202,16 +204,17 @@ func (d *driver) handleHealthNotifications(ctx context.Context, nodeName string)
 				return
 			}
 
-			uuid := device.getUUID()
+			uuid := device.GetUUID()
 			klog.Warningf("Received unhealthy notification for device: %s", uuid)
 
 			// Mark device as unhealthy in state
-			//d.state.MarkUnhealthy(device)
+			d.state.MarkDeviceUnhealthy(device)
 
 			// Rebuild resource slice with only healthy devices
 			var resourceSlice resourceslice.Slice
 			for _, dev := range d.state.allocatable {
 				if dev.IsHealthy() {
+					klog.Infof("[SWATI DEBUG] device is healthy, added to resoureslice: %v", dev)
 					resourceSlice.Devices = append(resourceSlice.Devices, dev.GetDevice())
 				} else {
 					klog.Errorf("device:%v with uuid:%s is unhealthy", uuid, dev)
@@ -219,6 +222,7 @@ func (d *driver) handleHealthNotifications(ctx context.Context, nodeName string)
 			}
 
 			// Republish updated resources
+			klog.Info("[SWATI DEBUG] rebulishing resourceslice with healthy devices")
 			resources := resourceslice.DriverResources{
 				Pools: map[string]resourceslice.Pool{
 					nodeName: {Slices: []resourceslice.Slice{resourceSlice}},

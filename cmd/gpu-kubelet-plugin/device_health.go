@@ -35,23 +35,20 @@ type deviceHealthMonitor struct {
 	wg          sync.WaitGroup
 }
 
-func newDeviceHealthMonitor(ctx context.Context, config *Config) (*deviceHealthMonitor, error) {
-	containerDriverRoot := root(config.flags.containerDriverRoot)
-	nvdevlib, err := newDeviceLib(containerDriverRoot)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create device library: %w", err)
-	}
-
+func newDeviceHealthMonitor(ctx context.Context, config *Config, allocatable AllocatableDevices, nvdevlib *deviceLib) (*deviceHealthMonitor, error) {
+	klog.Info("[SWATI DEBUG] initializing NVML..")
 	if err := nvdevlib.Init(); err != nil {
 		return nil, fmt.Errorf("failed to initialize NVML: %w", err)
 	}
 	//defer nvdevlib.alwaysShutdown()
 
-	allocatable, err := nvdevlib.enumerateAllPossibleDevices(config)
-	if err != nil {
-		return nil, fmt.Errorf("error enumerating all possible devices: %w", err)
-	}
+	//klog.Info("[SWATI DEBUG] getting all devices..")
+	//allocatable, err := nvdevlib.enumerateAllPossibleDevices(config)
+	//if err != nil {
+	//	return nil, fmt.Errorf("error enumerating all possible devices: %w", err)
+	//}
 
+	klog.Info("[SWATI DEBUG] creating NVML events")
 	eventSet, err := nvdevlib.nvmllib.EventSetCreate()
 	if err != nvml.SUCCESS {
 		return nil, fmt.Errorf("failed to create event set: %w", err)
@@ -65,6 +62,7 @@ func newDeviceHealthMonitor(ctx context.Context, config *Config) (*deviceHealthM
 		stop:        make(chan struct{}),
 	}
 
+	klog.Info("[SWATI DEBUG] registering NVML events")
 	if err := monitor.registerDevicesForEvents(); err != nil {
 		monitor.eventSet.Free()
 		return nil, fmt.Errorf("failed to register devices for health monitoring: %w", err)
@@ -93,6 +91,7 @@ func (m *deviceHealthMonitor) registerDevicesForEvents() error {
 }
 
 func (m *deviceHealthMonitor) start() {
+	klog.Info("[SWATI DEBUG] starting health monitor")
 	m.wg.Add(1)
 	go m.run()
 }
@@ -101,6 +100,7 @@ func (m *deviceHealthMonitor) Stop() {
 	if m == nil {
 		return
 	}
+	klog.Info("[SWATI DEBUG] stopping health monitor")
 	close(m.stop)
 	m.wg.Wait()
 	close(m.unhealthy)
@@ -116,7 +116,7 @@ func (m *deviceHealthMonitor) run() {
 
 	uuidToDeviceMap := make(map[string]*AllocatableDevice)
 	for _, device := range m.allocatable {
-		uuid := device.getUUID()
+		uuid := device.GetUUID()
 		if uuid != "" {
 			uuidToDeviceMap[uuid] = device
 		}
@@ -132,6 +132,7 @@ func (m *deviceHealthMonitor) run() {
 		default:
 			event, err := m.eventSet.Wait(5000)
 			if err == nvml.ERROR_TIMEOUT {
+				klog.Info("[SWATI DEBUG] timedout")
 				continue
 			}
 			if err != nvml.SUCCESS {
@@ -145,11 +146,11 @@ func (m *deviceHealthMonitor) run() {
 			// Process health events
 			switch event.EventType {
 			case nvml.EventTypeXidCriticalError:
-				klog.Warningf("Critical XID error detected on device")
+				klog.Warningf("Critical XID error detected on device: %+v", event)
 			case nvml.EventTypeDoubleBitEccError:
-				klog.Warningf("Double-bit ECC error detected on device")
+				klog.Warningf("Double-bit ECC error detected on device: %+v", event)
 			case nvml.EventTypeSingleBitEccError:
-				klog.Infof("Single-bit ECC error detected on device")
+				klog.Infof("Single-bit ECC error detected on device:%+v", event)
 			default:
 				continue
 			}
@@ -183,14 +184,4 @@ func (m *deviceHealthMonitor) run() {
 
 func (m *deviceHealthMonitor) Unhealthy() <-chan *AllocatableDevice {
 	return m.unhealthy
-}
-
-func (d *AllocatableDevice) getUUID() string {
-	if d.Gpu != nil {
-		return d.Gpu.UUID
-	}
-	if d.Mig != nil {
-		return d.Mig.UUID
-	}
-	return ""
 }
