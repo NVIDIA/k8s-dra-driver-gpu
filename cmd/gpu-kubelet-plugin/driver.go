@@ -39,11 +39,12 @@ import (
 const DriverPrepUprepFlockFileName = "pu.lock"
 
 type driver struct {
-	client       coreclientset.Interface
-	pluginhelper *kubeletplugin.Helper
-	state        *DeviceState
-	pulock       *flock.Flock
-	healthcheck  *healthcheck
+	client              coreclientset.Interface
+	pluginhelper        *kubeletplugin.Helper
+	state               *DeviceState
+	pulock              *flock.Flock
+	healthcheck         *healthcheck
+	deviceHealthMonitor *deviceHealthMonitor
 }
 
 func NewDriver(ctx context.Context, config *Config) (*driver, error) {
@@ -93,9 +94,18 @@ func NewDriver(ctx context.Context, config *Config) (*driver, error) {
 	}
 	driver.healthcheck = healthcheck
 
+	deviceHealthMonitor, err := newDeviceHealthMonitor(ctx, config, state.allocatable, state.nvdevlib)
+	if err != nil {
+		return nil, fmt.Errorf("start deviceHealthMonitor: %w", err)
+	}
+	klog.Info("[SWATI DEBUGS] Started device health monitor")
+	driver.deviceHealthMonitor = deviceHealthMonitor
+
 	if err := driver.pluginhelper.PublishResources(ctx, resources); err != nil {
 		return nil, err
 	}
+
+	go driver.handleHealthNotifications(ctx, config.flags.nodeName)
 
 	return driver, nil
 }
@@ -107,6 +117,10 @@ func (d *driver) Shutdown() error {
 
 	if d.healthcheck != nil {
 		d.healthcheck.Stop()
+	}
+
+	if d.deviceHealthMonitor != nil {
+		d.deviceHealthMonitor.Stop()
 	}
 
 	d.pluginhelper.Stop()
@@ -175,6 +189,53 @@ func (d *driver) nodeUnprepareResource(ctx context.Context, claimNs kubeletplugi
 	}
 
 	return nil
+}
+
+func (d *driver) handleHealthNotifications(ctx context.Context, nodeName string) {
+	klog.Info("[SWATI DEBUG] handling Health Notifications")
+	for {
+		select {
+		case <-ctx.Done():
+			klog.Info("Stopping health notification handler")
+			return
+		case device, ok := <-d.deviceHealthMonitor.Unhealthy():
+			if !ok {
+				klog.Info("Health monitor channel closed")
+				return
+			}
+
+			uuid := device.GetUUID()
+			klog.Warningf("Received unhealthy notification for device: %s", uuid)
+
+			// Mark device as unhealthy in state
+			d.state.MarkDeviceUnhealthy(device)
+
+			// Rebuild resource slice with only healthy devices
+			var resourceSlice resourceslice.Slice
+			for _, dev := range d.state.allocatable {
+				if dev.IsHealthy() {
+					klog.Infof("[SWATI DEBUG] device is healthy, added to resoureslice: %v", dev)
+					resourceSlice.Devices = append(resourceSlice.Devices, dev.GetDevice())
+				} else {
+					klog.Errorf("device:%v with uuid:%s is unhealthy", uuid, dev)
+				}
+			}
+
+			// Republish updated resources
+			klog.Info("[SWATI DEBUG] rebulishing resourceslice with healthy devices")
+			resources := resourceslice.DriverResources{
+				Pools: map[string]resourceslice.Pool{
+					nodeName: {Slices: []resourceslice.Slice{resourceSlice}},
+				},
+			}
+
+			if err := d.pluginhelper.PublishResources(ctx, resources); err != nil {
+				klog.Errorf("Failed to publish resources after health change: %v", err)
+			} else {
+				klog.Infof("Successfully republished resources after marking device %s unhealthy", uuid)
+			}
+		}
+	}
 }
 
 // TODO: implement loop to remove CDI files from the CDI path for claimUIDs
