@@ -26,7 +26,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	metav1apply "k8s.io/client-go/applyconfigurations/meta/v1"
-	resourceapply "k8s.io/client-go/applyconfigurations/resource/v1"
+	resourceapply "k8s.io/client-go/applyconfigurations/resource/v1beta1"
 	"k8s.io/dynamic-resource-allocation/kubeletplugin"
 	"k8s.io/klog/v2"
 	"k8s.io/kubernetes/pkg/kubelet/checkpointmanager"
@@ -364,7 +364,7 @@ func (s *DeviceState) prepareDevices(ctx context.Context, claim *resourceapi.Res
 
 	// Update the resource claim status
 	resourceClaimApply := resourceapply.ResourceClaim(claim.Name, claim.Namespace).WithStatus(resourceClaimStatus)
-	_, err = s.config.clientsets.Resource.ResourceClaims(claim.Namespace).ApplyStatus(ctx,
+	_, err = s.config.clientsets.Core.ResourceV1beta1().ResourceClaims(claim.Namespace).ApplyStatus(ctx,
 		resourceClaimApply,
 		metav1.ApplyOptions{FieldManager: DriverName, Force: true},
 	)
@@ -609,19 +609,12 @@ func GetOpaqueDeviceConfigs(
 	return resultConfigs, nil
 }
 
-func (s *DeviceState) MarkDeviceUnhealthy(unhealthyDevice *AllocatableDevice) {
+func (s *DeviceState) MarkDeviceUnhealthy(device *AllocatableDevice) {
 	s.Lock()
 	defer s.Unlock()
 
-	uuid := unhealthyDevice.GetUUID()
-	device, ok := s.allocatable[uuid]
-	if !ok {
-		klog.Warningf("Attempted to mark unknown device as unhealthy: %s", uuid)
-		return
-	}
-
 	device.Health = Unhealthy
-	klog.Infof("Marked device:%s unhealthy", uuid)
+	klog.Infof("Marked device:%s unhealthy", device.GetUUID())
 }
 
 // TODO: Dynamic MIG is not yet supported with structured parameters.
