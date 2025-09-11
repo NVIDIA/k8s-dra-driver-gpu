@@ -16,12 +16,7 @@ BUILD_MULTI_ARCH_IMAGES ?= no
 DOCKER ?= docker
 REGCTL ?= regctl
 BUILDX =
-
-ifeq ($(BUILD_MULTI_ARCH_IMAGES),true)
-BUILDX = buildx
-endif
-
-MKDIR    ?= mkdir
+PUSH_ON_BUILD ?= false
 
 ##### Global variables #####
 include $(CURDIR)/versions.mk
@@ -39,36 +34,28 @@ IMAGE_VERSION := $(VERSION)
 IMAGE_TAG ?= $(IMAGE_VERSION)
 IMAGE = $(IMAGE_NAME):$(IMAGE_TAG)
 
-OUT_IMAGE_NAME ?= $(IMAGE_NAME)
-OUT_IMAGE_VERSION ?= $(IMAGE_VERSION)
-OUT_IMAGE_TAG = $(OUT_IMAGE_VERSION)
-OUT_IMAGE = $(OUT_IMAGE_NAME):$(OUT_IMAGE_TAG)
-
 ##### Public rules #####
-# Direct targets without distribution abstraction
-.PHONY: image build push test push-short
+.PHONY: build
 
-ifneq ($(BUILD_MULTI_ARCH_IMAGES),true)
-include $(CURDIR)/deployments/container/native-only.mk
+ifeq ($(BUILD_MULTI_ARCH_IMAGES),true)
+BUILDX = buildx
+DOCKER_BUILD_OPTIONS = --output=type=image,push=$(PUSH_ON_BUILD)
+DOCKER_BUILD_PLATFORM_OPTIONS = --platform=linux/amd64,linux/arm64
 else
-include $(CURDIR)/deployments/container/multi-arch.mk
+# We also support building single-platform images.
+# These are mostly used for local testing and as such we don't allow these to
+# be pushed on build.
+ifeq ($(PUSH_ON_BUILD),true)
+$(error PUSH_ON_BUILD=true is not supported for single architecture builds)
 endif
-
-# For the main push target we also push a short tag equal to the version.
-# We skip this for the development release
-DEVEL_RELEASE_IMAGE_VERSION ?= devel
-PUSH_MULTIPLE_TAGS ?= true
-ifeq ($(strip $(OUT_IMAGE_VERSION)),$(DEVEL_RELEASE_IMAGE_VERSION))
-PUSH_MULTIPLE_TAGS = false
-endif
-ifeq ($(PUSH_MULTIPLE_TAGS),true)
-push: push-short
+ARCH ?= $(shell uname -m | sed -e 's,aarch64,arm64,' -e 's,x86_64,amd64,')
+DOCKER_BUILD_PLATFORM_OPTIONS = --platform=linux/$(ARCH)
 endif
 
 DOCKERFILE = $(CURDIR)/deployments/container/Dockerfile
 
 # Build the container image
-image:
+build:
 	DOCKER_BUILDKIT=1 \
 		$(DOCKER) $(BUILDX) build --pull \
 		--provenance=false --sbom=false \
@@ -83,14 +70,3 @@ image:
 		--progress=plain \
 		-f $(DOCKERFILE) \
 		$(CURDIR)
-
-# Push the image to the registry
-push:
-	$(REGCTL) \
-		image copy \
-		$(IMAGE) $(OUT_IMAGE)
-
-push-short:
-	$(REGCTL) \
-		image copy \
-		$(IMAGE) $(OUT_IMAGE_NAME):$(OUT_IMAGE_VERSION)
