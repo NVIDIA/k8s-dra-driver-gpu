@@ -105,7 +105,7 @@ func NewDriver(ctx context.Context, config *Config) (*driver, error) {
 		return nil, err
 	}
 
-	go driver.handleHealthNotifications(ctx, config.flags.nodeName)
+	go driver.deviceHealthEvents(ctx, config.flags.nodeName)
 
 	return driver, nil
 }
@@ -191,12 +191,12 @@ func (d *driver) nodeUnprepareResource(ctx context.Context, claimNs kubeletplugi
 	return nil
 }
 
-func (d *driver) handleHealthNotifications(ctx context.Context, nodeName string) {
-	klog.Info("[SWATI DEBUG] handling Health Notifications")
+func (d *driver) deviceHealthEvents(ctx context.Context, nodeName string) {
+	klog.Info("Processing device health notifications")
 	for {
 		select {
 		case <-ctx.Done():
-			klog.Info("Stopping health notification handler")
+			klog.Info("Stop processing device health notifications")
 			return
 		case device, ok := <-d.deviceHealthMonitor.Unhealthy():
 			if !ok {
@@ -222,6 +222,8 @@ func (d *driver) handleHealthNotifications(ctx context.Context, nodeName string)
 			}
 
 			// Republish updated resources
+			// TODO: 1. remove this.
+			// 2. Add device taints
 			klog.Info("[SWATI DEBUG] rebulishing resourceslice with healthy devices")
 			resources := resourceslice.DriverResources{
 				Pools: map[string]resourceslice.Pool{
