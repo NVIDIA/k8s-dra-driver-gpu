@@ -90,8 +90,7 @@ tests: image
 		$(BATS_IMAGE) \
 		-c "cd /cwd; \
 			echo 'Running k8s cluster cleanup (invasive)... '; \
-			bash tests/bats/cleanup-from-previous-run.sh &> $${_RUNDIR}/cleanup.outerr || \
-				(echo 'Cleanup failed:'; cat $${_RUNDIR}/cleanup.outerr);  \
+			bash tests/bats/cleanup-from-previous-run.sh 2>&1 | tee -a $${_RUNDIR}/cleanup.outerr; \
 			TMPDIR=/cwd/$${_RUNDIR} bats \
 			--print-output-on-failure \
 			--no-tempdir-cleanup \
