@@ -36,16 +36,18 @@ kubectl apply -f "${CRD_URL}"
 # interrupted run. TODO: try to affect all-at-once, maybe with a special label.
 # Note: the following commands are OK to fail -- the `errexit` shell option is
 # deliberately not set here.
-timeout -v 5 kubectl delete -f demo/specs/imex/channel-injection.yaml
-timeout -v 5 kubectl delete -f demo/specs/imex/channel-injection-all.yaml
-timeout -v 5 kubectl delete jobs nickelpie-test
-timeout -v 5 kubectl delete computedomain nickelpie-test-compute-domain
-timeout -v 5 kubectl delete -f demo/specs/imex/nvbandwidth-test-job-1.yaml
+timeout -v 5 kubectl delete -f demo/specs/imex/channel-injection.yaml 2> /dev/null
+timeout -v 5 kubectl delete -f demo/specs/imex/channel-injection-all.yaml 2> /dev/null
+timeout -v 5 kubectl delete jobs nickelpie-test 2> /dev/null
+timeout -v 5 kubectl delete computedomain nickelpie-test-compute-domain 2> /dev/null
+timeout -v 5 kubectl delete -f demo/specs/imex/nvbandwidth-test-job-1.yaml 2> /dev/null
+timeout -v 5 kubectl delete pods -l env=batssuite 2> /dev/null
+timeout -v 2 kubectl delete resourceclaim batssuite-rc-bad-opaque-config --force 2> /dev/null
 
 # Delete any previous remainder of `clean-state-dirs-all-nodes.sh` invocation.
-kubectl delete pods privpod-rm-plugindirs
+kubectl delete pods privpod-rm-plugindirs 2> /dev/null
 
-helm uninstall nvidia-dra-driver-gpu-batssuite -n nvidia-dra-driver-gpu
+timeout -v 5 helm uninstall nvidia-dra-driver-gpu-batssuite -n nvidia-dra-driver-gpu
 
 kubectl wait \
     --for=delete pods -A \
@@ -58,7 +60,8 @@ kubectl wait \
 # properly.
 timeout -v 10 kubectl delete crds computedomains.resource.nvidia.com || echo "CRD deletion failed"
 
+# Remove kubelet plugin state directories from all nodes (critical part of
+# cleanup, fail hard if this does not succeed).
 set -e
-# Remove kubelet plugin state directories from all nodes.
 bash tests/bats/clean-state-dirs-all-nodes.sh
 set +x
