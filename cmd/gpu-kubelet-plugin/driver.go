@@ -38,6 +38,15 @@ import (
 // interleave, node-globally.
 const DriverPrepUprepFlockFileName = "pu.lock"
 
+// permanentError defines an error indicating that it is permanent.
+// By default, every error will be retried up to ErrorRetryMaxTimeout.
+// Errors marked as permanent will not be retried.
+type permanentError struct{ error }
+
+// func isPermanentError(err error) bool {
+// 	return errors.As(err, &permanentError{})
+// }
+
 type driver struct {
 	client       coreclientset.Interface
 	pluginhelper *kubeletplugin.Helper
