@@ -610,6 +610,7 @@ func GetOpaqueDeviceConfigs(
 }
 
 func (s *DeviceState) MarkDeviceUnhealthy(device *AllocatableDevice) {
+	// SWATI: check if a mig device is marked properly
 	s.Lock()
 	defer s.Unlock()
 

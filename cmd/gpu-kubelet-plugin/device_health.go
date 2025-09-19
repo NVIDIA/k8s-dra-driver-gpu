@@ -74,7 +74,8 @@ func newDeviceHealthMonitor(ctx context.Context, config *Config, allocatable All
 }
 
 func (m *deviceHealthMonitor) registerDevicesForEvents() {
-	// TODO: add a list of xids to ignore
+	// SWATI: 1. add a list of xids to ignore
+	// 2. Skip ECC errors
 	eventMask := uint64(nvml.EventTypeXidCriticalError | nvml.EventTypeDoubleBitEccError | nvml.EventTypeSingleBitEccError)
 
 	processedUUIDs := make(map[string]bool)
