@@ -509,7 +509,7 @@ func (s *DeviceState) getConfigResultsMap(rcs *resourceapi.ResourceClaimStatus, 
 		rcs.Allocation.Devices.Config,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("error getting opaque device configs: %v", err)
+		return nil, fmt.Errorf("error getting opaque device configs: %w", err)
 	}
 
 	// Add the default ComputeDomainConfig to the front of the config list with the
@@ -613,7 +613,11 @@ func GetOpaqueDeviceConfigs(
 
 		decodedConfig, err := runtime.Decode(decoder, config.Opaque.Parameters.Raw)
 		if err != nil {
-			return nil, fmt.Errorf("error decoding config parameters: %w", err)
+			// Bad opaque config: i) do not retry preparing this resource
+			// internally and ii) return notion of permanent error to kubelet,
+			// to give it an opportunity to play this error back to the user so
+			// that it becomes actionable.
+			return nil, permanentError{fmt.Errorf("error decoding config parameters: %w", err)}
 		}
 
 		resultConfig := &OpaqueDeviceConfig{

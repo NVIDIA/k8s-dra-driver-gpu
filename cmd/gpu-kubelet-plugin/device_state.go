@@ -536,7 +536,10 @@ func GetOpaqueDeviceConfigs(
 
 		decodedConfig, err := runtime.Decode(decoder, config.Opaque.Parameters.Raw)
 		if err != nil {
-			return nil, fmt.Errorf("error decoding config parameters: %w", err)
+			// Bad opaque config: do not internally retry, and return notion of
+			// permanent error to kubelet (so that is can become actionable for
+			// users).
+			return nil, permanentError{fmt.Errorf("error decoding config parameters: %w", err)}
 		}
 
 		resultConfig := &OpaqueDeviceConfig{

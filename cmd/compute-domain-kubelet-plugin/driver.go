@@ -221,6 +221,10 @@ func (d *driver) HandleError(ctx context.Context, err error, msg string) {
 	runtime.HandleErrorWithContext(ctx, err, msg)
 }
 
+// nodePrepareResource() returns a 2-tuple; the first value is a boolean
+// indicating whether the work is 'done', the second value is a result which can
+// also reflect an error. Set the boolean to `true` for any result wrapping a
+// non-retryable error.
 func (d *driver) nodePrepareResource(ctx context.Context, claim *resourceapi.ResourceClaim) (bool, kubeletplugin.PrepareResult) {
 	release, err := d.pulock.Acquire(ctx, flock.WithTimeout(10*time.Second))
 	if err != nil {
