@@ -536,6 +536,7 @@ func GetOpaqueDeviceConfigs(
 
 		decodedConfig, err := runtime.Decode(decoder, config.Opaque.Parameters.Raw)
 		if err != nil {
+			// TODO: return as permanentError to make this more actionable for users.
 			return nil, fmt.Errorf("error decoding config parameters: %w", err)
 		}
 
