@@ -96,7 +96,7 @@ apply_check_delete_workload_imex_chan_inject() {
   refute_output --partial 'Running'
 }
 
-@test "helm-install ${TEST_CHART_VERSION} from ${TEST_CHART_REPO}" {
+@test "helm-install ${TEST_CHART_REPO}/${TEST_CHART_VERSION}" {
   local _iargs=("--set" "featureGates.IMEXDaemonsWithDNSNames=true")
   iupgrade_wait "${TEST_CHART_REPO}" "${TEST_CHART_VERSION}" _iargs
 }
@@ -120,6 +120,11 @@ apply_check_delete_workload_imex_chan_inject() {
 }
 
 @test "IMEX channel injection (all)" {
+  # Example: with TEST_CHART_VERSION="v25.3.2-12390-chart"
+  # the command below returns 0 (true: the tested version is smaller)
+  if dpkg --compare-versions "${TEST_CHART_VERSION#v}" lt "25.8.0"; then
+    skip "tested chart version smaller than 25.8.0"
+  fi
   kubectl apply -f demo/specs/imex/channel-injection-all.yaml
   kubectl wait --for=condition=READY pods imex-channel-injection-all --timeout=80s
   run kubectl logs imex-channel-injection-all
@@ -154,7 +159,7 @@ apply_check_delete_workload_imex_chan_inject() {
   echo "${output}" | grep -E '^.*SUM multinode_device_to_device_memcpy_read_ce [0-9]+\.[0-9]+.*$'
 }
 
-@test "downgrade: current-dev -> last-stable" {
+@test "downgrade: current -> ${TEST_CHART_LASTSTABLE_REPO}/${TEST_CHART_LASTSTABLE_VERSION}" {
   # Stage 1: apply workload, but do not delete.
   kubectl apply -f demo/specs/imex/channel-injection.yaml
   kubectl wait --for=condition=READY pods imex-channel-injection --timeout=60s
