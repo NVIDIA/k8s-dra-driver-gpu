@@ -4,6 +4,7 @@ setup() {
   load '/bats-libraries/bats-support/load.bash'
   load '/bats-libraries/bats-assert/load.bash'
   load '/bats-libraries/bats-file/load.bash'
+  load 'helpers.sh'
 }
 
 # Currently, the tests defined in this file deliberately depend on each other
@@ -48,7 +49,7 @@ setup_file() {
 # Install or upgrade, and wait for pods to be READY.
 # 1st arg: helm chart repo
 # 2nd arg: helm chart version
-# 3rd arg: array with additional args (provide `NOARGS`` if none)
+# 3rd arg: array with additional args (provide `NOARGS` if none)
 iupgrade_wait() {
   # E.g. `nvidia/nvidia-dra-driver-gpu` or
   # `oci://ghcr.io/nvidia/k8s-dra-driver-gpu`
@@ -83,7 +84,9 @@ apply_check_delete_workload_imex_chan_inject() {
 
 # A test that covers local dev tooling, we don't want to
 # unintentionally change/break these targets.
-@test "test VERSION_W_COMMIT, VERSION_GHCR_CHART" {
+@test "test VERSION_W_COMMIT, VERSION_GHCR_CHART, VERSION" {
+  run make print-VERSION
+  assert_output --regexp '^v[0-9]+\.[0-9]+\.[0-9]+-dev$'
   run make print-VERSION_W_COMMIT
   assert_output --regexp '^v[0-9]+\.[0-9]+\.[0-9]+-dev-[0-9a-f]{8}$'
   run make print-VERSION_GHCR_CHART
@@ -101,6 +104,17 @@ apply_check_delete_workload_imex_chan_inject() {
   iupgrade_wait "${TEST_CHART_REPO}" "${TEST_CHART_VERSION}" _iargs
 }
 
+@test "helm list: validate output" {
+  # Sanity check: one chart installed.
+  helm list -n nvidia-dra-driver-gpu -o json | jq 'length == 1'
+
+  # Confirm consistency between the various version-related parameters. Note
+  # that the --version arg provided to `helm install/upgrade` does not directly
+  # set app_version; it is just a version constraint. `app_version` tested here
+  # is AFAIU defined solely by the chart's appVersion YAML spec.
+  helm list -n nvidia-dra-driver-gpu -o json | jq '.[].app_version' | grep "${TEST_CHART_VERSION}"
+}
+
 @test "get crd computedomains.resource.nvidia.com" {
   kubectl get crd computedomains.resource.nvidia.com
 }
@@ -115,6 +129,22 @@ apply_check_delete_workload_imex_chan_inject() {
     -l nvidia-dra-driver-gpu-component=controller --timeout=10s
 }
 
+@test "validate CD controller container image spec" {
+  local ACTUAL_IMAGE_SPEC
+  ACTUAL_IMAGE_SPEC=$(kubectl get pod \
+    -n nvidia-dra-driver-gpu \
+    -l nvidia-dra-driver-gpu-component=controller \
+    -o json | \
+      jq -r '.items[].spec.containers[] | select(.name=="compute-domain") | .image')
+
+  # Emit once, unfiltered, for debuggability
+  echo "$ACTUAL_IMAGE_SPEC"
+
+  # Confirm substring; TODO: make tighter with precise
+  # TEST_EXPECTED_IMAGE_SPEC_SUBSTRING
+  echo "$ACTUAL_IMAGE_SPEC" | grep "${TEST_EXPECTED_IMAGE_SPEC_SUBSTRING}"
+}
+
 @test "IMEX channel injection (single)" {
   apply_check_delete_workload_imex_chan_inject
 }
@@ -126,6 +156,38 @@ apply_check_delete_workload_imex_chan_inject() {
   assert_output --partial "channel2047"
   assert_output --partial "channel222"
   kubectl delete -f demo/specs/imex/channel-injection-all.yaml
+}
+
+@test "NodePrepareResources: catch unknown field in opaque cfg in ResourceClaim" {
+  local SPEC="tests/bats/specs/rc-opaque-cfg-unknown-field.yaml"
+
+  # Create pod with random name suffix.
+  # Store ref of the form `pod/batssuite-pod-boc-brs2l`.
+  local POD
+  POD=$(kubectl create -f "${SPEC}" | grep pod | awk '{print $1;}')
+
+  # Confirm ContainerCreating state (no failure yet though).
+  kubectl wait \
+    --for=jsonpath='{.status.containerStatuses[0].state.waiting.reason}'=ContainerCreating \
+    --timeout=10s \
+    "${POD}"
+
+  # After about ~45 seconds (kubelet timing out on NodePrepareResources())
+  # we expect an event with reason `FailedPrepareDynamicResources`.
+  # That's not typically the method users discover the error.
+  wait_for_pod_event "${POD}" FailedPrepareDynamicResources 60
+
+  # This is how users probably see this error first.
+  kubectl describe "${POD}" | grep FailedPrepareDynamicResources | grep 'code = DeadlineExceeded'
+
+  # Confirm that precise root cause can be inferred from
+  # CD kubelet plugin logs.
+  kubectl logs -l nvidia-dra-driver-gpu-component=kubelet-plugin -n nvidia-dra-driver-gpu --prefix --tail=-1 | \
+    grep 'error decoding config parameters: strict decoding error: unknown field "unexpectedField"'
+
+  # Clean up.
+  kubectl delete "${POD}"
+  kubectl delete resourceclaim batssuite-rc-bad-opaque-config
 }
 
 @test "nickelpie (NCCL send/recv/broadcast, 2 pods, 2 nodes, small payload)" {

@@ -1,0 +1,36 @@
+apiVersion: resource.k8s.io/v1beta1
+kind: ResourceClaim
+metadata:
+  name: batssuite-rc-bad-opaque-config
+spec:
+  devices:
+    requests:
+    - deviceClassName: compute-domain-default-channel.nvidia.com
+      name: chan
+    config:
+    - opaque:
+        driver: compute-domain.nvidia.com
+        parameters:
+          apiVersion: resource.nvidia.com/v1beta1
+          domainID: not-needed-for-test
+          kind: ComputeDomainChannelConfig
+          unexpectedField: foo
+      requests:
+      - chan
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  generateName: batssuite-pod-boc-
+  labels:
+    env: batssuite
+spec:
+  containers:
+  - name: app
+    image: busybox
+    resources:
+      claims:
+      - name: batssuite-claim-boc
+  resourceClaims:
+  - name: batssuite-claim-boc
+    resourceClaimName: batssuite-rc-bad-opaque-config

@@ -2,55 +2,56 @@
 
 ## Usage
 
-Invoke `make bats` in the root of this repository.
+Review the `TEST_*` variables [at around the top of the Makefile](https://github.com/NVIDIA/k8s-dra-driver-gpu/blob/main/tests/bats/Makefile#L22). Most of them can be overridden via environment.
+Use this configuration interface to customize your test run.
+
+Then invoke `make bats` in the root of the repository.
+
+Some examples are shown below.
+
+### Test a specific GHCR chart version
+
+Example:
+
+```console
+$ export TEST_CHART_VERSION="25.8.0-dev-b823882b-chart"
+$ make bats
+...
+12 tests, 0 failures in 166 seconds
+```
+
+Note: by default, the test suite assumes availability of a Helm chart on `oci://ghcr.io/nvidia/k8s-dra-driver-gpu`, pointing to a container image also publicly available in that registry.
 
 
 ### Test local dev state (artifacts not pushed)
 
-Not yet supported.
-Let's change this ASAP.
+To test the Helm chart currently specified in `deployments/helm/nvidia-dra-driver-gpu` in the local checkout, run
 
-This test suite for now assumes public availability of a Helm chart on GHCR or NGC, pointing to a container image publicly available on GHCR or NGC.
+```console
+TEST_CHART_LOCAL=1 make bats
+```
 
-### Test Helm chart from registery
+This overrides `TEST_CHART_REPO` and `TEST_CHART_VERSION`.
 
-#### Default versions
+Make sure (out-of-band) that the container images that the local chart refers to are available to all nodes in the Kubernetes cluster -- placed directly (TODO: how-to) or pullable.
 
-Say, this is the current local git revision:
+### Defaults
+
+By default, `make bats` tries to install a Helm chart from  `oci://ghcr.io/nvidia/k8s-dra-driver-gpu` corresponding to the git revision of the local checkout:
 
 ```console
 $ git rev-parse --short=8 HEAD
 e6e1dde4
-```
-
-Then the test suite runs with the default configuration, for example:
-```console
 $ make bats
 ...
         --env TEST_CHART_REPO="oci://ghcr.io/nvidia/k8s-dra-driver-gpu" \
         --env TEST_CHART_VERSION=25.8.0-dev-e6e1dde4-chart \
-        --env TEST_CHART_LASTSTABLE_REPO="oci://ghcr.io/nvidia/k8s-dra-driver-gpu" \
-        --env TEST_CHART_LASTSTABLE_VERSION="25.3.2-7020737a-chart" \
         --env TEST_CRD_UPGRADE_TARGET_GIT_REF=e6e1dde4 \
 ...
-12 tests, 0 failures in 166 seconds
 ```
 
-As you can see, this currently requires a Helm chart corresponding to the local revision to be available on GHCR.
-
-#### Test specific versions
-
-Set the correponding `TEST_*` environment variables before invoking the Makefile target.
-
-For example:
-
-```console
-$ export TEST_CHART_VERSION="25.8.0-dev-b823882b-chart"
-$ export TEST_CRD_UPGRADE_TARGET_GIT_REF="main"
-$ make bats
-...
-12 tests, 0 failures in 166 seconds
-```
+That's CI-oriented.
+We may want to change that.
 
 
 ## Development
@@ -59,13 +60,14 @@ Bats is a workable solution.
 Developing new tests might however probe your patience.
 Make wise usage of
 
+* bats' [`run`](https://bats-core.readthedocs.io/en/stable/writing-tests.html#run-test-other-commands) command.
 * [skipping tests](https://bats-core.readthedocs.io/en/stable/writing-tests.html#skip-easily-skip-tests)
 * [tagging tests with `bats:focus`](https://bats-core.readthedocs.io/en/stable/writing-tests.html#special-tags)
 * [CLI args](https://bats-core.readthedocs.io/en/stable/usage.html) such as `--verbose-run`, `--show-output-of-passing-tests`.
 
+Misc notes:
 
-Also, familiarize yourself with bat's [`run`](https://bats-core.readthedocs.io/en/stable/writing-tests.html#run-test-other-commands) command.
-
-Don't skip the section about when [not to use `run`](https://bats-core.readthedocs.io/en/stable/writing-tests.html#when-not-to-use-run).
-
-Take inspiration from [cri-o tests](https://github.com/cri-o/cri-o/tree/81e69a58c7e6ec8699b3bdd8696b1d0e25e32bfb/test).
+* Don't skip the section about when [not to use `run`](https://bats-core.readthedocs.io/en/stable/writing-tests.html#when-not-to-use-run).
+* Take inspiration from [cri-o tests](https://github.com/cri-o/cri-o/tree/81e69a58c7e6ec8699b3bdd8696b1d0e25e32bfb/test).
+* Stop test suite on first failure? No first-class support in bats. See [this](https://github.com/bats-core/bats-core/issues/209) discussion.
+* We can and should radically iterate on the test suite's config interface to satisfy our needs.
