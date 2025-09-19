@@ -67,7 +67,8 @@ resources:
 #   ContextualLogging: true            # Kubernetes logging feature (enabled by default)
 #   LoggingAlphaOptions: false         # Kubernetes logging alpha features
 #   LoggingBetaOptions: true           # Kubernetes logging beta features
-featureGates: {}
+featureGates:
+  DeviceHealthCheck: false
 
 # Webhook configuration
 webhook:

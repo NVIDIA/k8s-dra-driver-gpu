@@ -34,6 +34,7 @@ import (
 	"k8s.io/dynamic-resource-allocation/resourceslice"
 	"k8s.io/klog/v2"
 
+	"github.com/NVIDIA/k8s-dra-driver-gpu/pkg/featuregates"
 	"github.com/NVIDIA/k8s-dra-driver-gpu/pkg/flock"
 )
 
@@ -98,18 +99,20 @@ func NewDriver(ctx context.Context, config *Config) (*driver, error) {
 	}
 	driver.healthcheck = healthcheck
 
-	deviceHealthMonitor, err := newDeviceHealthMonitor(ctx, config, state.allocatable, state.nvdevlib)
-	if err != nil {
-		return nil, fmt.Errorf("start deviceHealthMonitor: %w", err)
-	}
+	if featuregates.Enabled(featuregates.DeviceHealthCheck) {
 
-	driver.deviceHealthMonitor = deviceHealthMonitor
+		deviceHealthMonitor, err := newDeviceHealthMonitor(ctx, config, state.allocatable, state.nvdevlib)
+		if err != nil {
+			return nil, fmt.Errorf("start deviceHealthMonitor: %w", err)
+		}
+
+		driver.deviceHealthMonitor = deviceHealthMonitor
+		go driver.deviceHealthEvents(ctx, config.flags.nodeName)
+	}
 
 	if err := driver.pluginhelper.PublishResources(ctx, resources); err != nil {
 		return nil, err
 	}
-
-	go driver.deviceHealthEvents(ctx, config.flags.nodeName)
 
 	return driver, nil
 }

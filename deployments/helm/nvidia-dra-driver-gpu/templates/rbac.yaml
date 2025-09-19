@@ -22,7 +22,11 @@ rules:
   verbs: ["get", "list", "watch", "create", "update", "delete"]
 - apiGroups: ["resource.k8s.io"]
   resources: ["resourceclaims/status"]
-  verbs: ["update"]
+  verbs:
+  - "update"
+  {{- if .Values.featureGates.DeviceHealthCheck }}
+  - "patch"
+  {{- end }}
 - apiGroups: [""]
   resources: ["nodes"]
   verbs: ["get", "list", "watch", "update"]
