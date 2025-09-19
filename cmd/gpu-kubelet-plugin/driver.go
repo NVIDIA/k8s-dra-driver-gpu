@@ -23,8 +23,12 @@ import (
 	"time"
 
 	resourceapi "k8s.io/api/resource/v1"
+	v1beta1 "k8s.io/api/resource/v1beta1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/runtime"
+	metav1apply "k8s.io/client-go/applyconfigurations/meta/v1"
+	resourceapply "k8s.io/client-go/applyconfigurations/resource/v1beta1"
 	coreclientset "k8s.io/client-go/kubernetes"
 	"k8s.io/dynamic-resource-allocation/kubeletplugin"
 	"k8s.io/dynamic-resource-allocation/resourceslice"
@@ -98,7 +102,7 @@ func NewDriver(ctx context.Context, config *Config) (*driver, error) {
 	if err != nil {
 		return nil, fmt.Errorf("start deviceHealthMonitor: %w", err)
 	}
-	klog.Info("[SWATI DEBUGS] Started device health monitor")
+
 	driver.deviceHealthMonitor = deviceHealthMonitor
 
 	if err := driver.pluginhelper.PublishResources(ctx, resources); err != nil {
@@ -196,11 +200,11 @@ func (d *driver) deviceHealthEvents(ctx context.Context, nodeName string) {
 	for {
 		select {
 		case <-ctx.Done():
-			klog.Info("Stop processing device health notifications")
+			klog.V(6).Info("Stop processing device health notifications")
 			return
 		case device, ok := <-d.deviceHealthMonitor.Unhealthy():
 			if !ok {
-				klog.Info("Health monitor channel closed")
+				klog.V(6).Info("Health monitor channel closed")
 				return
 			}
 
@@ -210,34 +214,117 @@ func (d *driver) deviceHealthEvents(ctx context.Context, nodeName string) {
 			// Mark device as unhealthy in state
 			d.state.MarkDeviceUnhealthy(device)
 
-			// Rebuild resource slice with only healthy devices
-			var resourceSlice resourceslice.Slice
-			for _, dev := range d.state.allocatable {
-				if dev.IsHealthy() {
-					klog.Infof("[SWATI DEBUG] device is healthy, added to resoureslice: %v", dev)
-					resourceSlice.Devices = append(resourceSlice.Devices, dev.GetDevice())
-				} else {
-					klog.Errorf("device:%v with uuid:%s is unhealthy", uuid, dev)
-				}
+			// update resourceclaim status
+			result, claimUID, err := d.findDeviceResultAndClaimUID(uuid)
+			if err != nil {
+				klog.Errorf("Device %s is unhealthy, but no associated ResourceClaim was found.", uuid)
+				continue
 			}
 
-			// Republish updated resources
-			// TODO: 1. remove this.
-			// 2. Add device taints
-			klog.Info("[SWATI DEBUG] rebulishing resourceslice with healthy devices")
-			resources := resourceslice.DriverResources{
-				Pools: map[string]resourceslice.Pool{
-					nodeName: {Slices: []resourceslice.Slice{resourceSlice}},
-				},
+			claim, err := d.findClaimByUID(ctx, types.UID(claimUID))
+			if err != nil {
+				klog.Errorf("Failed to find ResourceClaim object for UID %s: %v", claimUID, err)
+				continue
 			}
 
-			if err := d.pluginhelper.PublishResources(ctx, resources); err != nil {
-				klog.Errorf("Failed to publish resources after health change: %v", err)
-			} else {
-				klog.Infof("Successfully republished resources after marking device %s unhealthy", uuid)
+			if err := d.updateDeviceConditionInClaim(ctx, claim, result); err != nil {
+				klog.Errorf("Failed to update status for ResourceClaim %s/%s: %v", claim.Namespace, claim.Name, err)
 			}
 		}
 	}
+}
+
+func (d *driver) findDeviceResultAndClaimUID(unhealthyDeviceUUID string) (*resourceapi.DeviceRequestAllocationResult, string, error) {
+	d.state.Lock()
+	defer d.state.Unlock()
+
+	checkpoint, err := d.state.getCheckpoint()
+	if err != nil {
+		return nil, "", fmt.Errorf("unable to get checkpoint: %v", err)
+	}
+
+	for claimUID, preparedClaim := range checkpoint.V2.PreparedClaims {
+		var matchingDeviceName string
+
+	SearchDeviceGroups:
+		for _, group := range preparedClaim.PreparedDevices {
+			for _, device := range group.Devices {
+				var currentUUID string
+				var currentDeviceName string
+
+				if device.Gpu != nil {
+					currentUUID = device.Gpu.Info.UUID
+					currentDeviceName = device.Gpu.Device.DeviceName
+				} else if device.Mig != nil {
+					currentUUID = device.Mig.Info.UUID
+					currentDeviceName = device.Mig.Device.DeviceName
+				}
+
+				if currentUUID == unhealthyDeviceUUID {
+					klog.V(6).Info("found matching device to claim: %v", currentDeviceName)
+					matchingDeviceName = currentDeviceName
+					break SearchDeviceGroups
+				}
+			}
+		}
+
+		if matchingDeviceName != "" {
+			if preparedClaim.Status.Allocation != nil {
+				for i := range preparedClaim.Status.Allocation.Devices.Results {
+					result := &preparedClaim.Status.Allocation.Devices.Results[i]
+					if result.Device == matchingDeviceName {
+						klog.V(6).Info("Found result object: %v for claim: %s", result.Device, claimUID)
+						return result, claimUID, nil
+					}
+				}
+			}
+		}
+	}
+	return nil, "", nil
+}
+
+func (d *driver) findClaimByUID(ctx context.Context, claimUID types.UID) (*v1beta1.ResourceClaim, error) {
+	claimList, err := d.state.config.clientsets.Core.ResourceV1beta1().ResourceClaims("").List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to list ResourceClaims: %w", err)
+	}
+
+	for i := range claimList.Items {
+		if claimList.Items[i].UID == claimUID {
+			klog.V(6).Info("Found ResourceClaim with UID %s", claimUID)
+			return &claimList.Items[i], nil
+		}
+	}
+	return nil, fmt.Errorf("ResourceClaim with UID %s not found", claimUID)
+}
+
+func (d *driver) updateDeviceConditionInClaim(ctx context.Context, claim *v1beta1.ResourceClaim, result *resourceapi.DeviceRequestAllocationResult) error {
+	klog.Infof("Applying 'Ready=False' condition for device '%s' in ResourceClaim '%s/%s'", result.Device, claim.Namespace, claim.Name)
+
+	unhealthyCondition := metav1apply.Condition().
+		WithType("Ready").
+		WithStatus(metav1.ConditionFalse).
+		WithReason("DeviceUnhealthy").
+		WithMessage(fmt.Sprintf("Device %s has become unhealthy.", result.Device)).
+		WithLastTransitionTime(metav1.Now())
+
+	deviceStatusApplyConfig := resourceapply.AllocatedDeviceStatus().
+		WithDevice(result.Device).
+		WithDriver(result.Driver).
+		WithPool(result.Pool).
+		WithConditions(unhealthyCondition)
+
+	claimApplyConfig := resourceapply.ResourceClaim(claim.Name, claim.Namespace).
+		WithStatus(resourceapply.ResourceClaimStatus().
+			WithDevices(deviceStatusApplyConfig),
+		)
+
+	opts := metav1.ApplyOptions{FieldManager: DriverName, Force: true}
+
+	_, err := d.state.config.clientsets.Core.ResourceV1beta1().ResourceClaims(claim.Namespace).
+		ApplyStatus(ctx, claimApplyConfig, opts)
+
+	return err
 }
 
 // TODO: implement loop to remove CDI files from the CDI path for claimUIDs
