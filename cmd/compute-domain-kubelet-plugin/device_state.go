@@ -509,7 +509,7 @@ func (s *DeviceState) getConfigResultsMap(rcs *resourceapi.ResourceClaimStatus, 
 		rcs.Allocation.Devices.Config,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("error getting opaque device configs: %v", err)
+		return nil, fmt.Errorf("error getting opaque device configs: %w", err)
 	}
 
 	// Add the default ComputeDomainConfig to the front of the config list with the
