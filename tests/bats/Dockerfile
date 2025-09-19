@@ -3,7 +3,7 @@ FROM debian:trixie
 # GNU parallel: bats may want to use that
 # gettext-base: provides envsubst, used by nickelpie
 RUN apt-get update && apt-get install -y -q --no-install-recommends \
-    parallel git ca-certificates curl make gettext-base && \
+    parallel git ca-certificates curl make gettext-base jq && \
     rm -rf /var/lib/apt/lists/*
 
 # Set by BuiltKit, of the form amd64/arm64.

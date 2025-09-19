@@ -16,18 +16,45 @@
 include $(CURDIR)/versions.mk
 include $(CURDIR)/common.mk
 
-BATS_IMAGE = batstests:$(GIT_COMMIT_SHORT)
 
-KUBECONFIG ?= $(HOME)/.kube/config
+# The to-be-tested Helm chart. Ignored when setting TEST_CHART_LOCAL.
 TEST_CHART_REPO ?= "oci://ghcr.io/nvidia/k8s-dra-driver-gpu"
-TEST_CHART_VERSION ?= $(VERSION_GHCR_CHART)
+TEST_CHART_VERSION ?= "$(VERSION_GHCR_CHART)"
+
+# The baseline Helm chart to test upgrades from and downgrades to.
 TEST_CHART_LASTSTABLE_REPO ?= "oci://ghcr.io/nvidia/k8s-dra-driver-gpu"
 TEST_CHART_LASTSTABLE_VERSION ?= "25.3.2-2c250af3-chart"
+
+# If not "false": the to-be-tested Helm chart is installed from the local
+# filesystem (from `deployments/helm/nvidia-dra-driver-gpu`). Make sure
+# (out-of-band) that the container images that the chart refers to are available
+# (placed directly on the involved nodes or pullable). This is a convenince
+# parameter for setting
+#
+#        TEST_CHART_REPO="deployments/helm/nvidia-dra-driver-gpu/"
+#        TEST_CHART_VERSION="$(make print-VERSION)" (but w/o v prefix)
+#
+TEST_CHART_LOCAL ?= "false"
+
+# Consumed in upgrade test via kubectl apply -f <URL>
+# (can be a branch, tag, or commit). TODO: parse default
+# from `TEST_CHART_VERSION`.
+TEST_CRD_UPGRADE_TARGET_GIT_REF ?= "main"
+
 TEST_NVIDIA_DRIVER_ROOT ?= "/run/nvidia/driver"
 
-# Currently consumed in upgrade test via
-# kubectl apply -f <URL> (can be a branch, tag, or commit)
-TEST_CRD_UPGRADE_TARGET_GIT_REF ?= $(GIT_COMMIT_SHORT)
+# TODO: calculate precise, expected container image spec,
+# and test for that in test suite, for example:
+# `nvcr.io/nvidia/k8s-dra-driver-gpu:v25.8.0-dev`
+TEST_EXPECTED_IMAGE_SPEC_SUBSTRING ?= $(VERSION)
+
+ifneq ($(TEST_CHART_LOCAL),"false")
+TEST_CHART_REPO = "deployments/helm/nvidia-dra-driver-gpu/"
+TEST_CHART_VERSION = $(VERSION:v%=%)
+endif
+
+BATS_IMAGE = batstests:$(GIT_COMMIT_SHORT)
+KUBECONFIG ?= $(HOME)/.kube/config
 
 default: tests
 
@@ -57,6 +84,7 @@ tests: image
 		--env TEST_CHART_LASTSTABLE_VERSION=$(TEST_CHART_LASTSTABLE_VERSION) \
 		--env TEST_CRD_UPGRADE_TARGET_GIT_REF=$(TEST_CRD_UPGRADE_TARGET_GIT_REF) \
 		--env TEST_NVIDIA_DRIVER_ROOT=$(TEST_NVIDIA_DRIVER_ROOT) \
+		--env TEST_EXPECTED_IMAGE_SPEC_SUBSTRING=$(TEST_EXPECTED_IMAGE_SPEC_SUBSTRING) \
 		-u $(shell id -u ${USER}):$(shell id -g ${USER}) \
 		--entrypoint "/bin/bash"\
 		$(BATS_IMAGE) \
