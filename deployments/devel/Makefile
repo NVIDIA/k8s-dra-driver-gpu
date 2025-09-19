@@ -22,10 +22,10 @@ tools-go:
 
 # Defining the following tools through tools.go is unstable and thus we define
 # their versions explicitly.
-CLIENT_GEN_VERSION ?= v0.29.2
-LISTER_GEN_VERSION ?= v0.29.2
-INFORMER_GEN_VERSION ?= v0.29.2
-CONTROLLER_GEN_VERSION ?= v0.17.1
+CLIENT_GEN_VERSION ?= v0.34.0
+LISTER_GEN_VERSION ?= v0.34.0
+INFORMER_GEN_VERSION ?= v0.34.0
+CONTROLLER_GEN_VERSION ?= v0.19.0
 cmd-tools:
 	@go install sigs.k8s.io/controller-tools/cmd/controller-gen@${CONTROLLER_GEN_VERSION}
 	@go install k8s.io/code-generator/cmd/client-gen@${CLIENT_GEN_VERSION}
