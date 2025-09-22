@@ -17,9 +17,6 @@ jobs:
       - uses: actions/checkout@v5
       - name: make-bats
         run: |
-          echo "running"
-          echo "KUBECONFIG: $KUBECONFIG"
-          cat "$KUBECONFIG" | head -n3
           export TEST_CHART_REPO="oci://ghcr.io/nvidia/k8s-dra-driver-gpu"
           export TEST_CHART_VERSION="25.8.0-dev-2d6ab3a2-chart"
           make bats
