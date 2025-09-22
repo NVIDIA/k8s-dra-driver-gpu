@@ -70,9 +70,10 @@ image:
 # cmdline args).
 .PHONY: tests
 tests: image
-	mkdir -p tests-out && \
-	export _RUNDIR=$(shell mktemp -p tests-out -d -t bats-tests-$$(date +%s)-XXXXX) && \
+	@mkdir -p tests-out && \
+	export _RUNDIR=$$(shell mktemp -p tests-out -d -t bats-tests-$$(date +%s)-XXXXX) && \
 	docker run \
+		--rm \
 		-v /tmp:/tmp \
 		-v $(CURDIR):/cwd \
 		-v $(HOME)/.kube/:$(HOME)/.kube \
