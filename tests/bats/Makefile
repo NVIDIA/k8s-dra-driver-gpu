@@ -76,8 +76,8 @@ tests: image
 		--rm \
 		-v /tmp:/tmp \
 		-v $(CURDIR):/cwd \
-		-v $(HOME)/.kube/:$(HOME)/.kube \
-		--env KUBECONFIG=$(KUBECONFIG) \
+		-v $(KUBECONFIG):/kubeconfig \
+		--env KUBECONFIG=/kubeconfig \
 		--env TEST_CHART_REPO=$(TEST_CHART_REPO) \
 		--env TEST_CHART_VERSION=$(TEST_CHART_VERSION) \
 		--env TEST_CHART_LASTSTABLE_REPO=$(TEST_CHART_LASTSTABLE_REPO) \
@@ -89,6 +89,8 @@ tests: image
 		--entrypoint "/bin/bash"\
 		$(BATS_IMAGE) \
 		-c "cd /cwd; \
+		        echo "kubeconfig head:"; cat /kubeconfig | head -n2; \
+		        echo 'kubectl get nodes' || exit 1; \
 			echo 'Running k8s cluster cleanup (invasive)... '; \
 			bash tests/bats/cleanup-from-previous-run.sh 2>&1 | tee -a $${_RUNDIR}/cleanup.outerr; \
 			TMPDIR=/cwd/$${_RUNDIR} bats \

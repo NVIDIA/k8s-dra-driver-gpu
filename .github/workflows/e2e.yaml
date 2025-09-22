@@ -12,4 +12,6 @@ jobs:
       - name: make-bats
         run: |
           echo "running"
+          echo "KUBECONFIG: $KUBECONFIG"
+          cat "$KUBECONFIG" | head -n3
           make bats
