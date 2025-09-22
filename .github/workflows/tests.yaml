@@ -1,0 +1,22 @@
+name: tests
+
+on:
+  push:
+  pull_request:
+
+# Only one job at any time, and cancel in-progress
+concurrency:
+  # Cancel when push to the same branch
+  group: ${{ github.workflow }}-${{ github.head_ref }}
+  cancel-in-progress: true
+
+jobs:
+  k8s:
+    runs-on: compute-domain-runner
+    steps:
+      - uses: actions/checkout@v5
+      - name: make-bats
+        run: |
+          export TEST_CHART_REPO="oci://ghcr.io/nvidia/k8s-dra-driver-gpu"
+          export TEST_CHART_VERSION="25.8.0-dev-23ccbd2b-chart"
+          make bats
