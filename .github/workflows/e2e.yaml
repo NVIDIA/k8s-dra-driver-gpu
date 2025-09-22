@@ -4,6 +4,12 @@ on:
   push:
   pull_request:
 
+# Only one job at any time, and cancel in-progress
+concurrency:
+  # Cancel when push to the same branch
+  group: ${{ github.workflow }}-${{ github.head_ref }}
+  cancel-in-progress: true
+
 jobs:
   bats:
     runs-on: compute-domain-runner
