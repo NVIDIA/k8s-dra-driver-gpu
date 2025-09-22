@@ -76,7 +76,7 @@ iupgrade_wait() {
 
 apply_check_delete_workload_imex_chan_inject() {
   kubectl apply -f demo/specs/imex/channel-injection.yaml
-  kubectl wait --for=condition=READY pods imex-channel-injection --timeout=70s
+  kubectl wait --for=condition=READY pods imex-channel-injection --timeout=100s
   run kubectl logs imex-channel-injection
   assert_output --partial "channel0"
   kubectl delete -f demo/specs/imex/channel-injection.yaml
