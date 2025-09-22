@@ -1,16 +1,16 @@
 name: tests-jp
 
 on:
-  workflow_call:
-  workflow_dispatch:
+  push:
+  pull_request:
 
 jobs:
-  build:
-    uses: ./.github/workflows/ci.yaml
+  testsuite:
     runs-on: compute-domain-runner
     steps:
       - uses: actions/checkout@v5
-      - name: tests
+      - name: bats-suite
         run: |
           echo "running"
+          sudo apt-get -y install time
           make bats

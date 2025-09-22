@@ -39,3 +39,10 @@ jobs:
     - basic
     secrets: inherit
     uses: ./.github/workflows/chart.yaml
+
+  tests:
+    uses: ./.github/workflows/e2e.yaml
+    needs:
+    - image
+    - chart
+ 
