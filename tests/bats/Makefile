@@ -71,7 +71,7 @@ image:
 .PHONY: tests
 tests: image
 	@mkdir -p tests-out && \
-	export _RUNDIR=$$(shell mktemp -p tests-out -d -t bats-tests-$$(date +%s)-XXXXX) && \
+	export _RUNDIR=$$(mktemp -p tests-out -d -t bats-tests-$$(date +%s)-XXXXX) && \
 	docker run \
 		--rm \
 		-v /tmp:/tmp \
@@ -88,7 +88,7 @@ tests: image
 		-u $(shell id -u ${USER}):$(shell id -g ${USER}) \
 		--entrypoint "/bin/bash"\
 		$(BATS_IMAGE) \
-		-c "cd /cwd; \
+		-c "set -x; cd /cwd; \
 		        echo "kubeconfig head:"; cat /kubeconfig | head -n2; \
 		        echo 'kubectl get nodes' || exit 1; \
 			echo 'Running k8s cluster cleanup (invasive)... '; \
