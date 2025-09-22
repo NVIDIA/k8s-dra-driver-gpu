@@ -68,6 +68,9 @@ image:
 # suite/file 'setup' in bats, but we'd lose output on success). During dev, you
 # may want to add --show-output-of-passing-tests (and read bats docs for other
 # cmdline args).
+#
+# In CI, this target is executed containerized (and uses docker-in-docker).
+# $(KUBECONFIG) (a mount source) must be a path on the host.
 .PHONY: tests
 tests: image
 	echo "KUBECONFIG: $(KUBECONFIG)" && \
@@ -90,7 +93,7 @@ tests: image
 		--entrypoint "/bin/bash"\
 		$(BATS_IMAGE) \
 		-c "set -ex; cd /cwd; \
-		        echo 'kubeconfig head:'; cat /kubeconfig | head -n2; \
+		        cat /kubeconfig | head -n2; \
 		        kubectl get nodes; \
 			echo 'Running k8s cluster cleanup (invasive)... '; \
 			bash tests/bats/cleanup-from-previous-run.sh 2>&1 | tee -a $${_RUNDIR}/cleanup.outerr; \
