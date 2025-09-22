@@ -70,7 +70,8 @@ image:
 # cmdline args).
 .PHONY: tests
 tests: image
-	@mkdir -p tests-out && \
+	echo "KUBECONFIG: $(KUBECONFIG)" && \
+	mkdir -p tests-out && \
 	export _RUNDIR=$$(mktemp -p tests-out -d -t bats-tests-$$(date +%s)-XXXXX) && \
 	docker run \
 		--rm \
@@ -88,9 +89,9 @@ tests: image
 		-u $(shell id -u ${USER}):$(shell id -g ${USER}) \
 		--entrypoint "/bin/bash"\
 		$(BATS_IMAGE) \
-		-c "set -x; cd /cwd; \
-		        echo "kubeconfig head:"; cat /kubeconfig | head -n2; \
-		        echo 'kubectl get nodes' || exit 1; \
+		-c "set -ex; cd /cwd; \
+		        echo 'kubeconfig head:'; cat /kubeconfig | head -n2; \
+		        kubectl get nodes; \
 			echo 'Running k8s cluster cleanup (invasive)... '; \
 			bash tests/bats/cleanup-from-previous-run.sh 2>&1 | tee -a $${_RUNDIR}/cleanup.outerr; \
 			TMPDIR=/cwd/$${_RUNDIR} bats \
