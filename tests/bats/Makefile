@@ -72,8 +72,7 @@ image:
 tests: image
 	mkdir -p tests-out && \
 	export _RUNDIR=$(shell mktemp -p tests-out -d -t bats-tests-$$(date +%s)-XXXXX) && \
-	time docker run \
-		-it \
+	docker run \
 		-v /tmp:/tmp \
 		-v $(CURDIR):/cwd \
 		-v $(HOME)/.kube/:$(HOME)/.kube \

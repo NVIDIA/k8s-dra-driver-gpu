@@ -1,16 +1,15 @@
-name: tests-jp
+name: tests
 
 on:
   push:
   pull_request:
 
 jobs:
-  testsuite:
+  bats:
     runs-on: compute-domain-runner
     steps:
       - uses: actions/checkout@v5
-      - name: bats-suite
+      - name: make-bats
         run: |
           echo "running"
-          sudo apt-get -y install time
           make bats
