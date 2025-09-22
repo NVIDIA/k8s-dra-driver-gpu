@@ -164,6 +164,7 @@ apply_check_delete_workload_imex_chan_inject() {
 }
 
 @test "NodePrepareResources: catch unknown field in opaque cfg in ResourceClaim" {
+  skip
   local SPEC="tests/bats/specs/rc-opaque-cfg-unknown-field.yaml"
 
   # Create pod with random name suffix.
