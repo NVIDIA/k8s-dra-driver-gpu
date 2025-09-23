@@ -54,6 +54,7 @@ type Flags struct {
 	kubeletRegistrarDirectoryPath string
 	kubeletPluginsDirectoryPath   string
 	healthcheckPort               int
+	additionalXidsToIgnore        string
 }
 
 type Config struct {
@@ -147,6 +148,13 @@ func newApp() *cli.App {
 			Value:       -1,
 			Destination: &flags.healthcheckPort,
 			EnvVars:     []string{"HEALTHCHECK_PORT"},
+		},
+		&cli.StringFlag{
+			Name:        "additional-xids-to-ignore",
+			Usage:       "A comma-separated list of additional XIDs to ignore.",
+			Value:       "",
+			Destination: &flags.additionalXidsToIgnore,
+			EnvVars:     []string{"ADDITIONAL_XIDs_TO_IGNORE"},
 		},
 	}
 	cliFlags = append(cliFlags, flags.kubeClientConfig.Flags()...)

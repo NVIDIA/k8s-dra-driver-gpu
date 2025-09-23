@@ -19,6 +19,8 @@ package main
 import (
 	"context"
 	"fmt"
+	"strconv"
+	"strings"
 	"sync"
 
 	"github.com/NVIDIA/go-nvml/pkg/nvml"
@@ -49,15 +51,15 @@ func newDeviceHealthMonitor(ctx context.Context, config *Config, allocatable All
 		stop:      make(chan struct{}),
 	}
 
-	if r := m.nvmllib.Init(); r != nvml.SUCCESS {
-		return nil, fmt.Errorf("failed to initialize NVML: %v", r)
+	if ret := m.nvmllib.Init(); ret != nvml.SUCCESS {
+		return nil, fmt.Errorf("failed to initialize NVML: %v", ret)
 	}
 
 	klog.V(6).Info("creating NVML events for device health monitor")
-	eventSet, err := m.nvmllib.EventSetCreate()
-	if err != nvml.SUCCESS {
+	eventSet, ret := m.nvmllib.EventSetCreate()
+	if ret != nvml.SUCCESS {
 		_ = m.nvmllib.Shutdown()
-		return nil, fmt.Errorf("failed to create event set: %w", err)
+		return nil, fmt.Errorf("failed to create event set: %w", ret)
 	}
 	m.eventSet = eventSet
 
@@ -66,16 +68,15 @@ func newDeviceHealthMonitor(ctx context.Context, config *Config, allocatable All
 	klog.V(6).Info("registering NVML events for device health monitor")
 	m.registerDevicesForEvents()
 
+	skippedXids := m.xidsToSkip(config.flags.additionalXidsToIgnore)
 	klog.V(6).Info("started device health monitoring")
 	m.wg.Add(1)
-	go m.run()
+	go m.run(skippedXids)
 
 	return m, nil
 }
 
 func (m *deviceHealthMonitor) registerDevicesForEvents() {
-	// SWATI: 1. add a list of xids to ignore
-	// 2. Skip ECC errors
 	eventMask := uint64(nvml.EventTypeXidCriticalError | nvml.EventTypeDoubleBitEccError | nvml.EventTypeSingleBitEccError)
 
 	processedUUIDs := make(map[string]bool)
@@ -91,26 +92,26 @@ func (m *deviceHealthMonitor) registerDevicesForEvents() {
 		if processedUUIDs[u] {
 			continue
 		}
-		gpu, err := m.nvmllib.DeviceGetHandleByUUID(u)
-		if err != nvml.SUCCESS {
-			klog.Infof("Unable to get device handle from UUID[%s]: %v; marking it as unhealthy", u, err)
+		gpu, ret := m.nvmllib.DeviceGetHandleByUUID(u)
+		if ret != nvml.SUCCESS {
+			klog.Infof("Unable to get device handle from UUID[%s]: %v; marking it as unhealthy", u, ret)
 			m.unhealthy <- dev
 			continue
 		}
 
-		supportedEvents, err := gpu.GetSupportedEventTypes()
-		if err != nvml.SUCCESS {
-			klog.Infof("unable to determine the supported events for %s: %v; marking it as unhealthy", u, err)
+		supportedEvents, ret := gpu.GetSupportedEventTypes()
+		if ret != nvml.SUCCESS {
+			klog.Infof("unable to determine the supported events for %s: %v; marking it as unhealthy", u, ret)
 			m.unhealthy <- dev
 			continue
 		}
 
-		err = gpu.RegisterEvents(eventMask&supportedEvents, m.eventSet)
-		if err == nvml.ERROR_NOT_SUPPORTED {
+		ret = gpu.RegisterEvents(eventMask&supportedEvents, m.eventSet)
+		if ret == nvml.ERROR_NOT_SUPPORTED {
 			klog.Warningf("Device %v is too old to support healthchecking.", u)
 		}
-		if err != nvml.SUCCESS {
-			klog.Infof("unable to register events for %s: %v; marking it as unhealthy", u, err)
+		if ret != nvml.SUCCESS {
+			klog.Infof("unable to register events for %s: %v; marking it as unhealthy", u, ret)
 			m.unhealthy <- dev
 		}
 		processedUUIDs[u] = true
@@ -128,8 +129,8 @@ func (m *deviceHealthMonitor) Stop() {
 
 	m.eventSet.Free()
 
-	if r := m.nvmllib.Shutdown(); r != nvml.SUCCESS {
-		klog.Warningf("failed to shutdown NVML: %v", r)
+	if ret := m.nvmllib.Shutdown(); ret != nvml.SUCCESS {
+		klog.Warningf("failed to shutdown NVML: %v", ret)
 	}
 	close(m.unhealthy)
 }
@@ -145,7 +146,7 @@ func getUUIDToDeviceMap(allocatable AllocatableDevices) map[string]*AllocatableD
 	return uuidToDeviceMap
 }
 
-func (m *deviceHealthMonitor) run() {
+func (m *deviceHealthMonitor) run(skippedXids map[uint64]bool) {
 	defer m.wg.Done()
 	for {
 		select {
@@ -153,33 +154,32 @@ func (m *deviceHealthMonitor) run() {
 			klog.V(6).Info("Stopping event-driven GPU health monitor...")
 			return
 		default:
-			event, err := m.eventSet.Wait(5000)
-			if err == nvml.ERROR_TIMEOUT {
+			event, ret := m.eventSet.Wait(5000)
+			if ret == nvml.ERROR_TIMEOUT {
 				continue
 			}
-			if err != nvml.SUCCESS {
-				klog.Infof("Error waiting for event: %v; Marking all devices as unhealthy", err)
+			if ret != nvml.SUCCESS {
+				klog.Infof("Error waiting for event: %v; Marking all devices as unhealthy", ret)
 				for _, dev := range m.uuidToDeviceMap {
 					m.unhealthy <- dev
 				}
 				continue
 			}
 
-			klog.Infof("Processing event %+v", event)
-			switch event.EventType {
-			case nvml.EventTypeXidCriticalError:
-				klog.Warningf("Critical XID error detected on device: %+v", event)
-			case nvml.EventTypeDoubleBitEccError:
-				klog.Warningf("Double-bit ECC error detected on device: %+v", event)
-			case nvml.EventTypeSingleBitEccError:
-				klog.Infof("Single-bit ECC error detected on device:%+v", event)
-			default:
+			if event.EventType != nvml.EventTypeXidCriticalError {
+				klog.Infof("Skipping non-nvmlEventTypeXidCriticalError event: %+v", event)
 				continue
 			}
 
-			eventUUID, err := event.Device.GetUUID()
-			if err != nvml.SUCCESS {
-				klog.Infof("Failed to determine uuid for event %v: %v; Marking all devices as unhealthy.", event, err)
+			if skippedXids[event.EventData] {
+				klog.Infof("Skipping event %+v", event)
+				continue
+			}
+
+			klog.Infof("Processing event %+v", event)
+			eventUUID, ret := event.Device.GetUUID()
+			if ret != nvml.SUCCESS {
+				klog.Infof("Failed to determine uuid for event %v: %v; Marking all devices as unhealthy.", event, ret)
 				for _, dev := range m.uuidToDeviceMap {
 					m.unhealthy <- dev
 				}
@@ -198,6 +198,7 @@ func (m *deviceHealthMonitor) run() {
 				klog.Infof("Ignoring event for unexpected device (UUID: %s, GI: %d, CI: %d)", eventUUID, event.GpuInstanceId, event.ComputeInstanceId)
 				continue
 			}
+
 			klog.Infof("Sending unhealthy notification for device %s due to event type %v", eventUUID, event.EventType)
 			m.unhealthy <- affectedDevice
 		}
@@ -229,4 +230,51 @@ func (m *deviceHealthMonitor) findGpuDevice(uuid string) *AllocatableDevice {
 		return device
 	}
 	return nil
+}
+
+// getAdditionalXids returns a list of additional Xids to skip from the specified string.
+// The input is treaded as a comma-separated string and all valid uint64 values are considered as Xid values.
+// Invalid values nare ignored.
+func getAdditionalXids(input string) []uint64 {
+	if input == "" {
+		return nil
+	}
+
+	var additionalXids []uint64
+	klog.V(6).Infof("Creating a list of additional xids to ignore: [%s]", input)
+	for _, additionalXid := range strings.Split(input, ",") {
+		trimmed := strings.TrimSpace(additionalXid)
+		if trimmed == "" {
+			continue
+		}
+		xid, err := strconv.ParseUint(trimmed, 10, 64)
+		if err != nil {
+			klog.Infof("Ignoring malformed Xid value %v: %v", trimmed, err)
+			continue
+		}
+		additionalXids = append(additionalXids, xid)
+	}
+
+	return additionalXids
+}
+
+func (m *deviceHealthMonitor) xidsToSkip(additionalXids string) map[uint64]bool {
+	ignoredXids := []uint64{
+		13,  // Graphics Engine Exception
+		31,  // GPU memory page fault
+		43,  // GPU stopped processing
+		45,  // Preemptive cleanup, due to previous errors
+		68,  // Video processor exception
+		109, // Context Switch Timeout Error
+	}
+
+	skippedXids := make(map[uint64]bool)
+	for _, id := range ignoredXids {
+		skippedXids[id] = true
+	}
+
+	for _, additionalXid := range getAdditionalXids(additionalXids) {
+		skippedXids[additionalXid] = true
+	}
+	return skippedXids
 }

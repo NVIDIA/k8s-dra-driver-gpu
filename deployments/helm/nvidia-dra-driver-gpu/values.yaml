@@ -163,6 +163,7 @@ kubeletPlugin:
       # Port running a gRPC health service checked by a livenessProbe.
       # Set to a negative value to disable the service and the probe.
       healthcheckPort: 51516
+      additionalXidsToIgnore: ""
   affinity:
     nodeAffinity:
       requiredDuringSchedulingIgnoredDuringExecution:

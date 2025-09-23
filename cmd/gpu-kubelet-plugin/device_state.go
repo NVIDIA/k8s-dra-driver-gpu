@@ -23,10 +23,7 @@ import (
 	"sync"
 
 	resourceapi "k8s.io/api/resource/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	metav1apply "k8s.io/client-go/applyconfigurations/meta/v1"
-	resourceapply "k8s.io/client-go/applyconfigurations/resource/v1beta1"
 	"k8s.io/dynamic-resource-allocation/kubeletplugin"
 	"k8s.io/klog/v2"
 	"k8s.io/kubernetes/pkg/kubelet/checkpointmanager"
@@ -288,13 +285,11 @@ func (s *DeviceState) prepareDevices(ctx context.Context, claim *resourceapi.Res
 		Config:   configapi.DefaultMigDeviceConfig(),
 	})
 
-	// Swati: Add resourceclaim status update
 	// Look through the configs and figure out which one will be applied to
 	// each device allocation result based on their order of precedence and type.
-	resourceClaimStatus := resourceapply.ResourceClaimStatus()
-	var deviceStatuses []*resourceapply.AllocatedDeviceStatusApplyConfiguration
 	configResultsMap := make(map[runtime.Object][]*resourceapi.DeviceRequestAllocationResult)
-	for _, result := range claim.Status.Allocation.Devices.Results {
+	results := claim.Status.Allocation.Devices.Results
+	for _, result := range results {
 		if result.Driver != DriverName {
 			continue
 		}
@@ -302,40 +297,12 @@ func (s *DeviceState) prepareDevices(ctx context.Context, claim *resourceapi.Res
 		if !exists {
 			return nil, fmt.Errorf("requested device is not allocatable: %v", result.Device)
 		}
-		// Swati add health check
-		klog.Info("[SWATI DEBUG] adding device status")
-		deviceStatus := resourceapply.AllocatedDeviceStatus().
-			WithDevice(result.Device).
-			WithDriver(result.Driver).
-			WithPool(result.Pool)
 
-		if device.Health == Unhealthy {
-			deviceStatus = deviceStatus.WithConditions(
-				metav1apply.Condition().
-					WithType("Ready").
-					WithStatus(metav1.ConditionFalse).
-					WithReason("Unhealthy").
-					WithMessage(fmt.Sprintf("Device %s is not healthy", result.Device)).
-					WithLastTransitionTime(metav1.Now()),
-			)
-			klog.Warningf("Device %s is unhealthy, marking as not ready", result.Device)
-		} else {
-			deviceStatus = deviceStatus.WithConditions(
-				metav1apply.Condition().
-					WithType("Ready").
-					WithStatus(metav1.ConditionTrue).
-					WithReason("Healthy").
-					WithMessage("Device is healthy and ready").
-					WithLastTransitionTime(metav1.Now()),
-			)
-			klog.Infof("Device %s is healthy, marking as ready", result.Device)
-		}
-		deviceStatuses = append(deviceStatuses, deviceStatus)
-
+		// SWATI: Confirm if we want to take an action or not
 		// Only proceed with config mapping for healthy devices
-		if device.Health == Unhealthy {
-			continue
-		}
+		//if device.Health == Unhealthy {
+		continue
+		//}
 
 		for _, c := range slices.Backward(configs) {
 			if slices.Contains(c.Requests, result.Request) {
@@ -360,25 +327,20 @@ func (s *DeviceState) prepareDevices(ctx context.Context, claim *resourceapi.Res
 			}
 		}
 	}
-	resourceClaimStatus = resourceClaimStatus.WithDevices(deviceStatuses...)
 
-	// Update the resource claim status
-	resourceClaimApply := resourceapply.ResourceClaim(claim.Name, claim.Namespace).WithStatus(resourceClaimStatus)
-	_, err = s.config.clientsets.Core.ResourceV1beta1().ResourceClaims(claim.Namespace).ApplyStatus(ctx,
-		resourceClaimApply,
-		metav1.ApplyOptions{FieldManager: DriverName, Force: true},
-	)
+	// SWATI: refractor the device status apply
+	//if featuregates.Enabled(featuregates.DeviceHealthCheck) {
+	//	if err := s.UpdateDeviceConditionInClaim(ctx, claim.Namespace, claim.Name, results); err != nil {
+	//		klog.Warningf("Failed to update status for ResourceClaim %s/%s: %v", claim.Namespace, claim.Name, err)
+	//	}
+	//}
 
-	if err != nil {
-		klog.Infof("failed to update status for claim %s/%s : %v", claim.Namespace, claim.Name, err)
-	} else {
-		klog.Infof("update status for claim %s/%s", claim.Namespace, claim.Name)
-	}
-
+	// SWATI: This is if above action is implemented
 	// If no healthy devices are available for configuration, return
-	if len(configResultsMap) == 0 {
-		return nil, fmt.Errorf("no healthy devices available for allocation")
-	}
+	//if len(configResultsMap) == 0 {
+	return nil, fmt.Errorf("no healthy devices available for allocation")
+	//}
+
 	// Normalize, validate, and apply all configs associated with devices that
 	// need to be prepared. Track device group configs generated from applying the
 	// config to the set of device allocation results.
