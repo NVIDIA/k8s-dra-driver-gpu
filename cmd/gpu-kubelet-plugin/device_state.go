@@ -23,7 +23,10 @@ import (
 	"sync"
 
 	resourceapi "k8s.io/api/resource/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	metav1apply "k8s.io/client-go/applyconfigurations/meta/v1"
+	resourceapply "k8s.io/client-go/applyconfigurations/resource/v1beta1"
 	"k8s.io/dynamic-resource-allocation/kubeletplugin"
 	"k8s.io/klog/v2"
 	"k8s.io/kubernetes/pkg/kubelet/checkpointmanager"
@@ -285,6 +288,9 @@ func (s *DeviceState) prepareDevices(ctx context.Context, claim *resourceapi.Res
 		Config:   configapi.DefaultMigDeviceConfig(),
 	})
 
+	// build device status
+	var deviceStatuses []*resourceapply.AllocatedDeviceStatusApplyConfiguration
+
 	// Look through the configs and figure out which one will be applied to
 	// each device allocation result based on their order of precedence and type.
 	configResultsMap := make(map[runtime.Object][]*resourceapi.DeviceRequestAllocationResult)
@@ -298,7 +304,10 @@ func (s *DeviceState) prepareDevices(ctx context.Context, claim *resourceapi.Res
 			return nil, fmt.Errorf("requested device is not allocatable: %v", result.Device)
 		}
 
-		// SWATI: Confirm if we want to take an action or not
+		deviceStatus := s.buildDeviceStatusApply(&result, device.Health)
+		deviceStatuses = append(deviceStatuses, deviceStatus)
+
+		// SWATI: Confirm if we want to take this action or not
 		// Only proceed with config mapping for healthy devices
 		//if device.Health == Unhealthy {
 		continue
@@ -328,17 +337,17 @@ func (s *DeviceState) prepareDevices(ctx context.Context, claim *resourceapi.Res
 		}
 	}
 
-	// SWATI: refractor the device status apply
-	//if featuregates.Enabled(featuregates.DeviceHealthCheck) {
-	//	if err := s.UpdateDeviceConditionInClaim(ctx, claim.Namespace, claim.Name, results); err != nil {
-	//		klog.Warningf("Failed to update status for ResourceClaim %s/%s: %v", claim.Namespace, claim.Name, err)
-	//	}
-	//}
+	if featuregates.Enabled(featuregates.DeviceHealthCheck) {
+		klog.V(6).Infof("Adding devices health status to claim %s/%s", claim.Namespace, claim.Name)
+		if err := s.applyClaimDeviceStatuses(ctx, claim.Namespace, claim.Name, deviceStatuses...); err != nil {
+			klog.Warningf("Failed to update devices status for claim %s/%s: %v", claim.Namespace, claim.Name, err)
+		}
+	}
 
 	// SWATI: This is if above action is implemented
 	// If no healthy devices are available for configuration, return
 	//if len(configResultsMap) == 0 {
-	return nil, fmt.Errorf("no healthy devices available for allocation")
+	//   return nil, fmt.Errorf("no healthy devices available for allocation")
 	//}
 
 	// Normalize, validate, and apply all configs associated with devices that
@@ -578,6 +587,45 @@ func (s *DeviceState) MarkDeviceUnhealthy(device *AllocatableDevice) {
 
 	device.Health = Unhealthy
 	klog.Infof("Marked device:%s unhealthy", device.GetUUID())
+}
+
+func (s *DeviceState) buildDeviceStatusApply(res *resourceapi.DeviceRequestAllocationResult, health string) *resourceapply.AllocatedDeviceStatusApplyConfiguration {
+	var status metav1.ConditionStatus
+	var reason, message string
+
+	if health == Healthy {
+		status = metav1.ConditionTrue
+		reason = "DeviceHealthy"
+		message = fmt.Sprintf("Device %s is healthy and ready.", res.Device)
+	} else {
+		status = metav1.ConditionFalse
+		reason = "DeviceUnhealthy"
+		message = fmt.Sprintf("Device %s has become unhealthy.", res.Device)
+	}
+
+	cond := metav1apply.Condition().
+		WithType("Ready").
+		WithStatus(status).
+		WithReason(reason).
+		WithMessage(message).
+		WithLastTransitionTime(metav1.Now())
+
+	return resourceapply.AllocatedDeviceStatus().
+		WithDevice(res.Device).
+		WithDriver(res.Driver).
+		WithPool(res.Pool).
+		WithConditions(cond)
+}
+
+func (s *DeviceState) applyClaimDeviceStatuses(ctx context.Context, ns, name string, devices ...*resourceapply.AllocatedDeviceStatusApplyConfiguration) error {
+	claim := resourceapply.ResourceClaim(name, ns).
+		WithStatus(resourceapply.ResourceClaimStatus().WithDevices(devices...))
+
+	opts := metav1.ApplyOptions{FieldManager: DriverName, Force: true}
+
+	// SWATI: fix hardcoded v1beta1 api
+	_, err := s.config.clientsets.Core.ResourceV1beta1().ResourceClaims(ns).ApplyStatus(ctx, claim, opts)
+	return err
 }
 
 // TODO: Dynamic MIG is not yet supported with structured parameters.

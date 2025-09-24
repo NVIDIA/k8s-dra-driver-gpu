@@ -28,7 +28,7 @@ import (
 )
 
 const (
-	InstanceID uint32 = 0xFFFFFFFF
+	FullGPUInstanceID uint32 = 0xFFFFFFFF
 )
 
 type deviceHealthMonitor struct {
@@ -187,7 +187,7 @@ func (m *deviceHealthMonitor) run(skippedXids map[uint64]bool) {
 			}
 
 			var affectedDevice *AllocatableDevice
-			if event.GpuInstanceId != InstanceID && event.ComputeInstanceId != InstanceID {
+			if event.GpuInstanceId != FullGPUInstanceID && event.ComputeInstanceId != FullGPUInstanceID {
 				affectedDevice = m.findMigDevice(eventUUID, event.GpuInstanceId, event.ComputeInstanceId)
 				klog.Infof("Event for mig device: %v", affectedDevice)
 			} else {
@@ -199,7 +199,7 @@ func (m *deviceHealthMonitor) run(skippedXids map[uint64]bool) {
 				continue
 			}
 
-			klog.Infof("Sending unhealthy notification for device %s due to event type %v", eventUUID, event.EventType)
+			klog.Infof("Sending unhealthy notification for device %s due to event type: %v and event data: %d", affectedDevice.GetUUID(), event.EventType, event.EventData)
 			m.unhealthy <- affectedDevice
 		}
 	}
