@@ -11,7 +11,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  bats:
+  k8s:
     runs-on: compute-domain-runner
     steps:
       - uses: actions/checkout@v5
