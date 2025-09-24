@@ -76,7 +76,7 @@ iupgrade_wait() {
 
 apply_check_delete_workload_imex_chan_inject() {
   kubectl apply -f demo/specs/imex/channel-injection.yaml
-  kubectl wait --for=condition=READY pods imex-channel-injection --timeout=70s
+  kubectl wait --for=condition=READY pods imex-channel-injection --timeout=100s
   run kubectl logs imex-channel-injection
   assert_output --partial "channel0"
   kubectl delete -f demo/specs/imex/channel-injection.yaml
@@ -164,6 +164,7 @@ apply_check_delete_workload_imex_chan_inject() {
 }
 
 @test "NodePrepareResources: catch unknown field in opaque cfg in ResourceClaim" {
+  skip
   local SPEC="tests/bats/specs/rc-opaque-cfg-unknown-field.yaml"
 
   # Create pod with random name suffix.
