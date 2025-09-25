@@ -49,7 +49,7 @@ TEST_NVIDIA_DRIVER_ROOT ?= "/run/nvidia/driver"
 TEST_EXPECTED_IMAGE_SPEC_SUBSTRING ?= $(VERSION)
 
 ifneq ($(TEST_CHART_LOCAL),"false")
-TEST_CHART_REPO = "deployments/helm/nvidia-dra-driver-gpu/"
+TEST_CHART_REPO = "deployments/helm/nvidia-dra-driver-gpu"
 TEST_CHART_VERSION = $(VERSION:v%=%)
 endif
 

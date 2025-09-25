@@ -164,7 +164,11 @@ apply_check_delete_workload_imex_chan_inject() {
 }
 
 @test "NodePrepareResources: catch unknown field in opaque cfg in ResourceClaim" {
-  local SPEC="tests/bats/specs/rc-opaque-cfg-unknown-field.yaml"
+  envsubst < tests/bats/specs/rc-opaque-cfg-unknown-field.yaml.tmpl > \
+    "${BATS_TEST_TMPDIR}"/rc-opaque-cfg-unknown-field.yaml
+  cd "${BATS_TEST_TMPDIR}"
+
+  local SPEC="rc-opaque-cfg-unknown-field.yaml"
 
   # Create pod with random name suffix.
   # Store ref of the form `pod/batssuite-pod-boc-brs2l`.
