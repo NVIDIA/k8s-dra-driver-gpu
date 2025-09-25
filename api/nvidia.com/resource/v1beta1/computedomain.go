@@ -39,7 +39,10 @@ type ComputeDomain struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec   ComputeDomainSpec   `json:"spec,omitempty"`
+	Spec ComputeDomainSpec `json:"spec,omitempty"`
+	// Global ComputeDomain status. Updated only when `Spec.numNodes` is
+	// non-zero. Can be used to guide debugging efforts. Workload however should
+	// not rely on inspecting this field at any point during its lifecycle.
 	Status ComputeDomainStatus `json:"status,omitempty"`
 }
 
@@ -57,6 +60,30 @@ type ComputeDomainList struct {
 
 // ComputeDomainSpec provides the spec for a ComputeDomain.
 type ComputeDomainSpec struct {
+	// Intended number of IMEX daemons (i.e., individual compute nodes) in the
+	// ComputeDomain. Must be zero or greater.
+	//
+	// With `featureGates.IMEXDaemonsWithDNSNames=true` (the default), this is
+	// recommended to be set to zero. Workload must implement and consult its
+	// own source of truth for the number of workers online before trying to
+	// share GPU memory (and hence triggering IMEX interaction). When non-zero,
+	// `numNodes` is used only for automatically updating the global
+	// ComputeDomain `Status` (indicating `Ready` when the number of ready IMEX
+	// daemons equals `numNodes`). In this mode, a `numNodes` value greater than
+	// zero in particular does not gate the startup of IMEX daemons: individual
+	// IMEX daemons are started immediately without waiting for its peers, and
+	// any workload pod gets released right after its local IMEX daemon has
+	// started.
+	//
+	// With `featureGates.IMEXDaemonsWithDNSNames=false`, `numNodes` must be set
+	// to the expected number of worker nodes joining the ComputeDomain. In that
+	// mode, all workload pods are held back (with containers in state
+	// `ContainerCreating`) until the underlying IMEX domain has been joined by
+	// `numNodes` IMEX daemons. Pods from more than `numNodes` nodes trying to
+	// join the ComputeDomain may lead to unexpected behavior.
+	//
+	// The `numNodes` parameter is deprecated and will be removed in the next
+	// API version.
 	NumNodes int                       `json:"numNodes"`
 	Channel  *ComputeDomainChannelSpec `json:"channel"`
 }
