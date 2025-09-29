@@ -185,6 +185,8 @@ func newApp() *cli.App {
 
 // Run invokes the IMEX daemon and manages its lifecycle.
 func run(ctx context.Context, cancel context.CancelFunc, flags *Flags) error {
+	klog.Infof("config: %v", flags)
+
 	// Support heterogeneous compute domain
 	if flags.cliqueID == "" {
 		fmt.Println("ClusterUUID and CliqueId are NOT set for GPUs on this node.")
@@ -205,7 +207,6 @@ func run(ctx context.Context, cancel context.CancelFunc, flags *Flags) error {
 		podNamespace:           flags.podNamespace,
 		maxNodesPerIMEXDomain:  flags.maxNodesPerIMEXDomain,
 	}
-	klog.Infof("config: %v", config)
 
 	// Write the IMEX config with the current pod IP before starting the daemon
 	if err := writeIMEXConfig(flags.podIP); err != nil {

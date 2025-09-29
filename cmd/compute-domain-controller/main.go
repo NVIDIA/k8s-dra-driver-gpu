@@ -38,6 +38,8 @@ import (
 	_ "k8s.io/component-base/metrics/prometheus/version"    // for version metric registration
 	_ "k8s.io/component-base/metrics/prometheus/workqueue"  // register work queues in the default legacy registry
 
+	"github.com/gdexlab/go-render/render"
+
 	"github.com/NVIDIA/k8s-dra-driver-gpu/internal/info"
 	"github.com/NVIDIA/k8s-dra-driver-gpu/pkg/flags"
 )
@@ -164,6 +166,8 @@ func newApp() *cli.App {
 			return flags.loggingConfig.Apply()
 		},
 		Action: func(c *cli.Context) error {
+			klog.Infof("config: %v", render.Render(flags))
+
 			mux := http.NewServeMux()
 
 			clientsets, err := flags.kubeClientConfig.NewClientSets()
