@@ -122,9 +122,9 @@ func NewDriver(ctx context.Context, config *Config) (*driver, error) {
 		return nil, err
 	}
 
-	healthcheck, err := startHealthcheck(ctx, config)
+	healthcheck, err := setupHealthcheckPrimitives(ctx, config)
 	if err != nil {
-		return nil, fmt.Errorf("start healthcheck: %w", err)
+		return nil, fmt.Errorf("error setting up healtcheck primitives: %w", err)
 	}
 	driver.healthcheck = healthcheck
 
