@@ -32,7 +32,7 @@ import (
 	"k8s.io/klog/v2"
 
 	"github.com/NVIDIA/k8s-dra-driver-gpu/internal/info"
-	"github.com/NVIDIA/k8s-dra-driver-gpu/pkg/flags"
+	pkgflags "github.com/NVIDIA/k8s-dra-driver-gpu/pkg/flags"
 )
 
 const (
@@ -41,9 +41,7 @@ const (
 )
 
 type Flags struct {
-	kubeClientConfig  flags.KubeClientConfig
-	loggingConfig     *flags.LoggingConfig
-	featureGateConfig *flags.FeatureGateConfig
+	kubeClientConfig pkgflags.KubeClientConfig
 
 	nodeName                      string
 	namespace                     string
@@ -59,7 +57,7 @@ type Flags struct {
 
 type Config struct {
 	flags      *Flags
-	clientsets flags.ClientSets
+	clientsets pkgflags.ClientSets
 }
 
 func (c Config) DriverPluginPath() string {
@@ -74,10 +72,10 @@ func main() {
 }
 
 func newApp() *cli.App {
-	flags := &Flags{
-		loggingConfig:     flags.NewLoggingConfig(),
-		featureGateConfig: flags.NewFeatureGateConfig(),
-	}
+	loggingConfig := pkgflags.NewLoggingConfig()
+	featureGateConfig := pkgflags.NewFeatureGateConfig()
+	flags := &Flags{}
+
 	cliFlags := []cli.Flag{
 		&cli.StringFlag{
 			Name:        "node-name",
@@ -151,8 +149,8 @@ func newApp() *cli.App {
 		},
 	}
 	cliFlags = append(cliFlags, flags.kubeClientConfig.Flags()...)
-	cliFlags = append(cliFlags, flags.featureGateConfig.Flags()...)
-	cliFlags = append(cliFlags, flags.loggingConfig.Flags()...)
+	cliFlags = append(cliFlags, featureGateConfig.Flags()...)
+	cliFlags = append(cliFlags, loggingConfig.Flags()...)
 
 	app := &cli.App{
 		Name:            "gpu-kubelet-plugin",
@@ -164,11 +162,12 @@ func newApp() *cli.App {
 			if c.Args().Len() > 0 {
 				return fmt.Errorf("arguments not supported: %v", c.Args().Slice())
 			}
-			return flags.loggingConfig.Apply()
+			// `loggingConfig` must be applied before doing any logging
+			err := loggingConfig.Apply()
+			pkgflags.LogStartupConfig(flags, loggingConfig)
+			return err
 		},
 		Action: func(c *cli.Context) error {
-			ctx := c.Context
-
 			clientSets, err := flags.kubeClientConfig.NewClientSets()
 			if err != nil {
 				return fmt.Errorf("create client: %w", err)
@@ -179,7 +178,7 @@ func newApp() *cli.App {
 				clientsets: clientSets,
 			}
 
-			return RunPlugin(ctx, config)
+			return RunPlugin(c.Context, config)
 		},
 		After: func(c *cli.Context) error {
 			// Runs after `Action` (regardless of success/error). In urfave cli

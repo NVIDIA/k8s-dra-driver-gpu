@@ -21,6 +21,10 @@ import (
 
 	"github.com/spf13/pflag"
 	"github.com/urfave/cli/v2"
+	"k8s.io/apimachinery/pkg/util/dump"
+	"k8s.io/klog/v2"
+
+	"github.com/NVIDIA/k8s-dra-driver-gpu/pkg/featuregates"
 )
 
 func pflagToCLI(flag *pflag.Flag, category string) cli.Flag {
@@ -32,4 +36,22 @@ func pflagToCLI(flag *pflag.Flag, category string) cli.Flag {
 		Destination: flag.Value,
 		EnvVars:     []string{strings.ToUpper(strings.ReplaceAll(flag.Name, "-", "_"))},
 	}
+}
+
+func LogStartupConfig(parsedFlags any, loggingConfig *LoggingConfig) {
+	// Always log component startup config (level 0).
+	klog.Infof("\nFeature gates: %#v\nVerbosity: %d\nFlags: %s",
+		// Flat boolean map -- no pretty-printing needed.
+		featuregates.ToMap(),
+		loggingConfig.config.Verbosity,
+		// Based on go-spew's Sdump(), with indentation. Type information is
+		// always displayed (cannot be disabled).
+		dump.Pretty(parsedFlags),
+	)
+
+	// This is a complex object, comprised of largely static default klog
+	// component configuration. Various parts can be overridden via environment
+	// variables or CLI flags: it makes sense to log the interpolated config,
+	// but only on a high verbosity level.
+	klog.V(6).Infof("Logging config: %s", dump.Pretty(loggingConfig))
 }

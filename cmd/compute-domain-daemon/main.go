@@ -34,7 +34,7 @@ import (
 
 	nvapi "github.com/NVIDIA/k8s-dra-driver-gpu/api/nvidia.com/resource/v1beta1"
 	"github.com/NVIDIA/k8s-dra-driver-gpu/pkg/featuregates"
-	"github.com/NVIDIA/k8s-dra-driver-gpu/pkg/flags"
+	pkgflags "github.com/NVIDIA/k8s-dra-driver-gpu/pkg/flags"
 )
 
 const (
@@ -55,8 +55,6 @@ type Flags struct {
 	podName                string
 	podNamespace           string
 	maxNodesPerIMEXDomain  int
-	loggingConfig          *flags.LoggingConfig
-	featureGateConfig      *flags.FeatureGateConfig
 }
 
 type IMEXConfigTemplateData struct {
@@ -71,10 +69,9 @@ func main() {
 }
 
 func newApp() *cli.App {
-	flags := Flags{
-		loggingConfig:     flags.NewLoggingConfig(),
-		featureGateConfig: flags.NewFeatureGateConfig(),
-	}
+	loggingConfig := pkgflags.NewLoggingConfig()
+	featureGateConfig := pkgflags.NewFeatureGateConfig()
+	flags := &Flags{}
 
 	// Create a wrapper that will be used to gracefully shut down all subcommands
 	wrapper := func(ctx context.Context, f func(ctx context.Context, cancel context.CancelFunc, flags *Flags) error) error {
@@ -91,7 +88,7 @@ func newApp() *cli.App {
 		}()
 
 		// Call the wrapped function
-		return f(ctx, cancel, &flags)
+		return f(ctx, cancel, flags)
 	}
 
 	cliFlags := []cli.Flag{
@@ -151,8 +148,8 @@ func newApp() *cli.App {
 			Destination: &flags.maxNodesPerIMEXDomain,
 		},
 	}
-	cliFlags = append(cliFlags, flags.featureGateConfig.Flags()...)
-	cliFlags = append(cliFlags, flags.loggingConfig.Flags()...)
+	cliFlags = append(cliFlags, featureGateConfig.Flags()...)
+	cliFlags = append(cliFlags, loggingConfig.Flags()...)
 
 	// Create the app
 	app := &cli.App{
@@ -160,7 +157,10 @@ func newApp() *cli.App {
 		Usage: "compute-domain-daemon manages the IMEX daemon for NVIDIA compute domains.",
 		Flags: cliFlags,
 		Before: func(c *cli.Context) error {
-			return flags.loggingConfig.Apply()
+			// `loggingConfig` must be applied before doing any logging
+			err := loggingConfig.Apply()
+			pkgflags.LogStartupConfig(flags, loggingConfig)
+			return err
 		},
 		Commands: []*cli.Command{
 			{
@@ -197,7 +197,6 @@ func run(ctx context.Context, cancel context.CancelFunc, flags *Flags) error {
 		podNamespace:           flags.podNamespace,
 		maxNodesPerIMEXDomain:  flags.maxNodesPerIMEXDomain,
 	}
-	klog.Infof("config: %v", config)
 
 	// Support heterogeneous ComputeDomains. That means that a CD may contain
 	// nodes that do not take part in Multi-Node NVLink communication. On such
