@@ -20,7 +20,9 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"time"
 
+	"golang.org/x/time/rate"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog/v2"
@@ -36,6 +38,24 @@ type WorkItem struct {
 	Key      string
 	Object   any
 	Callback func(ctx context.Context, obj any) error
+}
+
+// Return composite rate limiter that combines both per-item exponential backoff
+// and an overall token bucket rate-limiting strategy. It calculates the
+// exponential backoff for the individual item (based on its personal retry
+// history), checks the global rate against the token bucket, and picks the
+// longest delay from either strategy, ensuring that both per-item and overall
+// queue health are respected.
+func DefaultPrepUnprepRateLimiter() workqueue.TypedRateLimiter[any] {
+	return workqueue.NewTypedMaxOfRateLimiter(
+		// This is a per-item exponential backoff limiter. Each time an item
+		// fails and is retried, the delay grows exponentially starting from the
+		// lower value up to the upper bound.
+		workqueue.NewTypedItemExponentialFailureRateLimiter[any](250*time.Millisecond, 3000*time.Second),
+		// Global (not per-item) rate limiter. Allows up to 5 retries per
+		// second, with bursts of up to 10.
+		&workqueue.TypedBucketRateLimiter[any]{Limiter: rate.NewLimiter(rate.Limit(5), 10)},
+	)
 }
 
 func DefaultControllerRateLimiter() workqueue.TypedRateLimiter[any] {
