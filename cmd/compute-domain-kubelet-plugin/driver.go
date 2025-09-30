@@ -157,7 +157,7 @@ func (d *driver) PrepareResourceClaims(ctx context.Context, claims []*resourceap
 
 	var wg sync.WaitGroup
 	ctx, cancel := context.WithTimeout(ctx, ErrorRetryMaxTimeout)
-	workQueue := workqueue.New(workqueue.DefaultControllerRateLimiter())
+	workQueue := workqueue.New(workqueue.DefaultPrepUnprepRateLimiter())
 	results := make(map[types.UID]kubeletplugin.PrepareResult)
 
 	for _, claim := range claims {
@@ -188,7 +188,10 @@ func (d *driver) UnprepareResourceClaims(ctx context.Context, claimRefs []kubele
 
 	var wg sync.WaitGroup
 	ctx, cancel := context.WithTimeout(ctx, ErrorRetryMaxTimeout)
-	workQueue := workqueue.New(workqueue.DefaultControllerRateLimiter())
+
+	// Review: do we want to have a new queue per incoming Prepare/Unprepare
+	// request?
+	workQueue := workqueue.New(workqueue.DefaultPrepUnprepRateLimiter())
 	results := make(map[types.UID]error)
 
 	for _, claim := range claimRefs {
