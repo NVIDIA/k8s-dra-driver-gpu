@@ -52,7 +52,7 @@ spec:
           {{- toYaml .Values.controller.containers.computeDomain.securityContext | nindent 10 }}
         image: {{ include "nvidia-dra-driver-gpu.fullimage" . }}
         imagePullPolicy: {{ .Values.image.pullPolicy }}
-        command: ["compute-domain-controller", "-v", "6"]
+        command: ["compute-domain-controller", "-v", "{{ .Values.logVerbosity }}"]
         resources:
           {{- toYaml .Values.controller.containers.computeDomain.resources | nindent 10 }}
         env:

@@ -99,7 +99,7 @@ spec:
             sed -i 's/^ModifyDeviceFiles: 1$/ModifyDeviceFiles: 0/' root/gpu-params
             mount --bind root/gpu-params /proc/driver/nvidia/params
           fi
-          compute-domain-kubelet-plugin -v 6
+          compute-domain-kubelet-plugin -v {{ .Values.logVerbosity }}
         resources:
           {{- toYaml .Values.kubeletPlugin.containers.computeDomains.resources | nindent 10 }}
         {{/*
@@ -181,7 +181,7 @@ spec:
             sed -i 's/^ModifyDeviceFiles: 1$/ModifyDeviceFiles: 0/' root/gpu-params
             mount --bind root/gpu-params /proc/driver/nvidia/params
           fi
-          gpu-kubelet-plugin -v 6
+          gpu-kubelet-plugin -v {{ .Values.logVerbosity }}
         resources:
           {{- toYaml .Values.kubeletPlugin.containers.gpus.resources | nindent 10 }}
         {{/*
