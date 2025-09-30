@@ -69,6 +69,30 @@ resources:
 #   LoggingBetaOptions: true           # Kubernetes logging beta features
 featureGates: {}
 
+# klog verbosity for all components. Zero or greater. Higher number: higher
+# verbosity. Warning and error log messages are always logged (regardless of
+# this setting). Info-level messages on level 0 and are also always logged (this
+# cannot be prevented).
+#
+# Level 0:
+# - Configuration (startup)
+# - Permanent error upon (un)preparing device
+#
+# Level 1 (default):
+# - Device (un)prepare confirmation with claim UID
+# - Workqueue reconciliation failures (noisy: mainly expected, retryable errors)
+# - Controller: cleanup of stale objects
+#
+# Level 2:
+# - Unprepare noop
+# - Controller: added/updated object callback confirmation
+#
+# Level 6 and higher:
+# - Checkpoint file updates
+# - Kubelet plugin GRPC request/response detail
+#
+logVerbosity: "1"
+
 # Webhook configuration
 webhook:
   enabled: false
