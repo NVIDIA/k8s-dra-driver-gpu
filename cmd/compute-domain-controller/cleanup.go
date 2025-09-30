@@ -123,7 +123,7 @@ func (m *CleanupManager[T]) cleanup(ctx context.Context) {
 			continue
 		}
 
-		klog.Infof("Cleanup: stale %T found for ComputeDomain '%s', running callback", *new(T), uid)
+		klog.V(1).Infof("Cleanup: stale %T found for ComputeDomain '%s', running callback", *new(T), uid)
 		if err := m.callback(ctx, uid); err != nil {
 			klog.Errorf("error running CleanupManager callback: %v", err)
 			continue

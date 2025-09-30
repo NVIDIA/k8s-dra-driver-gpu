@@ -202,6 +202,9 @@ func (d *driver) UnprepareResourceClaims(ctx context.Context, claimRefs []kubele
 			if done {
 				results[claim.UID] = err
 				wg.Done()
+				if err != nil {
+					klog.V(0).Infof("Permanent error unpreparing devices for claim %v: %v", claim.UID, err)
+				}
 				return nil
 			}
 			return fmt.Errorf("%w", err)
@@ -251,13 +254,14 @@ func (d *driver) nodePrepareResource(ctx context.Context, claim *resourceapi.Res
 			Err: fmt.Errorf("error preparing devices for claim %s/%s:%s: %w", claim.Namespace, claim.Name, claim.UID, err),
 		}
 		if isPermanentError(err) {
-			klog.V(6).Infof("Permanent error preparing devices for claim %v: %v", claim.UID, err)
+			klog.V(0).Infof("Permanent error preparing devices for claim %v: %v", claim.UID, err)
 			return true, res
 		}
 		return false, res
 	}
 
-	klog.Infof("prepared devices for claim '%s/%s:%s': %v", claim.Namespace, claim.Name, claim.UID, devs)
+	klog.V(1).Infof("prepared devices for claim '%s/%s:%s': %v", claim.Namespace, claim.Name, claim.UID, devs)
+
 	return true, kubeletplugin.PrepareResult{Devices: devs}
 }
 
@@ -272,7 +276,7 @@ func (d *driver) nodeUnprepareResource(ctx context.Context, claimRef kubeletplug
 		return isPermanentError(err), fmt.Errorf("error unpreparing devices for claim '%v': %w", claimRef.String(), err)
 	}
 
-	klog.Infof("unprepared devices for claim '%v'", claimRef.String())
+	klog.V(1).Infof("Unprepared devices for claim '%v'", claimRef.String())
 	return true, nil
 }
 
