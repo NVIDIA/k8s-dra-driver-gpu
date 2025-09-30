@@ -30,6 +30,8 @@ import (
 	"k8s.io/dynamic-resource-allocation/kubeletplugin"
 	"k8s.io/klog/v2"
 
+	"k8s.io/component-base/logs"
+
 	"github.com/NVIDIA/k8s-dra-driver-gpu/internal/info"
 	"github.com/NVIDIA/k8s-dra-driver-gpu/pkg/flags"
 )
@@ -172,6 +174,14 @@ func newApp() *cli.App {
 			}
 
 			return RunPlugin(ctx, config)
+		},
+		After: func(c *cli.Context) error {
+			// Runs after `Action` (regardless of success/error). In urfave cli
+			// v2, the final error reported will be from either Action, Before,
+			// or After (whichever is non-nil and last executed).
+			klog.Infof("shutdown")
+			logs.FlushLogs()
+			return nil
 		},
 		Version: info.GetVersionString(),
 	}
