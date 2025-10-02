@@ -341,17 +341,21 @@ func check(ctx context.Context, cancel context.CancelFunc, flags *Flags) error {
 		return nil
 	}
 
-	// Check if IMEX daemon is ready
+	// -q is documented with "Query the status of the IMEX daemon once and
+	// return". This probes if the local IMEX daemon is ready (not the entire
+	// domain). Reference:
+	// https://docs.nvidia.com/multi-node-nvlink-systems/imex-guide/cmdservice.html
 	cmd := exec.CommandContext(ctx, imexCtlBinaryName, "-q")
 
-	// CombinedOutput captures both, stdout and stderr.
-	output, err := cmd.CombinedOutput()
+	// Spawn child, collect standard streams.
+	outerr, err := cmd.CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("error checking IMEX daemon status: %w", err)
+		klog.Errorf("%s failed (%s), stdout/err: %s", imexCtlBinaryName, err, outerr)
+		return fmt.Errorf("IMEX daemon check failed: error running %s: %w", imexCtlBinaryName, err)
 	}
 
-	if string(output) != "READY\n" {
-		return fmt.Errorf("IMEX daemon not ready: %s", string(output))
+	if string(outerr) != "READY\n" {
+		return fmt.Errorf("IMEX daemon not ready: %s", string(outerr))
 	}
 
 	return nil
