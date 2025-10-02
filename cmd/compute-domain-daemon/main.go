@@ -322,13 +322,33 @@ func IMEXDaemonUpdateLoopWithDNSNames(ctx context.Context, controller *Controlle
 			klog.Infof("shutdown: stop IMEXDaemonUpdateLoopWithDNSNames")
 			return nil
 		case nodes := <-controller.GetNodesUpdateChan():
-			if err := dnsNameManager.UpdateDNSNameMappings(nodes); err != nil {
+			updated, err := dnsNameManager.UpdateDNSNameMappings(nodes)
+			if err != nil {
 				return fmt.Errorf("failed to update DNS name => IP mappings: %w", err)
 			}
-			if err := processManager.EnsureStarted(); err != nil {
+
+			fresh, err := processManager.EnsureStarted()
+			if err != nil {
 				return fmt.Errorf("failed to ensure IMEX daemon is started: %w", err)
 			}
+
 			dnsNameManager.LogDNSNameMappings()
+
+			// TODO: review skipping this if the new set of IP addresses only
+			// strictly removes addresses compared to the old set (then we don't
+			// need to force the daemon to re-resolve & re-connect).
+			if updated && !fresh {
+				// Actively ask the IMEX daemon to re-read its config and to
+				// re-connect to its peers (involving DNS name re-resolution).
+				klog.Infof("updated DNS names, old process: send SIGUSR1")
+				if err := processManager.Signal(syscall.SIGUSR1); err != nil {
+					// Only log (ignore this error for now: if the process went
+					// away unexpectedly, the process manager will handle that.
+					// If any other error resulted in bad signal delivery, we
+					// may get away with it).
+					klog.Errorf("failed to send SIGUSR1 to child process: %s", err)
+				}
+			}
 		}
 	}
 }
