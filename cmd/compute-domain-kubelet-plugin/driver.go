@@ -122,9 +122,9 @@ func NewDriver(ctx context.Context, config *Config) (*driver, error) {
 		return nil, err
 	}
 
-	healthcheck, err := startHealthcheck(ctx, config)
+	healthcheck, err := setupHealthcheckPrimitives(ctx, config)
 	if err != nil {
-		return nil, fmt.Errorf("start healthcheck: %w", err)
+		return nil, fmt.Errorf("error setting up healtcheck primitives: %w", err)
 	}
 	driver.healthcheck = healthcheck
 
@@ -157,7 +157,7 @@ func (d *driver) PrepareResourceClaims(ctx context.Context, claims []*resourceap
 
 	var wg sync.WaitGroup
 	ctx, cancel := context.WithTimeout(ctx, ErrorRetryMaxTimeout)
-	workQueue := workqueue.New(workqueue.DefaultControllerRateLimiter())
+	workQueue := workqueue.New(workqueue.DefaultPrepUnprepRateLimiter())
 	results := make(map[types.UID]kubeletplugin.PrepareResult)
 
 	for _, claim := range claims {
@@ -188,7 +188,10 @@ func (d *driver) UnprepareResourceClaims(ctx context.Context, claimRefs []kubele
 
 	var wg sync.WaitGroup
 	ctx, cancel := context.WithTimeout(ctx, ErrorRetryMaxTimeout)
-	workQueue := workqueue.New(workqueue.DefaultControllerRateLimiter())
+
+	// Review: do we want to have a new queue per incoming Prepare/Unprepare
+	// request?
+	workQueue := workqueue.New(workqueue.DefaultPrepUnprepRateLimiter())
 	results := make(map[types.UID]error)
 
 	for _, claim := range claimRefs {
@@ -199,6 +202,9 @@ func (d *driver) UnprepareResourceClaims(ctx context.Context, claimRefs []kubele
 			if done {
 				results[claim.UID] = err
 				wg.Done()
+				if err != nil {
+					klog.V(0).Infof("Permanent error unpreparing devices for claim %v: %v", claim.UID, err)
+				}
 				return nil
 			}
 			return fmt.Errorf("%w", err)
@@ -248,13 +254,13 @@ func (d *driver) nodePrepareResource(ctx context.Context, claim *resourceapi.Res
 			Err: fmt.Errorf("error preparing devices for claim %v: %w", claim.UID, err),
 		}
 		if isPermanentError(err) {
-			klog.V(6).Infof("Permanent error preparing devices for claim %v: %v", claim.UID, err)
+			klog.V(0).Infof("Permanent error preparing devices for claim %v: %v", claim.UID, err)
 			return true, res
 		}
 		return false, res
 	}
 
-	klog.Infof("Returning newly prepared devices for claim '%v': %v", claim.UID, devs)
+	klog.V(1).Infof("Prepared devices for claim '%v': %v", claim.UID, devs)
 	return true, kubeletplugin.PrepareResult{Devices: devs}
 }
 
@@ -269,7 +275,7 @@ func (d *driver) nodeUnprepareResource(ctx context.Context, claimRef kubeletplug
 		return isPermanentError(err), fmt.Errorf("error unpreparing devices for claim '%v': %w", claimRef.String(), err)
 	}
 
-	klog.Infof("unprepared devices for claim '%v'", claimRef.String())
+	klog.V(1).Infof("Unprepared devices for claim '%v'", claimRef.String())
 	return true, nil
 }
 

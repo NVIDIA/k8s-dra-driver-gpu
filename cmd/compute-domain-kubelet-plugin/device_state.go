@@ -212,7 +212,7 @@ func (s *DeviceState) Unprepare(ctx context.Context, claimRef kubeletplugin.Name
 		// device was never prepared or has already been unprepared (assume that
 		// Prepare+Checkpoint are done transactionally). Note that
 		// claimRef.String() contains namespace, name, UID.
-		klog.Infof("unprepare noop: claim not found in checkpoint data: %v", claimRef.String())
+		klog.V(2).Infof("unprepare noop: claim not found in checkpoint data: %v", claimRef.String())
 		return nil
 	}
 

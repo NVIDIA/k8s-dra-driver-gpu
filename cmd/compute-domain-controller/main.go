@@ -31,12 +31,15 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/urfave/cli/v2"
 
+	"k8s.io/component-base/logs"
 	"k8s.io/component-base/metrics/legacyregistry"
 	"k8s.io/klog/v2"
 
 	_ "k8s.io/component-base/metrics/prometheus/restclient" // for client metric registration
 	_ "k8s.io/component-base/metrics/prometheus/version"    // for version metric registration
 	_ "k8s.io/component-base/metrics/prometheus/workqueue"  // register work queues in the default legacy registry
+
+	"github.com/gdexlab/go-render/render"
 
 	"github.com/NVIDIA/k8s-dra-driver-gpu/internal/info"
 	"github.com/NVIDIA/k8s-dra-driver-gpu/pkg/flags"
@@ -164,6 +167,8 @@ func newApp() *cli.App {
 			return flags.loggingConfig.Apply()
 		},
 		Action: func(c *cli.Context) error {
+			klog.Infof("config: %v", render.Render(flags))
+
 			mux := http.NewServeMux()
 
 			clientsets, err := flags.kubeClientConfig.NewClientSets()
@@ -207,6 +212,14 @@ func newApp() *cli.App {
 					return nil
 				}
 			}
+		},
+		After: func(c *cli.Context) error {
+			// Runs after `Action` (regardless of success/error). In urfave cli
+			// v2, the final error reported will be from either Action, Before,
+			// or After (whichever is non-nil and last executed).
+			klog.Infof("shutdown")
+			logs.FlushLogs()
+			return nil
 		},
 		Version: info.GetVersionString(),
 	}

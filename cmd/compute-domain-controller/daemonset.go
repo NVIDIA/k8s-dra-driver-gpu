@@ -363,7 +363,7 @@ func (m *DaemonSetManager) onAddOrUpdate(ctx context.Context, obj any) error {
 		return fmt.Errorf("failed to cast to DaemonSet")
 	}
 
-	klog.Infof("Processing added or updated DaemonSet: %s/%s", d.Namespace, d.Name)
+	klog.V(2).Infof("Processing added or updated DaemonSet: %s/%s", d.Namespace, d.Name)
 
 	cd, err := m.getComputeDomain(d.Labels[computeDomainLabelKey])
 	if err != nil {

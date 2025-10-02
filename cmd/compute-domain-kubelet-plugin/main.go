@@ -27,8 +27,12 @@ import (
 
 	"github.com/urfave/cli/v2"
 
+	"github.com/gdexlab/go-render/render"
+
 	"k8s.io/dynamic-resource-allocation/kubeletplugin"
 	"k8s.io/klog/v2"
+
+	"k8s.io/component-base/logs"
 
 	"github.com/NVIDIA/k8s-dra-driver-gpu/internal/info"
 	"github.com/NVIDIA/k8s-dra-driver-gpu/pkg/flags"
@@ -159,7 +163,7 @@ func newApp() *cli.App {
 			return flags.loggingConfig.Apply()
 		},
 		Action: func(c *cli.Context) error {
-			ctx := c.Context
+			klog.Infof("config: %v", render.Render(flags))
 
 			clientSets, err := flags.kubeClientConfig.NewClientSets()
 			if err != nil {
@@ -171,7 +175,15 @@ func newApp() *cli.App {
 				clientsets: clientSets,
 			}
 
-			return RunPlugin(ctx, config)
+			return RunPlugin(c.Context, config)
+		},
+		After: func(c *cli.Context) error {
+			// Runs after `Action` (regardless of success/error). In urfave cli
+			// v2, the final error reported will be from either Action, Before,
+			// or After (whichever is non-nil and last executed).
+			klog.Infof("shutdown")
+			logs.FlushLogs()
+			return nil
 		},
 		Version: info.GetVersionString(),
 	}

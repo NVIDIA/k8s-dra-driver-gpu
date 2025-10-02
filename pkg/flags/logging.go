@@ -49,6 +49,8 @@ func (l *LoggingConfig) Apply() error {
 // Flags returns the flags for logging configuration (NOT including feature gates).
 func (l *LoggingConfig) Flags() []cli.Flag {
 	var fs pflag.FlagSet
+
+	// This also registers klog configuration flags (such as -v).
 	logsapi.AddFlags(l.config, &fs)
 
 	// Note: We do NOT add the feature-gates flag here anymore.
