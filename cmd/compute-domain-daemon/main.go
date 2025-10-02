@@ -340,7 +340,7 @@ func IMEXDaemonUpdateLoopWithDNSNames(ctx context.Context, controller *Controlle
 			if updated && !fresh {
 				// Actively ask the IMEX daemon to re-read its config and to
 				// re-connect to its peers (involving DNS name re-resolution).
-				klog.Infof("updated DNS names, old process: send SIGUSR1")
+				klog.Infof("updated DNS/IP mapping, old process: send SIGUSR1")
 				if err := processManager.Signal(syscall.SIGUSR1); err != nil {
 					// Only log (ignore this error for now: if the process went
 					// away unexpectedly, the process manager will handle that.
