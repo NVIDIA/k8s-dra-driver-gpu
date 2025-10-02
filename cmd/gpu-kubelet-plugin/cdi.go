@@ -166,7 +166,7 @@ func (cdi *CDIHandler) CreateStandardDeviceSpecFile(allocatable AllocatableDevic
 	// Generate device specs for all full GPUs and MIG devices.
 	var deviceSpecs []cdispec.Device
 	for _, device := range allocatable {
-		dspecs, err := cdi.nvcdiDevice.GetDeviceSpecsByID(device.CanonicalIndex())
+		dspecs, err := cdi.nvcdiDevice.GetDeviceSpecsByID(device.UUID())
 		if err != nil {
 			return fmt.Errorf("unable to get device spec for %s: %w", device.CanonicalName(), err)
 		}

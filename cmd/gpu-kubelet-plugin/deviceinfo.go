@@ -30,7 +30,6 @@ import (
 
 type GpuInfo struct {
 	UUID                  string `json:"uuid"`
-	index                 int
 	minor                 int
 	migEnabled            bool
 	memoryBytes           uint64
@@ -47,7 +46,6 @@ type GpuInfo struct {
 
 type MigDeviceInfo struct {
 	UUID          string `json:"uuid"`
-	index         int
 	profile       string
 	parent        *GpuInfo
 	placement     *MigDevicePlacement
@@ -80,14 +78,6 @@ func (d *MigDeviceInfo) CanonicalName() string {
 	return fmt.Sprintf("gpu-%d-mig-%d-%d-%d", d.parent.minor, d.giInfo.ProfileId, d.placement.Start, d.placement.Size)
 }
 
-func (d *GpuInfo) CanonicalIndex() string {
-	return fmt.Sprintf("%d", d.index)
-}
-
-func (d *MigDeviceInfo) CanonicalIndex() string {
-	return fmt.Sprintf("%d:%d", d.parent.index, d.index)
-}
-
 func (d *GpuInfo) GetDevice() resourceapi.Device {
 	device := resourceapi.Device{
 		Name: d.CanonicalName(),
@@ -97,12 +87,6 @@ func (d *GpuInfo) GetDevice() resourceapi.Device {
 			},
 			"uuid": {
 				StringValue: &d.UUID,
-			},
-			"minor": {
-				IntValue: ptr.To(int64(d.minor)),
-			},
-			"index": {
-				IntValue: ptr.To(int64(d.index)),
 			},
 			"productName": {
 				StringValue: &d.productName,
@@ -150,12 +134,6 @@ func (d *MigDeviceInfo) GetDevice() resourceapi.Device {
 			},
 			"parentUUID": {
 				StringValue: &d.parent.UUID,
-			},
-			"index": {
-				IntValue: ptr.To(int64(d.index)),
-			},
-			"parentIndex": {
-				IntValue: ptr.To(int64(d.parent.index)),
 			},
 			"profile": {
 				StringValue: &d.profile,

@@ -49,22 +49,22 @@ func (d *AllocatableDevice) CanonicalName() string {
 	panic("unexpected type for AllocatableDevice")
 }
 
-func (d *AllocatableDevice) CanonicalIndex() string {
-	switch d.Type() {
-	case GpuDeviceType:
-		return d.Gpu.CanonicalIndex()
-	case MigDeviceType:
-		return d.Mig.CanonicalIndex()
-	}
-	panic("unexpected type for AllocatableDevice")
-}
-
 func (d *AllocatableDevice) GetDevice() resourceapi.Device {
 	switch d.Type() {
 	case GpuDeviceType:
 		return d.Gpu.GetDevice()
 	case MigDeviceType:
 		return d.Mig.GetDevice()
+	}
+	panic("unexpected type for AllocatableDevice")
+}
+
+func (d AllocatableDevice) UUID() string {
+	if d.Gpu != nil {
+		return d.Gpu.UUID
+	}
+	if d.Mig != nil {
+		return d.Mig.UUID
 	}
 	panic("unexpected type for AllocatableDevice")
 }

@@ -65,16 +65,6 @@ func (d *PreparedDevice) CanonicalName() string {
 	panic("unexpected type for AllocatableDevice")
 }
 
-func (d *PreparedDevice) CanonicalIndex() string {
-	switch d.Type() {
-	case GpuDeviceType:
-		return d.Gpu.Info.CanonicalIndex()
-	case MigDeviceType:
-		return d.Mig.Info.CanonicalIndex()
-	}
-	panic("unexpected type for AllocatableDevice")
-}
-
 func (l PreparedDeviceList) Gpus() PreparedDeviceList {
 	var devices PreparedDeviceList
 	for _, device := range l {

@@ -264,7 +264,6 @@ func (l deviceLib) getGpuInfo(index int, device nvdev.Device) (*GpuInfo, error) 
 	gpuInfo := &GpuInfo{
 		UUID:                  uuid,
 		minor:                 minor,
-		index:                 index,
 		migEnabled:            migEnabled,
 		memoryBytes:           memory.Total,
 		productName:           productName,
@@ -360,7 +359,6 @@ func (l deviceLib) getMigDevices(gpuInfo *GpuInfo) (map[string]*MigDeviceInfo, e
 
 		migInfos[uuid] = &MigDeviceInfo{
 			UUID:          uuid,
-			index:         i,
 			profile:       migProfile.String(),
 			parent:        gpuInfo,
 			placement:     &placement,
