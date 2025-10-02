@@ -57,8 +57,10 @@ func NewDNSNameManager(cliqueID string, maxNodesPerIMEXDomain int, nodesConfigPa
 	}
 }
 
-// UpdateDNSNameMappings updates the /etc/hosts file with any new IP to DNS name mappings.
-func (m *DNSNameManager) UpdateDNSNameMappings(nodes []*nvapi.ComputeDomainNode) error {
+// UpdateDNSNameMappings updates the /etc/hosts file with any new IP to DNS name
+// mappings. The boolean return value indicates whether the hosts file was
+// updated or not (it must be ignored when the returned error is non-nil).
+func (m *DNSNameManager) UpdateDNSNameMappings(nodes []*nvapi.ComputeDomainNode) (bool, error) {
 	m.Lock()
 	defer m.Unlock()
 
@@ -78,7 +80,7 @@ func (m *DNSNameManager) UpdateDNSNameMappings(nodes []*nvapi.ComputeDomainNode)
 		// Construct the DNS name from the node index
 		dnsName, err := m.constructDNSName(node)
 		if err != nil {
-			return fmt.Errorf("failed to allocate DNS name for IP %s: %w", node.IPAddress, err)
+			return false, fmt.Errorf("failed to allocate DNS name for IP %s: %w", node.IPAddress, err)
 		}
 
 		// Assign the IP -> DNS name mapping
@@ -87,14 +89,14 @@ func (m *DNSNameManager) UpdateDNSNameMappings(nodes []*nvapi.ComputeDomainNode)
 
 	// If the existing ipToDNSName mappings are unchanged, exit early
 	if maps.Equal(ipToDNSName, m.ipToDNSName) {
-		return nil
+		return false, nil
 	}
 
 	// Otherwise, update the cached ipToDNSName mapping
 	m.ipToDNSName = ipToDNSName
 
-	// And updated the hosts file with new mappings
-	return m.updateHostsFile()
+	// And update the hosts file with the new mapping
+	return true, m.updateHostsFile()
 }
 
 // LogDNSNameMappings logs the current compute-domain-daemon mappings from memory.
