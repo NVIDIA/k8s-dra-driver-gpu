@@ -11,6 +11,7 @@ rules:
   resources: ["pods"]
   verbs: ["get", "list", "watch"]
 
+{{- $root := . -}}
 {{- range $namespace := splitList "," (include "nvidia-dra-driver-gpu.namespaces" .) }}
 ---
 apiVersion: v1
@@ -31,4 +32,19 @@ roleRef:
   kind: ClusterRole
   name: compute-domain-daemon-role
   apiGroup: rbac.authorization.k8s.io
-{{- end }} 
+{{- if $root.Capabilities.APIVersions.Has "security.openshift.io/v1/SecurityContextConstraints" }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: compute-domain-daemon-anyuid-role-binding-{{ $namespace }}
+subjects:
+- kind: ServiceAccount
+  name: compute-domain-daemon-service-account
+  namespace: {{ $namespace }}
+roleRef:
+  kind: ClusterRole
+  name: system:openshift:scc:anyuid
+  apiGroup: rbac.authorization.k8s.io
+{{- end }}
+{{- end }}
