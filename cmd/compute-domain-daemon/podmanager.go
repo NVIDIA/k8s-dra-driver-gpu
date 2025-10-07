@@ -161,7 +161,7 @@ func (pm *PodManager) updateNodeStatus(ctx context.Context, status string) error
 		return fmt.Errorf("failed to get ComputeDomain: %w", err)
 	}
 	if cd == nil {
-		return fmt.Errorf("ComputeDomain not found")
+		return fmt.Errorf("ComputeDomain '%s/%s' not found", pm.config.computeDomainName, pm.config.computeDomainUUID)
 	}
 
 	// Create a deep copy to avoid modifying the original
