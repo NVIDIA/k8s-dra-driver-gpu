@@ -208,11 +208,12 @@ func (m *ComputeDomainManager) onAddOrUpdate(ctx context.Context, obj any) error
 	// Because the informer only filters by name:
 	// Skip ComputeDomains that don't match on UUID
 	if string(cd.UID) != m.config.computeDomainUUID {
-		klog.Errorf("ComputeDomain processed with non-matching UID (%v, %v)", cd.UID, m.config.computeDomainUUID)
+		klog.Warningf("ComputeDomain processed with non-matching UID (%v, %v)", cd.UID, m.config.computeDomainUUID)
 		return nil
 	}
 
 	// Update node info in ComputeDomain
+	// Why are we doing this (only) upon receiving another update?
 	if err := m.UpdateComputeDomainNodeInfo(ctx, cd); err != nil {
 		return fmt.Errorf("error updating node info in ComputeDomain: %w", err)
 	}
@@ -261,7 +262,11 @@ func (m *ComputeDomainManager) UpdateComputeDomainNodeInfo(ctx context.Context, 
 			Name:     m.config.nodeName,
 			CliqueID: m.config.cliqueID,
 			Index:    nextIndex,
+			// Initialize as NotReady (will be updated by podmanager).
+			Status: nvapi.ComputeDomainStatusNotReady,
 		}
+
+		klog.Infof("CD status does not contain node name '%s' yet, try to insert myself: %v", m.config.nodeName, nodeInfo)
 		newCD.Status.Nodes = append(newCD.Status.Nodes, nodeInfo)
 	}
 
@@ -283,6 +288,7 @@ func (m *ComputeDomainManager) UpdateComputeDomainNodeInfo(ctx context.Context, 
 	}
 	m.mutationCache.Mutation(newCD)
 
+	klog.V(2).Infof("Successfully updated CD")
 	return nil
 }
 
@@ -364,7 +370,7 @@ func (m *ComputeDomainManager) MaybePushNodesUpdate(cd *nvapi.ComputeDomain) {
 		m.previousNodes = cd.Status.Nodes
 		m.updatedNodesChan <- cd.Status.Nodes
 	} else {
-		klog.Infof("IP set did not change")
+		klog.V(6).Infof("IP set did not change")
 	}
 }
 
