@@ -111,7 +111,7 @@ func (m *ComputeDomainManager) Start(ctx context.Context) (rerr error) {
 		true,
 	)
 
-	m.podManager = NewPodManager(m.config, m.Get, &m.mutationCache)
+	m.podManager = NewPodManager(m.config, m.Get, m.mutationCache)
 
 	_, err = m.informer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj any) {
@@ -192,8 +192,9 @@ func (m *ComputeDomainManager) onAddOrUpdate(ctx context.Context, obj any) error
 		return fmt.Errorf("failed to cast to ComputeDomain")
 	}
 
-	// Get the latest ComputeDomain object from the informer cache since we
-	// plan to update it later and always *must* have the latest version.
+	// Get the latest ComputeDomain object from the mutation cache (backed by
+	// the informer cache) since we plan to update it later and always *must*
+	// have the latest version.
 	cd, err := m.Get(string(o.GetUID()))
 	if err != nil {
 		return fmt.Errorf("error getting latest ComputeDomain: %w", err)
@@ -216,8 +217,9 @@ func (m *ComputeDomainManager) onAddOrUpdate(ctx context.Context, obj any) error
 	return nil
 }
 
-// UpdateComputeDomainNodeInfo updates the Nodes field in the ComputeDomain
-// with info about the ComputeDomain daemon running on this node.
+// UpdateComputeDomainNodeInfo updates the Nodes field in the ComputeDomain with
+// info about the ComputeDomain daemon running on this node. Upon success, it
+// reflects the mutation in `m.mutationCache`.
 func (m *ComputeDomainManager) UpdateComputeDomainNodeInfo(ctx context.Context, cd *nvapi.ComputeDomain) (rerr error) {
 	var nodeInfo *nvapi.ComputeDomainNode
 
@@ -269,12 +271,12 @@ func (m *ComputeDomainManager) UpdateComputeDomainNodeInfo(ctx context.Context, 
 		newCD.Status.Status = nvapi.ComputeDomainStatusNotReady
 	}
 
-	// Update the status
-	if _, err := m.config.clientsets.Nvidia.ResourceV1beta1().ComputeDomains(newCD.Namespace).UpdateStatus(ctx, newCD, metav1.UpdateOptions{}); err != nil {
-		return fmt.Errorf("error updating nodes in ComputeDomain status: %w", err)
+	// Update status and (upon success) store the latest version of the object
+	// (as returned by the API server) in the mutation cache.
+	newCD, err := m.config.clientsets.Nvidia.ResourceV1beta1().ComputeDomains(newCD.Namespace).UpdateStatus(ctx, newCD, metav1.UpdateOptions{})
+	if err != nil {
+		return fmt.Errorf("error updating ComputeDomain status: %w", err)
 	}
-
-	// Add the updated ComputeDomain to the mutation cache
 	m.mutationCache.Mutation(newCD)
 
 	return nil
@@ -361,15 +363,13 @@ func (m *ComputeDomainManager) GetNodesUpdateChan() chan []*nvapi.ComputeDomainN
 
 // removeNodeFromComputeDomain removes the current node's entry from the ComputeDomain status.
 func (m *ComputeDomainManager) removeNodeFromComputeDomain(ctx context.Context) error {
-	objs := m.informer.GetIndexer().List()
-	if len(objs) == 0 {
-		klog.Infof("No ComputeDomain objects found in informer cache during cleanup")
-		return nil
+	cd, err := m.Get(m.config.computeDomainUUID)
+	if err != nil {
+		return fmt.Errorf("error getting ComputeDomain from mutation cache: %w", err)
 	}
-
-	cd, ok := objs[0].(*nvapi.ComputeDomain)
-	if !ok {
-		return fmt.Errorf("failed to cast object to ComputeDomain")
+	if cd == nil {
+		klog.Infof("No ComputeDomain object found in mutation cache during cleanup")
+		return nil
 	}
 
 	newCD := cd.DeepCopy()
@@ -396,6 +396,9 @@ func (m *ComputeDomainManager) removeNodeFromComputeDomain(ctx context.Context) 
 	if _, err := m.config.clientsets.Nvidia.ResourceV1beta1().ComputeDomains(newCD.Namespace).UpdateStatus(ctx, newCD, metav1.UpdateOptions{}); err != nil {
 		return fmt.Errorf("error removing node from ComputeDomain status: %w", err)
 	}
+
+	// Add the updated ComputeDomain to the mutation cache
+	m.mutationCache.Mutation(newCD)
 
 	klog.Infof("Successfully removed node with IP %s from ComputeDomain %s/%s", m.config.podIP, newCD.Namespace, newCD.Name)
 	return nil

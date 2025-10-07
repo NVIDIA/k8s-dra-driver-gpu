@@ -33,17 +33,17 @@ import (
 
 // PodManager watches for changes to its own pod and updates the CD status accordingly.
 type PodManager struct {
-	config           *ManagerConfig
-	getComputeDomain GetComputeDomainFunc
-	waitGroup        sync.WaitGroup
-	cancelContext    context.CancelFunc
-	podInformer      cache.SharedIndexInformer
-	informerFactory  informers.SharedInformerFactory
-	mutationCache    cache.MutationCache
+	config                     *ManagerConfig
+	getComputeDomain           GetComputeDomainFunc
+	waitGroup                  sync.WaitGroup
+	cancelContext              context.CancelFunc
+	podInformer                cache.SharedIndexInformer
+	informerFactory            informers.SharedInformerFactory
+	computeDomainMutationCache cache.MutationCache
 }
 
 // NewPodManager creates a new PodManager instance.
-func NewPodManager(config *ManagerConfig, getComputeDomain GetComputeDomainFunc, mutationCache *cache.MutationCache) *PodManager {
+func NewPodManager(config *ManagerConfig, getComputeDomain GetComputeDomainFunc, mutationCache cache.MutationCache) *PodManager {
 	informerFactory := informers.NewSharedInformerFactoryWithOptions(
 		config.clientsets.Core,
 		informerResyncPeriod,
@@ -56,11 +56,11 @@ func NewPodManager(config *ManagerConfig, getComputeDomain GetComputeDomainFunc,
 	podInformer := informerFactory.Core().V1().Pods().Informer()
 
 	p := &PodManager{
-		config:           config,
-		getComputeDomain: getComputeDomain,
-		podInformer:      podInformer,
-		informerFactory:  informerFactory,
-		mutationCache:    *mutationCache,
+		config:                     config,
+		getComputeDomain:           getComputeDomain,
+		podInformer:                podInformer,
+		informerFactory:            informerFactory,
+		computeDomainMutationCache: mutationCache,
 	}
 
 	return p
@@ -113,6 +113,7 @@ func (pm *PodManager) Stop() error {
 	}
 
 	pm.waitGroup.Wait()
+	klog.Infof("Terminating: pod manager")
 	return nil
 }
 
@@ -188,13 +189,15 @@ func (pm *PodManager) updateNodeStatus(ctx context.Context, status string) error
 	// Update the node status to the new value
 	node.Status = status
 
-	// Update the CD status
-	if _, err := pm.config.clientsets.Nvidia.ResourceV1beta1().ComputeDomains(newCD.Namespace).UpdateStatus(ctx, newCD, metav1.UpdateOptions{}); err != nil {
+	// Update the CD status. Store the CD object returned by the API server in
+	// the mutationCache (it now has a newer ResourceVersion than `newCD` and
+	// hence any further mutations should be performed based on that).
+	newCD, err = pm.config.clientsets.Nvidia.ResourceV1beta1().ComputeDomains(newCD.Namespace).UpdateStatus(ctx, newCD, metav1.UpdateOptions{})
+	if err != nil {
 		return fmt.Errorf("error updating node status in ComputeDomain: %w", err)
 	}
+	pm.computeDomainMutationCache.Mutation(newCD)
 
 	klog.Infof("Successfully updated node %s status to %s", pm.config.nodeName, status)
-
-	pm.mutationCache.Mutation(newCD)
 	return nil
 }
