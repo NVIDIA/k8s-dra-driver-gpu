@@ -322,6 +322,14 @@ func getNextAvailableIndex(currentCliqueID string, nodes []*nvapi.ComputeDomainN
 		nextIndex++
 	}
 
+	// Skip `maxNodesPerIMEXDomain` check in the special case of no clique ID
+	// being set: this means that this node does not actually run an IMEX daemon
+	// managed by us and the set of nodes in this "noop" mode in this CD is
+	// allowed to grow larger than maxNodesPerIMEXDomain.
+	if currentCliqueID == "" {
+		return nextIndex, nil
+	}
+
 	// Ensure nextIndex is within the range 0..maxNodesPerIMEXDomain
 	if nextIndex < 0 || nextIndex >= maxNodesPerIMEXDomain {
 		return -1, fmt.Errorf("no available indices within maxNodesPerIMEXDomain (%d) for cliqueID %s", maxNodesPerIMEXDomain, currentCliqueID)
