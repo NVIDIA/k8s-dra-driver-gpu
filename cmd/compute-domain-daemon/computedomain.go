@@ -186,7 +186,8 @@ func (m *ComputeDomainManager) Get(uid string) (*nvapi.ComputeDomain, error) {
 
 // onAddOrUpdate handles the addition or update of a ComputeDomain. Here, we
 // receive updates not for all CDs in the system, but only for the CD that we
-// are registered for (filtered by CD name).
+// are registered for (filtered by CD name). Note that the informer triggers
+// this callback once upon startup for all existing objects.
 func (m *ComputeDomainManager) onAddOrUpdate(ctx context.Context, obj any) error {
 	// Cast the object to a ComputeDomain object
 	o, ok := obj.(*nvapi.ComputeDomain)
@@ -212,8 +213,7 @@ func (m *ComputeDomainManager) onAddOrUpdate(ctx context.Context, obj any) error
 		return nil
 	}
 
-	// Update node info in ComputeDomain
-	// Why are we doing this (only) upon receiving another update?
+	// Update node info in ComputeDomain.
 	if err := m.UpdateComputeDomainNodeInfo(ctx, cd); err != nil {
 		return fmt.Errorf("error updating node info in ComputeDomain: %w", err)
 	}
@@ -228,7 +228,6 @@ func (m *ComputeDomainManager) UpdateComputeDomainNodeInfo(ctx context.Context, 
 	var nodeInfo *nvapi.ComputeDomainNode
 
 	// Create a deep copy of the ComputeDomain to avoid modifying the original
-	// TODO: review for 10000-node-CD
 	newCD := cd.DeepCopy()
 
 	defer func() {
@@ -262,8 +261,7 @@ func (m *ComputeDomainManager) UpdateComputeDomainNodeInfo(ctx context.Context, 
 			Name:     m.config.nodeName,
 			CliqueID: m.config.cliqueID,
 			Index:    nextIndex,
-			// Initialize as NotReady (will be updated by podmanager).
-			Status: nvapi.ComputeDomainStatusNotReady,
+			Status:   nvapi.ComputeDomainStatusNotReady,
 		}
 
 		klog.Infof("CD status does not contain node name '%s' yet, try to insert myself: %v", m.config.nodeName, nodeInfo)

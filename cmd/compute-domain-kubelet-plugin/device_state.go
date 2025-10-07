@@ -462,7 +462,8 @@ func (s *DeviceState) applyComputeDomainChannelConfig(ctx context.Context, confi
 	}
 
 	for _, info := range s.nvdevlib.nvCapImexChanDevInfos[:chancount] {
-		configState.containerEdits = configState.containerEdits.Append(s.computeDomainManager.GetComputeDomainChannelContainerEdits(s.cdi.devRoot, info))
+		edits := s.computeDomainManager.GetComputeDomainChannelContainerEdits(s.cdi.devRoot, info)
+		configState.containerEdits = configState.containerEdits.Append(edits)
 	}
 
 	return &configState, nil
@@ -491,6 +492,14 @@ func (s *DeviceState) applyComputeDomainDaemonConfig(ctx context.Context, config
 		ComputeDomain: config.DomainID,
 	}
 
+	// Always inject CD config details into the CD daemon (regardless of clique
+	// ID being emtpy or not).
+	edits, err := s.computeDomainManager.GetComputeDomainDaemonContainerEdits(ctx, config.DomainID)
+	if err != nil {
+		return nil, fmt.Errorf("error preparing ComputeDomain daemon settings: %w", err)
+	}
+	configState.containerEdits = configState.containerEdits.Append(edits)
+
 	// Only prepare files to inject to the daemon if IMEX is supported.
 	if s.computeDomainManager.cliqueID != "" {
 		// Parse the device node info for the fabic-imex-mgmt nvcap.
@@ -508,10 +517,7 @@ func (s *DeviceState) applyComputeDomainDaemonConfig(ctx context.Context, config
 		}
 
 		// Store information about the ComputeDomain daemon in the configState.
-		edits, err := computeDomainDaemonSettings.GetCDIContainerEdits(ctx, s.cdi.devRoot, nvcapDeviceInfo)
-		if err != nil {
-			return nil, fmt.Errorf("error getting container edits for ComputeDomain daemon for requests '%v' in claim '%v': %w", requests, claim.UID, err)
-		}
+		edits := computeDomainDaemonSettings.GetCDIContainerEditsForImex(ctx, s.cdi.devRoot, nvcapDeviceInfo)
 		configState.containerEdits = configState.containerEdits.Append(edits)
 	}
 
