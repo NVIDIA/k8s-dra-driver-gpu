@@ -78,7 +78,6 @@ func NewComputeDomainManager(config *ManagerConfig) *ComputeDomainManager {
 		previousNodes:    []*nvapi.ComputeDomainNode{},
 		updatedNodesChan: make(chan []*nvapi.ComputeDomainNode),
 	}
-	m.podManager = NewPodManager(config, m.Get)
 
 	return m
 }
@@ -111,6 +110,8 @@ func (m *ComputeDomainManager) Start(ctx context.Context) (rerr error) {
 		mutationCacheTTL,
 		true,
 	)
+
+	m.podManager = NewPodManager(m.config, m.Get, &m.mutationCache)
 
 	_, err = m.informer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj any) {

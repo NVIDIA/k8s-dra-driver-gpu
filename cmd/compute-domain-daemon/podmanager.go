@@ -39,10 +39,11 @@ type PodManager struct {
 	cancelContext    context.CancelFunc
 	podInformer      cache.SharedIndexInformer
 	informerFactory  informers.SharedInformerFactory
+	mutationCache    cache.MutationCache
 }
 
 // NewPodManager creates a new PodManager instance.
-func NewPodManager(config *ManagerConfig, getComputeDomain GetComputeDomainFunc) *PodManager {
+func NewPodManager(config *ManagerConfig, getComputeDomain GetComputeDomainFunc, mutationCache *cache.MutationCache) *PodManager {
 	informerFactory := informers.NewSharedInformerFactoryWithOptions(
 		config.clientsets.Core,
 		informerResyncPeriod,
@@ -59,6 +60,7 @@ func NewPodManager(config *ManagerConfig, getComputeDomain GetComputeDomainFunc)
 		getComputeDomain: getComputeDomain,
 		podInformer:      podInformer,
 		informerFactory:  informerFactory,
+		mutationCache:    *mutationCache,
 	}
 
 	return p
@@ -192,5 +194,7 @@ func (pm *PodManager) updateNodeStatus(ctx context.Context, status string) error
 	}
 
 	klog.Infof("Successfully updated node %s status to %s", pm.config.nodeName, status)
+
+	pm.mutationCache.Mutation(newCD)
 	return nil
 }
