@@ -185,14 +185,6 @@ func newApp() *cli.App {
 
 // Run invokes the IMEX daemon and manages its lifecycle.
 func run(ctx context.Context, cancel context.CancelFunc, flags *Flags) error {
-	// Support heterogeneous compute domain
-	if flags.cliqueID == "" {
-		fmt.Println("ClusterUUID and CliqueId are NOT set for GPUs on this node.")
-		fmt.Println("The IMEX daemon will not be started.")
-		fmt.Println("Sleeping forever...")
-		<-ctx.Done()
-		return nil
-	}
 
 	config := &ControllerConfig{
 		cliqueID:               flags.cliqueID,
@@ -206,6 +198,16 @@ func run(ctx context.Context, cancel context.CancelFunc, flags *Flags) error {
 		maxNodesPerIMEXDomain:  flags.maxNodesPerIMEXDomain,
 	}
 	klog.Infof("config: %v", config)
+
+	// Support heterogeneous ComputeDomains. That means that a CD may contain
+	// nodes that do not take part in Multi-Node NVLink communication. On such
+	// nodes, this program is started with an empty NVLink clique ID
+	// configuration parameter. In this mode, do not start the IMEX daemon but
+	// otherwise keep business logic intact. In particular, continuously update
+	// this node's state in the CD object.
+	if flags.cliqueID == "" {
+		klog.Infof("no cliqueID: register with ComputeDomain, but do not run IMEX daemon")
+	}
 
 	// Write the IMEX config with the current pod IP before starting the daemon
 	if err := writeIMEXConfig(flags.podIP); err != nil {
@@ -302,6 +304,11 @@ func IMEXDaemonUpdateLoopWithIPs(ctx context.Context, controller *Controller, cl
 				return fmt.Errorf("writeNodesConfig failed: %w", err)
 			}
 
+			if cliqueID == "" {
+				klog.V(1).Infof("empty cliqueID: do not start IMEX daemon")
+				continue
+			}
+
 			klog.Infof("Got update, (re)start IMEX daemon")
 			if err := pm.Restart(); err != nil {
 				// This might be a permanent problem, and retrying upon next update
@@ -329,6 +336,11 @@ func IMEXDaemonUpdateLoopWithDNSNames(ctx context.Context, controller *Controlle
 			updated, err := dnsNameManager.UpdateDNSNameMappings(nodes)
 			if err != nil {
 				return fmt.Errorf("failed to update DNS name => IP mappings: %w", err)
+			}
+
+			if dnsNameManager.cliqueID == "" {
+				klog.V(1).Infof("empty cliqueID: do not start IMEX daemon")
+				continue
 			}
 
 			fresh, err := processManager.EnsureStarted()
@@ -365,7 +377,7 @@ func IMEXDaemonUpdateLoopWithDNSNames(ctx context.Context, controller *Controlle
 // It returns an error if any step fails.
 func check(ctx context.Context, cancel context.CancelFunc, flags *Flags) error {
 	if flags.cliqueID == "" {
-		fmt.Println("ClusterUUID and CliqueId are NOT set for GPUs on this node.")
+		fmt.Println("check succeeded (noop, clique ID is empty)")
 		return nil
 	}
 
