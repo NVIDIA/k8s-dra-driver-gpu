@@ -184,7 +184,9 @@ func (m *ComputeDomainManager) Get(uid string) (*nvapi.ComputeDomain, error) {
 	return cds[0], nil
 }
 
-// onAddOrUpdate handles the addition or update of a ComputeDomain.
+// onAddOrUpdate handles the addition or update of a ComputeDomain. Here, we
+// receive updates not for all CDs in the system, but only for the CD that we
+// are registered for (filtered by CD name).
 func (m *ComputeDomainManager) onAddOrUpdate(ctx context.Context, obj any) error {
 	// Cast the object to a ComputeDomain object
 	o, ok := obj.(*nvapi.ComputeDomain)
@@ -203,6 +205,7 @@ func (m *ComputeDomainManager) onAddOrUpdate(ctx context.Context, obj any) error
 		return nil
 	}
 
+	// Because the informer only filters by name:
 	// Skip ComputeDomains that don't match on UUID
 	if string(cd.UID) != m.config.computeDomainUUID {
 		klog.Errorf("ComputeDomain processed with non-matching UID (%v, %v)", cd.UID, m.config.computeDomainUUID)
@@ -224,6 +227,7 @@ func (m *ComputeDomainManager) UpdateComputeDomainNodeInfo(ctx context.Context, 
 	var nodeInfo *nvapi.ComputeDomainNode
 
 	// Create a deep copy of the ComputeDomain to avoid modifying the original
+	// TODO: review for 10000-node-CD
 	newCD := cd.DeepCopy()
 
 	defer func() {
@@ -266,7 +270,7 @@ func (m *ComputeDomainManager) UpdateComputeDomainNodeInfo(ctx context.Context, 
 	// across pod restarts.
 	nodeInfo.IPAddress = m.config.podIP
 
-	// Conditionally update its status
+	// Conditionally update global CD status if it's still in its initial status
 	if newCD.Status.Status == "" {
 		newCD.Status.Status = nvapi.ComputeDomainStatusNotReady
 	}

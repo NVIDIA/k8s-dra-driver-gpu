@@ -201,8 +201,7 @@ func (m *ProcessManager) Watchdog(ctx context.Context) error {
 	}
 }
 
-// Detect if process terminated unexpectedly. Caller must ignore bool if err
-// isn't nil.
+// Detect if process terminated unexpectedly.
 func (m *ProcessManager) lost() bool {
 	if !m.TryLock() {
 		// Start or stop is in progress; do not inspect state.
