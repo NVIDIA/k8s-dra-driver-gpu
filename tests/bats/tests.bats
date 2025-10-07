@@ -143,6 +143,49 @@ log_objects() {
   kubectl delete -f demo/specs/imex/channel-injection-all.yaml
 }
 
+@test "CD daemon shutdown: confirm CD status cleanup" {
+  log_objects
+
+  kubectl apply -f demo/specs/imex/channel-injection.yaml
+  kubectl wait --for=condition=READY pods imex-channel-injection --timeout=100s
+  run kubectl logs imex-channel-injection
+  assert_output --partial "channel0"
+
+  local LOGPATH="${BATS_TEST_TMPDIR}/cd-daemon.log"
+  local PNAME
+  PNAME=$( \
+    kubectl get pods -n nvidia-dra-driver-gpu | \
+    grep imex-channel-injection | \
+    awk '{print $1}'
+  )
+
+  # Expect `nodes` key to be present in CD status.
+  run bats_pipe kubectl get computedomain imex-channel-injection -o json \| jq '.status'
+  assert_output --partial 'nodes'
+
+  echo "attach background log follower to daemon pod: $PNAME"
+  kubectl logs -n nvidia-dra-driver-gpu --follow "$PNAME" > "$LOGPATH" 2>&1 &
+  kubectl delete pods imex-channel-injection
+
+  # Note: the log follower child process terminates when the pod terminates.
+  kubectl wait --for=delete pods imex-channel-injection --timeout=10s
+
+  # Expect `nodes` key to not be be present (single-node CD).
+  run bats_pipe kubectl get computedomain imex-channel-injection -o json \| jq '.status'
+  refute_output --partial 'nodes'
+
+  # Inspect CD daemon log, dump tail for easier debug-on-failure.
+  cat "$LOGPATH" | tail -n 50
+
+  # Explicitly confirm cleanup-on-shutdown behavior by inspecting CD log.
+  cat "$LOGPATH" | grep -e "Successfully updated node .* status to NotReady"
+  cat "$LOGPATH" | grep "Successfully removed node" | \
+    grep "from ComputeDomain default/imex-channel-injection"
+
+  # Delete CD.
+  kubectl delete computedomain imex-channel-injection
+}
+
 @test "NodePrepareResources: catch unknown field in opaque cfg in ResourceClaim" {
   log_objects
 
