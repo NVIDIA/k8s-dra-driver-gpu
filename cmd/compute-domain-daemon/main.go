@@ -209,7 +209,7 @@ func run(ctx context.Context, cancel context.CancelFunc, flags *Flags) error {
 		klog.Infof("no cliqueID: register with ComputeDomain, but do not run IMEX daemon")
 	}
 
-	// Write the IMEX config with the current pod IP before starting the daemon
+	// Render and write the IMEX daemon config with the current pod IP
 	if err := writeIMEXConfig(flags.podIP); err != nil {
 		return fmt.Errorf("writeIMEXConfig failed: %w", err)
 	}
@@ -306,7 +306,7 @@ func IMEXDaemonUpdateLoopWithIPs(ctx context.Context, controller *Controller, cl
 
 			if cliqueID == "" {
 				klog.V(1).Infof("empty cliqueID: do not start IMEX daemon")
-				continue
+				break
 			}
 
 			klog.Infof("Got update, (re)start IMEX daemon")
@@ -340,7 +340,7 @@ func IMEXDaemonUpdateLoopWithDNSNames(ctx context.Context, controller *Controlle
 
 			if dnsNameManager.cliqueID == "" {
 				klog.V(1).Infof("empty cliqueID: do not start IMEX daemon")
-				continue
+				break
 			}
 
 			fresh, err := processManager.EnsureStarted()
@@ -356,7 +356,7 @@ func IMEXDaemonUpdateLoopWithDNSNames(ctx context.Context, controller *Controlle
 			// addresses compared to the old set (then we don't need to force
 			// the daemon to re-resolve & re-connect).
 			if !updated || fresh {
-				continue
+				break
 			}
 
 			// Actively ask the IMEX daemon to re-read its config and to
@@ -415,6 +415,12 @@ func writeIMEXConfig(podIP string) error {
 	var configFile bytes.Buffer
 	if err := tmpl.Execute(&configFile, configTemplateData); err != nil {
 		return fmt.Errorf("error executing template: %w", err)
+	}
+
+	// Ensure the directory exists
+	dir := filepath.Dir(imexConfigPath)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return fmt.Errorf("failed to create directory %s: %w", dir, err)
 	}
 
 	if err := os.WriteFile(imexConfigPath, configFile.Bytes(), 0644); err != nil {
