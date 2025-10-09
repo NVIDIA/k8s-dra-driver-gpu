@@ -21,6 +21,8 @@ import (
 	"context"
 	"fmt"
 
+	"k8s.io/klog/v2"
+
 	"github.com/NVIDIA/k8s-dra-driver-gpu/pkg/flags"
 	"github.com/NVIDIA/k8s-dra-driver-gpu/pkg/workqueue"
 )
@@ -78,6 +80,9 @@ func (c *Controller) Run(ctx context.Context) error {
 		clientsets:            c.config.clientsets,
 		workQueue:             workQueue,
 	}
+
+	// TODO: log full, nested cliFlags structure.
+	klog.Infof("controller manager config: %+v", managerConfig)
 
 	cdManager := NewComputeDomainManager(managerConfig)
 
