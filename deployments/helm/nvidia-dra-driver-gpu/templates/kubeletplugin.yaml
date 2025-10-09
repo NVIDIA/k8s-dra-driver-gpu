@@ -150,6 +150,9 @@ spec:
         - name: HEALTHCHECK_PORT
           value: {{ .Values.kubeletPlugin.containers.computeDomains.healthcheckPort | quote }}
         {{- end }}
+        {{- with .Values.kubeletPlugin.containers.computeDomains.env }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
         volumeMounts:
         - name: plugins-registry
           mountPath: {{ .Values.kubeletPlugin.kubeletRegistrarDirectoryPath | quote }}
@@ -233,6 +236,9 @@ spec:
         {{- if .Values.kubeletPlugin.containers.gpus.healthcheckPort }}
         - name: HEALTHCHECK_PORT
           value: {{ .Values.kubeletPlugin.containers.gpus.healthcheckPort | quote }}
+        {{- end }}
+        {{- with .Values.kubeletPlugin.containers.gpus.env }}
+        {{- toYaml . | nindent 8 }}
         {{- end }}
         volumeMounts:
         - name: plugins-registry

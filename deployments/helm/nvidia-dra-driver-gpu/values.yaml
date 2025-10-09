@@ -184,6 +184,7 @@ kubeletPlugin:
       securityContext: {}
       resources: {}
     computeDomains:
+      env: []
       securityContext:
         privileged: true
       resources: {}
@@ -191,6 +192,7 @@ kubeletPlugin:
       # Set to a negative value to disable the service and the probe.
       healthcheckPort: 51515
     gpus:
+      env: []
       securityContext:
         privileged: true
       resources: {}
