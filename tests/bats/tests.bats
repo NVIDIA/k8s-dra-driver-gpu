@@ -260,6 +260,87 @@ log_objects() {
   echo "${output}" | grep -E '^.*SUM multinode_device_to_device_memcpy_read_ce [0-9]+\.[0-9]+.*$'
 }
 
+@test "CD controller: test log verbosity levels" {
+  # Deploy workload: give the controller something to log about.
+  log_objects
+  kubectl apply -f demo/specs/imex/channel-injection.yaml
+  kubectl wait --for=condition=READY pods imex-channel-injection --timeout=100s
+  run kubectl logs imex-channel-injection
+  assert_output --partial "channel0"
+
+  echo "test level 0"
+  local _iargs=("--set" "logVerbosity=0")
+  iupgrade_wait "${TEST_CHART_REPO}" "${TEST_CHART_VERSION}" _iargs
+  kubectl logs -l nvidia-dra-driver-gpu-component=controller -n nvidia-dra-driver-gpu --tail=-1
+  run kubectl logs -l nvidia-dra-driver-gpu-component=controller -n nvidia-dra-driver-gpu --tail=-1
+  assert_output --partial 'controller manager config'
+  assert_output --partial 'maxNodesPerIMEXDomain'
+
+  echo "test level 1"
+  local _iargs=("--set" "logVerbosity=1")
+  iupgrade_wait "${TEST_CHART_REPO}" "${TEST_CHART_VERSION}" _iargs
+  run kubectl logs -l nvidia-dra-driver-gpu-component=controller -n nvidia-dra-driver-gpu --tail=-1
+  refute_output --partial 'Processing added or updated ComputeDomain'
+  refute_output --partial 'reflector.go'
+  refute_output --partial 'Caches populated'
+  refute_output --partial 'round_trippers.go'
+  refute_output --partial 'Listing and watching'
+
+  echo "test level 2"
+  local _iargs=("--set" "logVerbosity=2")
+  iupgrade_wait "${TEST_CHART_REPO}" "${TEST_CHART_VERSION}" _iargs
+  run kubectl logs -l nvidia-dra-driver-gpu-component=controller -n nvidia-dra-driver-gpu --tail=-1
+  assert_output --partial 'Processing added or updated ComputeDomain'
+  assert_output --partial 'reflector.go'
+  assert_output --partial 'Caches populated'
+  refute_output --partial 'Listing and watching'
+  refute_output --partial 'round_trippers.go'
+
+  echo "test level 3"
+  local _iargs=("--set" "logVerbosity=3")
+  iupgrade_wait "${TEST_CHART_REPO}" "${TEST_CHART_VERSION}" _iargs
+  run kubectl logs -l nvidia-dra-driver-gpu-component=controller -n nvidia-dra-driver-gpu --tail=-1
+  assert_output --partial 'reflector.go'
+  assert_output --partial 'Caches populated'
+  assert_output --partial 'Listing and watching'
+  refute_output --partial 'round_trippers.go'
+
+  echo "test level 4"
+  local _iargs=("--set" "logVerbosity=4")
+  iupgrade_wait "${TEST_CHART_REPO}" "${TEST_CHART_VERSION}" _iargs
+  run kubectl logs -l nvidia-dra-driver-gpu-component=controller -n nvidia-dra-driver-gpu --tail=-1
+  refute_output --partial 'round_trippers.go'
+
+  echo "test level 5"
+  local _iargs=("--set" "logVerbosity=5")
+  iupgrade_wait "${TEST_CHART_REPO}" "${TEST_CHART_VERSION}" _iargs
+  run kubectl logs -l nvidia-dra-driver-gpu-component=controller -n nvidia-dra-driver-gpu --tail=-1
+  refute_output --partial 'round_trippers.go'
+
+  echo "test level 6"
+  local _iargs=("--set" "logVerbosity=6")
+  iupgrade_wait "${TEST_CHART_REPO}" "${TEST_CHART_VERSION}" _iargs
+  run kubectl logs -l nvidia-dra-driver-gpu-component=controller -n nvidia-dra-driver-gpu --tail=-1
+  assert_output --partial 'Cleanup: perform for'
+  assert_output --partial 'round_trippers.go'
+  assert_output --partial '"Response" verb="GET"'
+
+  # default log verbosity is 1; test if the controller-specific override to 6
+  # works with the technique below -- this leads to a duplicate env name in the
+  # pod spec -- allowed by the API server, and it's documented that the last
+  # definition takes precedence.
+  echo "test that component-specific env var takes precedence"
+  local _iargs=(
+    "--set" "controller.containers.computeDomain.env[0].name=LOG_VERBOSITY"
+    "--set-string" "controller.containers.computeDomain.env[0].value=6"
+    )
+  iupgrade_wait "${TEST_CHART_REPO}" "${TEST_CHART_VERSION}" _iargs
+  assert_output --partial '"Response" verb="GET"'
+
+  kubectl delete -f demo/specs/imex/channel-injection.yaml
+  kubectl wait --for=delete pods imex-channel-injection --timeout=10s
+}
+
 @test "downgrade: current-dev -> last-stable" {
   log_objects
 

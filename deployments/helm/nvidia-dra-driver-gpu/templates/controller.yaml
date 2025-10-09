@@ -58,15 +58,14 @@ spec:
         env:
         # LOG_VERBOSITY is the source of truth for this program's klog
         # configuration. Currently injected via CLI argument (see above) because
-        # klog's verbosity for now cannot be sanely set from an environment
-        # variable.
+        # klog's verbosity for now cannot be sanely set from an env var.
         - name: LOG_VERBOSITY
-          value: "{{ .Values.defaultLogVerbosity }}"
-        # LOG_VERBOSITY_CD_DAEMON controls the verbosity of dyncamilly launched
+          value: "{{ .Values.logVerbosity }}"
+        # LOG_VERBOSITY_CD_DAEMON controls the verbosity of dynamically launched
         # CD daemons (their pod spec is not rendered by Helm, but by this
         # controller).
         - name: LOG_VERBOSITY_CD_DAEMON
-          value: "{{ .Values.defaultLogVerbosity }}"
+          value: "{{ .Values.logVerbosity }}"
         - name: POD_NAME
           valueFrom:
             fieldRef:

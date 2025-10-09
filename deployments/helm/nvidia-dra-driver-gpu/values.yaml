@@ -69,29 +69,57 @@ resources:
 #   LoggingBetaOptions: true           # Kubernetes logging beta features
 featureGates: {}
 
-# klog verbosity for all components. Zero or greater. Higher number: higher
-# verbosity. Warning and error log messages are always logged (regardless of
-# this setting). Info-level messages on level 0 and are also always logged (this
-# cannot be prevented).
+# Log verbosity for all components. Zero or greater, higher number means higher
+# verbosity. Regardless of this setting, messages of type Error, Warning, and
+# Info(level 0) are always logged. Can also be set for individual components via
+# environment variable (that takes precedence), for example via
+#
+# helm install ... \
+#   --set controller.containers.computeDomain.env[0].name=LOG_VERBOSITY \
+#   --set-string controller.containers.computeDomain.env[0].value=6 \
+#   ...
+#
+# An (incomplete) representation of which types of messages to expect with
+# increasing verbosity level:
 #
 # Level 0:
-# - Configuration (startup)
-# - Permanent error upon (un)preparing device
+# - Configuration detail (during process startup)
+# - Kubelet plugins:
+#   - Permanent errors during device Prepare() and Unprepare()
 #
-# Level 1 (default):
-# - Device (un)prepare confirmation with claim UID
-# - Workqueue reconciliation failures (noisy: mainly expected, retryable errors)
-# - Controller: cleanup of stale objects
+# Level 1:
+# - CD controller:
+#   - Confirm cleanup of stale objects
+# - k8s client-go: feature gates
+# - Kubelet plugins:
+#   - Device (un)prepare confirmation, with resource claim UID
+#   - Workqueue reconciliation failures (noisy: mainly expected, retryable
+#     errors)
+# - CD daemon:
+#   - explicit 'wait for nodes update'
 #
 # Level 2:
-# - Unprepare noop
-# - Controller: added/updated object callback confirmation
+# - reflector.go informer state: "Caches populated"
+# - Kubelet plugins:
+#   - Acknowledge when Unprepare is a noop
+# - CD controller:
+#   - Added/updated API object callback confirmation
 #
-# Level 6 and higher:
-# - Checkpoint file updates
-# - Kubelet plugin GRPC request/response detail
+# Level 3:
+# - reflector.go informer state: "Listing and watching"
 #
-logVerbosity: "1"
+# Level 6:
+# - round_trippers.go output (API server request/response detail)
+# - Kubelet plugins:
+#   - GRPC request/response detail
+#   - Checkpoint file update confirmation
+# - CD daemon:
+#   - explicit 'IP set did not change'
+#
+# Level 7:
+# - Kubelet plugins:
+#   - Health check
+logVerbosity: "4"
 
 # Webhook configuration
 webhook:
