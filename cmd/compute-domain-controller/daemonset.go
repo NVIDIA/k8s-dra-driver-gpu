@@ -20,6 +20,9 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"os"
+	"strconv"
+	"strings"
 	"sync"
 	"text/template"
 
@@ -52,6 +55,7 @@ type DaemonSetTemplateData struct {
 	ImageName                 string
 	MaxNodesPerIMEXDomain     int
 	FeatureGates              map[string]bool
+	LogVerbosity              int
 }
 
 type DaemonSetManager struct {
@@ -197,6 +201,12 @@ func (m *DaemonSetManager) Create(ctx context.Context, cd *nvapi.ComputeDomain) 
 		return nil, fmt.Errorf("error creating ResourceClaimTemplate: %w", err)
 	}
 
+	verbosity, err := m.GetLogVerbosity()
+	if err != nil {
+		klog.Warningf("Could not read current CD daemon log verbosity, falling back to level 6 (error: %s)", err)
+		verbosity = 6
+	}
+
 	templateData := DaemonSetTemplateData{
 		Namespace:                 m.config.driverNamespace,
 		GenerateName:              fmt.Sprintf("%s-", cd.Name),
@@ -207,6 +217,7 @@ func (m *DaemonSetManager) Create(ctx context.Context, cd *nvapi.ComputeDomain) 
 		ImageName:                 m.config.imageName,
 		MaxNodesPerIMEXDomain:     m.config.maxNodesPerIMEXDomain,
 		FeatureGates:              featuregates.ToMap(),
+		LogVerbosity:              verbosity,
 	}
 
 	tmpl, err := template.ParseFiles(DaemonSetTemplatePath)
@@ -394,4 +405,25 @@ func (m *DaemonSetManager) cleanup(ctx context.Context, cdUID string) error {
 		return fmt.Errorf("error removing DaemonSet finalizer: %w", err)
 	}
 	return nil
+}
+
+func (m *DaemonSetManager) GetLogVerbosity() (int, error) {
+	ename := "LOG_VERBOSITY_CD_DAEMON"
+	evalue, ok := os.LookupEnv(ename)
+	if !ok {
+		return 0, fmt.Errorf("environment variable '%s' not set", ename)
+	}
+
+	// Strip leading and trailing whitespace.
+	trimmed := strings.TrimSpace(evalue)
+	if trimmed == "" {
+		return 0, fmt.Errorf("environment variable '%s' empty after trimming", ename)
+	}
+
+	v, err := strconv.Atoi(trimmed)
+	if err != nil {
+		return 0, fmt.Errorf("environment variable %s failed conversion to integer: %w", ename, err)
+	}
+
+	return v, nil
 }

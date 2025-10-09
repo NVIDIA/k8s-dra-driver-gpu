@@ -56,6 +56,11 @@ spec:
         resources:
           {{- toYaml .Values.controller.containers.computeDomain.resources | nindent 10 }}
         env:
+        # LOG_VERBOSITY_CD_DAEMON controls the verbosity of dyncamilly launched
+        # CD daemons (their pod spec is not rendered by Helm, but by this
+        # controller).
+        - name: LOG_VERBOSITY_CD_DAEMON
+          value: "{{ .Values.defaultLogVerbosity }}"
         - name: POD_NAME
           valueFrom:
             fieldRef:
