@@ -52,10 +52,16 @@ spec:
           {{- toYaml .Values.controller.containers.computeDomain.securityContext | nindent 10 }}
         image: {{ include "nvidia-dra-driver-gpu.fullimage" . }}
         imagePullPolicy: {{ .Values.image.pullPolicy }}
-        command: ["compute-domain-controller", "-v", "{{ .Values.logVerbosity }}"]
+        command: ["compute-domain-controller", "-v", "$(LOG_VERBOSITY)"]
         resources:
           {{- toYaml .Values.controller.containers.computeDomain.resources | nindent 10 }}
         env:
+        # LOG_VERBOSITY is the source of truth for this program's klog
+        # configuration. Currently injected via CLI argument (see above) because
+        # klog's verbosity for now cannot be sanely set from an environment
+        # variable.
+        - name: LOG_VERBOSITY
+          value: "{{ .Values.defaultLogVerbosity }}"
         # LOG_VERBOSITY_CD_DAEMON controls the verbosity of dyncamilly launched
         # CD daemons (their pod spec is not rendered by Helm, but by this
         # controller).

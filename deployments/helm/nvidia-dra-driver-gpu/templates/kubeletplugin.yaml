@@ -99,7 +99,7 @@ spec:
             sed -i 's/^ModifyDeviceFiles: 1$/ModifyDeviceFiles: 0/' root/gpu-params
             mount --bind root/gpu-params /proc/driver/nvidia/params
           fi
-          compute-domain-kubelet-plugin -v {{ .Values.logVerbosity }}
+          compute-domain-kubelet-plugin -v $(LOG_VERBOSITY)
         resources:
           {{- toYaml .Values.kubeletPlugin.containers.computeDomains.resources | nindent 10 }}
         {{/*
@@ -116,6 +116,12 @@ spec:
           periodSeconds: 10
         {{- end }}
         env:
+        # LOG_VERBOSITY is the source of truth for this program's klog
+        # configuration. Currently injected via CLI argument (see above) because
+        # klog's verbosity for now cannot be sanely set from an environment
+        # variable.
+        - name: LOG_VERBOSITY
+          value: "{{ .Values.defaultLogVerbosity }}"
         - name: MASK_NVIDIA_DRIVER_PARAMS
           value: "{{ .Values.maskNvidiaDriverParams }}"
         - name: NVIDIA_DRIVER_ROOT
@@ -184,7 +190,7 @@ spec:
             sed -i 's/^ModifyDeviceFiles: 1$/ModifyDeviceFiles: 0/' root/gpu-params
             mount --bind root/gpu-params /proc/driver/nvidia/params
           fi
-          gpu-kubelet-plugin -v {{ .Values.logVerbosity }}
+          gpu-kubelet-plugin -v $(LOG_VERBOSITY)
         resources:
           {{- toYaml .Values.kubeletPlugin.containers.gpus.resources | nindent 10 }}
         {{/*
@@ -201,6 +207,12 @@ spec:
           periodSeconds: 10
         {{- end }}
         env:
+        # LOG_VERBOSITY is the source of truth for this program's klog
+        # configuration. Currently injected via CLI argument (see above) because
+        # klog's verbosity for now cannot be sanely set from an environment
+        # variable.
+        - name: LOG_VERBOSITY
+          value: "{{ .Values.defaultLogVerbosity }}"
         - name: MASK_NVIDIA_DRIVER_PARAMS
           value: "{{ .Values.maskNvidiaDriverParams }}"
         - name: NVIDIA_DRIVER_ROOT

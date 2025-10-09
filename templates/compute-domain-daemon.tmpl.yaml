@@ -24,8 +24,12 @@ spec:
       # Run the compute domain daemon
       - name: compute-domain-daemon
         image: {{ .ImageName }}
-        command: ["compute-domain-daemon", "-v", "6", "run"]
+        command: ["compute-domain-daemon", "-v", "$(LOG_VERBOSITY)", "run"]
         env:
+        # LOG_VERBOSITY is the source of truth, it's injected via CLI argument
+        # above because of klogs limited configuration interface.
+        - name: LOG_VERBOSITY
+          value: "{{ .LogVerbosity }}"
         - name: MAX_NODES_PER_IMEX_DOMAIN
           value: "{{ .MaxNodesPerIMEXDomain }}"
         - name: NODE_NAME
@@ -63,7 +67,7 @@ spec:
         # if/when necessary.
         startupProbe:
           exec:
-            command: ["compute-domain-daemon", "-v", "6", "check"]
+            command: ["compute-domain-daemon", "-v", "$(LOG_VERBOSITY)", "check"]
           initialDelaySeconds: 0
           periodSeconds: 1
           timeoutSeconds: 10
@@ -71,14 +75,14 @@ spec:
           successThreshold: 1
         livenessProbe:
           exec:
-            command: ["compute-domain-daemon", "-v", "6", "check"]
+            command: ["compute-domain-daemon", "-v", "$(LOG_VERBOSITY)", "check"]
           periodSeconds: 60
           timeoutSeconds: 10
           failureThreshold: 20 # (60s*20)=20min
           successThreshold: 1
         readinessProbe:
           exec:
-            command: ["compute-domain-daemon", "-v", "6", "check"]
+            command: ["compute-domain-daemon", "-v", "$(LOG_VERBOSITY)", "check"]
           periodSeconds: 10
           timeoutSeconds: 10
           failureThreshold: 1
