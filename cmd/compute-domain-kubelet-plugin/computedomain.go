@@ -89,7 +89,7 @@ func (m *ComputeDomainManager) Start(ctx context.Context) (rerr error) {
 	defer func() {
 		if rerr != nil {
 			if err := m.Stop(); err != nil {
-				klog.Errorf("error stopping ComputeDomainManager: %v", err)
+				klog.Errorf("Error stopping ComputeDomainManager: %v", err)
 			}
 		}
 	}()
@@ -366,13 +366,13 @@ func (m *ComputeDomainManager) periodicCleanup(ctx context.Context) {
 				continue
 			}
 			if err != nil {
-				klog.Errorf("error checking for existence of directory '%s': %v", m.configFilesRoot, err)
+				klog.Errorf("Error checking for existence of directory '%s': %v", m.configFilesRoot, err)
 				continue
 			}
 
 			entries, err := os.ReadDir(m.configFilesRoot)
 			if err != nil {
-				klog.Errorf("error reading entries under directory '%s': %v", m.configFilesRoot, err)
+				klog.Errorf("Error reading entries under directory '%s': %v", m.configFilesRoot, err)
 				continue
 			}
 
@@ -387,7 +387,7 @@ func (m *ComputeDomainManager) periodicCleanup(ctx context.Context) {
 
 				computeDomain, err := m.GetComputeDomain(ctx, uid)
 				if err != nil {
-					klog.Errorf("error getting ComputeDomain: %v", err)
+					klog.Errorf("Error getting ComputeDomain: %v", err)
 					continue
 				}
 
@@ -399,7 +399,7 @@ func (m *ComputeDomainManager) periodicCleanup(ctx context.Context) {
 				klog.V(6).Infof("Stale directory found for ComputeDomain '%s', running cleanup", uid)
 
 				if err := os.RemoveAll(path); err != nil {
-					klog.Errorf("error removing artifacts directory for ComputeDomain '%s': %v", uid, err)
+					klog.Errorf("Error removing artifacts directory for ComputeDomain '%s': %v", uid, err)
 					continue
 				}
 			}

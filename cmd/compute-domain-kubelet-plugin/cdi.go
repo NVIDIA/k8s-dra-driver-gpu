@@ -146,7 +146,7 @@ func (cdi *CDIHandler) CreateStandardDeviceSpecFile(allocatable AllocatableDevic
 	}
 	defer func() {
 		if r := cdi.nvml.Shutdown(); r != nvml.SUCCESS {
-			klog.Warningf("failed to shutdown NVML: %v", r)
+			klog.Warningf("Failed to shutdown NVML: %v", r)
 		}
 	}()
 

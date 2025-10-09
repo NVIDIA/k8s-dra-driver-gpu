@@ -90,7 +90,7 @@ func (m *ComputeDomainManager) Start(ctx context.Context) (rerr error) {
 	defer func() {
 		if rerr != nil {
 			if err := m.Stop(); err != nil {
-				klog.Errorf("error stopping ComputeDomainManager: %v", err)
+				klog.Errorf("Error stopping ComputeDomainManager: %v", err)
 			}
 		}
 	}()
@@ -333,7 +333,7 @@ func (m *ComputeDomainManager) MaybePushNodesUpdate(cd *nvapi.ComputeDomain) {
 	// wait for all 'numNodes' nodes to show up before sending an update.
 	if !featuregates.Enabled(featuregates.IMEXDaemonsWithDNSNames) {
 		if len(cd.Status.Nodes) != cd.Spec.NumNodes {
-			klog.Infof("numNodes: %d, nodes seen: %d", cd.Spec.NumNodes, len(cd.Status.Nodes))
+			klog.Infof("NumNodes: %d, nodes seen: %d", cd.Spec.NumNodes, len(cd.Status.Nodes))
 			return
 		}
 	}

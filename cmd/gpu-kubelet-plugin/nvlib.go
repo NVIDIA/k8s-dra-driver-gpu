@@ -97,7 +97,7 @@ func (l deviceLib) Init() error {
 func (l deviceLib) alwaysShutdown() {
 	ret := l.nvmllib.Shutdown()
 	if ret != nvml.SUCCESS {
-		klog.Warningf("error shutting down NVML: %v", ret)
+		klog.Warningf("Error shutting down NVML: %v", ret)
 	}
 }
 
@@ -205,7 +205,7 @@ func (l deviceLib) getGpuInfo(index int, device nvdev.Device) (*GpuInfo, error) 
 	if attr, err := deviceattribute.GetPCIeRootAttributeByPCIBusID(pcieBusID); err == nil {
 		pcieRootAttr = &attr
 	} else {
-		klog.Warningf("error getting PCIe root for device %d, continuing without attribute: %v", index, err)
+		klog.Warningf("Error getting PCIe root for device %d, continuing without attribute: %v", index, err)
 	}
 
 	var migProfiles []*MigProfileInfo

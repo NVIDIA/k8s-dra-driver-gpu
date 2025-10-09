@@ -103,7 +103,7 @@ func (m *DaemonSetPodManager) Start(ctx context.Context) (rerr error) {
 	defer func() {
 		if rerr != nil {
 			if err := m.Stop(); err != nil {
-				klog.Errorf("error stopping DaemonSetPod manager: %v", err)
+				klog.Errorf("Error stopping DaemonSetPod manager: %v", err)
 			}
 		}
 	}()

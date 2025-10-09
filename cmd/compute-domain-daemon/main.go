@@ -205,7 +205,7 @@ func run(ctx context.Context, cancel context.CancelFunc, flags *Flags) error {
 		podNamespace:           flags.podNamespace,
 		maxNodesPerIMEXDomain:  flags.maxNodesPerIMEXDomain,
 	}
-	klog.Infof("config: %v", config)
+	klog.Infof("Config: %v", config)
 
 	// Write the IMEX config with the current pod IP before starting the daemon
 	if err := writeIMEXConfig(flags.podIP); err != nil {
@@ -241,7 +241,7 @@ func run(ctx context.Context, cancel context.CancelFunc, flags *Flags) error {
 	go func() {
 		defer wg.Done()
 		if err := controller.Run(ctx); err != nil {
-			klog.Errorf("controller failed, initiate shutdown: %s", err)
+			klog.Errorf("Controller failed, initiate shutdown: %s", err)
 			cancel()
 		}
 		klog.Infof("Terminated: controller task")
@@ -275,7 +275,7 @@ func run(ctx context.Context, cancel context.CancelFunc, flags *Flags) error {
 		// Watchdog restarts the IMEX daemon upon unexpected termination, and
 		// shuts it down gracefully upon our own shutdown.
 		if err := processManager.Watchdog(ctx); err != nil {
-			klog.Errorf("watch failed, initiate shutdown: %s", err)
+			klog.Errorf("Watch failed, initiate shutdown: %s", err)
 			cancel()
 		}
 		klog.Infof("Terminated: process manager")
@@ -292,10 +292,10 @@ func run(ctx context.Context, cancel context.CancelFunc, flags *Flags) error {
 // IMEX daemon nodes config file and (re)starting the IMEX daemon process.
 func IMEXDaemonUpdateLoopWithIPs(ctx context.Context, controller *Controller, cliqueID string, pm *ProcessManager) error {
 	for {
-		klog.Infof("wait for nodes update")
+		klog.Infof("Wait for nodes update")
 		select {
 		case <-ctx.Done():
-			klog.Infof("shutdown: stop IMEXDaemonUpdateLoopWithIPs")
+			klog.Infof("Shutdown: stop IMEXDaemonUpdateLoopWithIPs")
 			return nil
 		case nodes := <-controller.GetNodesUpdateChan():
 			if err := writeNodesConfig(cliqueID, nodes); err != nil {
@@ -320,10 +320,10 @@ func IMEXDaemonUpdateLoopWithIPs(ctx context.Context, controller *Controller, cl
 // unexpectedly and expectedly).
 func IMEXDaemonUpdateLoopWithDNSNames(ctx context.Context, controller *Controller, processManager *ProcessManager, dnsNameManager *DNSNameManager) error {
 	for {
-		klog.Infof("wait for nodes update")
+		klog.Infof("Wait for nodes update")
 		select {
 		case <-ctx.Done():
-			klog.Infof("shutdown: stop IMEXDaemonUpdateLoopWithDNSNames")
+			klog.Infof("Shutdown: stop IMEXDaemonUpdateLoopWithDNSNames")
 			return nil
 		case nodes := <-controller.GetNodesUpdateChan():
 			updated, err := dnsNameManager.UpdateDNSNameMappings(nodes)
@@ -349,13 +349,13 @@ func IMEXDaemonUpdateLoopWithDNSNames(ctx context.Context, controller *Controlle
 
 			// Actively ask the IMEX daemon to re-read its config and to
 			// re-connect to its peers (involving DNS name re-resolution).
-			klog.Infof("updated DNS/IP mapping, old process: send SIGUSR1")
+			klog.Infof("Updated DNS/IP mapping, old process: send SIGUSR1")
 			if err := processManager.Signal(syscall.SIGUSR1); err != nil {
 				// Only log (ignore this error for now: if the process went away
 				// unexpectedly, the process manager will handle that. If any
 				// other error resulted in bad signal delivery, we may get away
 				// with it).
-				klog.Errorf("failed to send SIGUSR1 to child process: %s", err)
+				klog.Errorf("Failed to send SIGUSR1 to child process: %s", err)
 			}
 		}
 	}

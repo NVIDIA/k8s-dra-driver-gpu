@@ -254,7 +254,7 @@ func (d *driver) nodePrepareResource(ctx context.Context, claim *resourceapi.Res
 		return false, res
 	}
 
-	klog.Infof("prepared devices for claim '%s/%s:%s': %v", claim.Namespace, claim.Name, claim.UID, devs)
+	klog.Infof("Prepared devices for claim '%s/%s:%s': %v", claim.Namespace, claim.Name, claim.UID, devs)
 	return true, kubeletplugin.PrepareResult{Devices: devs}
 }
 
@@ -269,7 +269,7 @@ func (d *driver) nodeUnprepareResource(ctx context.Context, claimRef kubeletplug
 		return isPermanentError(err), fmt.Errorf("error unpreparing devices for claim '%v': %w", claimRef.String(), err)
 	}
 
-	klog.Infof("unprepared devices for claim '%v'", claimRef.String())
+	klog.Infof("Unprepared devices for claim '%v'", claimRef.String())
 	return true, nil
 }
 

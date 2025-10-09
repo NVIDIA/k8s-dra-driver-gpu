@@ -77,7 +77,7 @@ func NewDeviceState(ctx context.Context, config *Config) (*DeviceState, error) {
 	}
 
 	devRoot := containerDriverRoot.getDevRoot()
-	klog.Infof("using devRoot=%v", devRoot)
+	klog.Infof("Using devRoot=%v", devRoot)
 
 	hostDriverRoot := config.flags.hostDriverRoot
 	cdi, err := NewCDIHandler(
@@ -155,7 +155,7 @@ func (s *DeviceState) Prepare(ctx context.Context, claim *resourceapi.ResourceCl
 		// Make this a noop. Associated device(s) has/ave been prepared by us.
 		// Prepare() must be idempotent, as it may be invoked more than once per
 		// claim (and actual device preparation must happen at most once).
-		klog.V(6).Infof("skip prepare: claim %v found in checkpoint", claimUID)
+		klog.V(6).Infof("Skip prepare: claim %v found in checkpoint", claimUID)
 		return preparedClaim.PreparedDevices.GetDevices(), nil
 	}
 
@@ -168,7 +168,7 @@ func (s *DeviceState) Prepare(ctx context.Context, claim *resourceapi.ResourceCl
 	if err != nil {
 		return nil, fmt.Errorf("unable to update checkpoint: %w", err)
 	}
-	klog.V(6).Infof("checkpoint updated for claim %v", claimUID)
+	klog.V(6).Infof("Checkpoint updated for claim %v", claimUID)
 
 	preparedDevices, err := s.prepareDevices(ctx, claim)
 	if err != nil {
@@ -189,7 +189,7 @@ func (s *DeviceState) Prepare(ctx context.Context, claim *resourceapi.ResourceCl
 	if err != nil {
 		return nil, fmt.Errorf("unable to update checkpoint: %w", err)
 	}
-	klog.V(6).Infof("checkpoint updated for claim %v", claimUID)
+	klog.V(6).Infof("Checkpoint updated for claim %v", claimUID)
 
 	return preparedDevices.GetDevices(), nil
 }
@@ -212,7 +212,7 @@ func (s *DeviceState) Unprepare(ctx context.Context, claimRef kubeletplugin.Name
 		// device was never prepared or has already been unprepared (assume that
 		// Prepare+Checkpoint are done transactionally). Note that
 		// claimRef.String() contains namespace, name, UID.
-		klog.Infof("unprepare noop: claim not found in checkpoint data: %v", claimRef.String())
+		klog.Infof("Unprepare noop: claim not found in checkpoint data: %v", claimRef.String())
 		return nil
 	}
 
