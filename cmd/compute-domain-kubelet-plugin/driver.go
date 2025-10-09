@@ -254,7 +254,7 @@ func (d *driver) nodePrepareResource(ctx context.Context, claim *resourceapi.Res
 			Err: fmt.Errorf("error preparing devices for claim %s/%s:%s: %w", claim.Namespace, claim.Name, claim.UID, err),
 		}
 		if isPermanentError(err) {
-			klog.V(0).Infof("Permanent error preparing devices for claim %v: %v", claim.UID, err)
+			klog.Infof("Permanent error preparing devices for claim %v: %v", claim.UID, err)
 			return true, res
 		}
 		return false, res
