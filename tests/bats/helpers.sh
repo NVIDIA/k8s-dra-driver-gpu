@@ -62,14 +62,25 @@ iupgrade_wait() {
   # `--timeout`. Note that the below in itself would not be sufficient: in case
   # of an upgrade we need to isolate the _new_ pods and not accidentally observe
   # the currently disappearing pods. Also note that despite the `--wait` above,
-  # the kubelet plugins may still be in `PodInitializing` after the Helm command
-  # returned. My conclusion is that helm waits for the controller to be READY,
-  # but not for the plugin pods to be READY.
+  # the kubelet plugins may still be in `PodInitializing` or `Init:0/1` after
+  # the Helm command returned. My conclusion is that helm waits for the
+  # controller to be READY, but not for the plugin pods to be READY. An old
+  # plugin pod may also still be present in `Completed` state. The label
+  # selector below may (rarely) pick it up, and of course that one will never
+  # transition to READY. Fix that by only waiting for pods that are not in
+  # Terminating/Completed state (that do not have a deletionTimestamp). That's
+  # not natively supported by `kubectl wait`, hence this must be something of
+  # the shape
+  # `kubectl get pods ... | xargs -I{} kubectl wait --for=condition=Ready pod/{} `
+  sleep 1
   kubectl wait --for=condition=READY pods -A -l nvidia-dra-driver-gpu-component=kubelet-plugin --timeout=15s
 
   # Again, log current state.
   kubectl get pods -n nvidia-dra-driver-gpu
 
+  # That one should be obvious now, but make that guarantee explicit for
+  # consuming tests.
+  kubectl wait --for=condition=READY pods -A -l nvidia-dra-driver-gpu-component=controller --timeout=10s
   # maybe: check version on labels (to confirm that we set labels correctly)
 }
 
