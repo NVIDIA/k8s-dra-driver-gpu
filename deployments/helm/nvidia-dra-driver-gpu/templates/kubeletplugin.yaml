@@ -46,7 +46,7 @@ spec:
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      serviceAccountName: {{ include "nvidia-dra-driver-gpu.serviceAccountName" . }}
+      serviceAccountName: {{ include "nvidia-dra-driver-gpu.serviceAccountName" . }}-kubeletplugin
       securityContext:
         {{- toYaml .Values.kubeletPlugin.podSecurityContext | nindent 8 }}
       initContainers:
