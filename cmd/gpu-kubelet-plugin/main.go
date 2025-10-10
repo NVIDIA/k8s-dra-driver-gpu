@@ -167,6 +167,9 @@ func newApp() *cli.App {
 			return flags.loggingConfig.Apply()
 		},
 		Action: func(c *cli.Context) error {
+
+			klog.Infof("config: %v", flags)
+
 			ctx := c.Context
 
 			clientSets, err := flags.kubeClientConfig.NewClientSets()

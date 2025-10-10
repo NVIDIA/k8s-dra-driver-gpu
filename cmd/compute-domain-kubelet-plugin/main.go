@@ -27,6 +27,8 @@ import (
 
 	"github.com/urfave/cli/v2"
 
+	"github.com/gdexlab/go-render/render"
+
 	"k8s.io/dynamic-resource-allocation/kubeletplugin"
 	"k8s.io/klog/v2"
 
@@ -161,7 +163,7 @@ func newApp() *cli.App {
 			return flags.loggingConfig.Apply()
 		},
 		Action: func(c *cli.Context) error {
-			ctx := c.Context
+			klog.Infof("config: %v", render.Render(flags))
 
 			clientSets, err := flags.kubeClientConfig.NewClientSets()
 			if err != nil {
@@ -173,7 +175,7 @@ func newApp() *cli.App {
 				clientsets: clientSets,
 			}
 
-			return RunPlugin(ctx, config)
+			return RunPlugin(c.Context, config)
 		},
 		After: func(c *cli.Context) error {
 			// Runs after `Action` (regardless of success/error). In urfave cli
