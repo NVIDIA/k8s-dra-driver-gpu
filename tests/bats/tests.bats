@@ -337,6 +337,48 @@ log_objects() {
   iupgrade_wait "${TEST_CHART_REPO}" "${TEST_CHART_VERSION}" _iargs
   assert_output --partial '"Response" verb="GET"'
 
+  # Delete workload and hence CD daemon
+  kubectl delete -f demo/specs/imex/channel-injection.yaml
+  kubectl wait --for=delete pods imex-channel-injection --timeout=10s
+}
+
+@test "CD daemon: test log verbosity levels" {
+  log_objects
+
+  # Delete workload if it exists
+  kubectl delete -f demo/specs/imex/channel-injection.yaml || true
+
+  echo "test level 6"
+  local _iargs=("--set" "logVerbosity=6")
+  iupgrade_wait "${TEST_CHART_REPO}" "${TEST_CHART_VERSION}" _iargs
+
+  kubectl apply -f demo/specs/imex/channel-injection.yaml
+  kubectl wait --for=condition=READY pods imex-channel-injection --timeout=100s
+
+  # Confirm that the CD daemon logs on level six
+  run get_all_cd_daemon_logs_for_cd_name "imex-channel-injection"
+  assert_output --partial 'wait for nodes update'  # level 1 msg
+  assert_output --partial 'round_trippers.go'  # level 6 msg
+
+  # Delete workload and hence CD daemon
+  kubectl delete -f demo/specs/imex/channel-injection.yaml
+  kubectl wait --for=delete pods imex-channel-injection --timeout=10s
+
+  echo "test level 0"
+  # Reconfigure log verbosity for CD daemons spawned in the future.
+  # This deployment mutation is expected to restart the controller.
+  kubectl set env deployment nvidia-dra-driver-gpu-controller -n nvidia-dra-driver-gpu  LOG_VERBOSITY_CD_DAEMON=0
+
+  sleep 5
+  # Spawn new workload
+  kubectl apply -f demo/specs/imex/channel-injection.yaml
+  kubectl wait --for=condition=READY pods imex-channel-injection --timeout=100s
+
+  # Confirm that the CD daemon now does not contain a level 1 msg
+  run get_all_cd_daemon_logs_for_cd_name "imex-channel-injection"
+  refute_output --partial 'wait for nodes update'  # expected level 1 msg
+
+  # Delete workload
   kubectl delete -f demo/specs/imex/channel-injection.yaml
   kubectl wait --for=delete pods imex-channel-injection --timeout=10s
 }

@@ -107,3 +107,16 @@ wait_for_pod_event() {
     sleep 2
   done
 }
+
+get_all_cd_daemon_logs_for_cd_name() {
+  CD_NAME="$1"
+  CD_UID=$(kubectl describe computedomains.resource.nvidia.com "${CD_NAME}" | grep UID | awk '{print $2}')
+  CD_LABEL_KV="resource.nvidia.com/computeDomain=${CD_UID}"
+    kubectl logs \
+      -n nvidia-dra-driver-gpu \
+      -l "${CD_LABEL_KV}" \
+      --tail=-1 \
+      --prefix \
+      --all-containers \
+      --timestamps
+}
