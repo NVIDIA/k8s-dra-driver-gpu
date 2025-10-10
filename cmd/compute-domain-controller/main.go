@@ -62,6 +62,7 @@ type Flags struct {
 	namespace             string
 	imageName             string
 	maxNodesPerIMEXDomain int
+	logVerbosityCDDaemon  int
 
 	httpEndpoint string
 	metricsPath  string
@@ -110,6 +111,13 @@ func newApp() *cli.App {
 			Required:    true,
 			Destination: &flags.imageName,
 			EnvVars:     []string{"IMAGE_NAME"},
+		},
+		&cli.IntFlag{
+			Name:        "log-verbosity-cd-daemon",
+			Usage:       "Log verbosity for dynamically launched CD daemon pods",
+			Required:    true,
+			EnvVars:     []string{"LOG_VERBOSITY_CD_DAEMON"},
+			Destination: &flags.logVerbosityCDDaemon,
 		},
 		&cli.IntFlag{
 			Name:        "max-nodes-per-imex-domain",

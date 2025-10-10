@@ -52,6 +52,10 @@ type ManagerConfig struct {
 	// additionalNamespaces is a list of additional namespaces
 	// where the driver can manage resources
 	additionalNamespaces []string
+
+	// logVerbosityCDDaemon controls the log verbosity for dynamically launched
+	// ComputeDomain daemons.
+	logVerbosityCDDaemon int
 }
 
 // Controller manages the lifecycle of the DRA driver and its components.
@@ -79,6 +83,7 @@ func (c *Controller) Run(ctx context.Context) error {
 		maxNodesPerIMEXDomain: c.config.flags.maxNodesPerIMEXDomain,
 		clientsets:            c.config.clientsets,
 		workQueue:             workQueue,
+		logVerbosityCDDaemon:  c.config.flags.logVerbosityCDDaemon,
 	}
 
 	// TODO: log full, nested cliFlags structure.
