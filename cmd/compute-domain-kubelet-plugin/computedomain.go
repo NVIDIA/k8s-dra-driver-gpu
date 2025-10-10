@@ -154,32 +154,32 @@ func (m *ComputeDomainManager) GetComputeDomainChannelContainerEdits(devRoot str
 	}
 }
 
-// GetComputeDomainDaemonContainerEdits() returns the CDI spec edits always
-// required for launching the CD Daemon (whether or not it tries to launch an
-// IMEX daemon internally).
-func (m *ComputeDomainManager) GetComputeDomainDaemonContainerEdits(ctx context.Context, domainID string) (*cdiapi.ContainerEdits, error) {
-	cd, err := m.GetComputeDomain(ctx, domainID)
+// GetCDIContainerEditsCommon() returns the CDI spec edits always required for
+// launching the CD Daemon (whether or not it tries to launch an IMEX daemon
+// internally).
+func (s *ComputeDomainDaemonSettings) GetCDIContainerEditsCommon(ctx context.Context) (*cdiapi.ContainerEdits, error) {
+	cd, err := s.manager.GetComputeDomain(ctx, s.domainID)
 	if err != nil {
-		return nil, fmt.Errorf("error getting compute domain %s: %w", domainID, err)
+		return nil, fmt.Errorf("error getting compute domain %s: %w", s.domainID, err)
 	}
 	if cd == nil {
-		return nil, fmt.Errorf("compute domain not found: %s", domainID)
+		return nil, fmt.Errorf("compute domain not found: %s", s.domainID)
 	}
 
 	edits := &cdiapi.ContainerEdits{
 		ContainerEdits: &cdispec.ContainerEdits{
-			Mounts: []*cdispec.Mount{
-				{
-					ContainerPath: "/etc/nvidia-imex",
-					HostPath:      fmt.Sprintf("%s/%s", m.configFilesRoot, domainID),
-					Options:       []string{"rw", "nosuid", "nodev", "bind"},
-				},
-			},
 			Env: []string{
-				fmt.Sprintf("CLIQUE_ID=%s", m.cliqueID),
+				fmt.Sprintf("CLIQUE_ID=%s", s.manager.cliqueID),
 				fmt.Sprintf("COMPUTE_DOMAIN_UUID=%s", cd.UID),
 				fmt.Sprintf("COMPUTE_DOMAIN_NAME=%s", cd.Name),
 				fmt.Sprintf("COMPUTE_DOMAIN_NAMESPACE=%s", cd.Namespace),
+			},
+			Mounts: []*cdispec.Mount{
+				{
+					ContainerPath: "/etc/nvidia-imex",
+					HostPath:      s.rootDir,
+					Options:       []string{"rw", "nosuid", "nodev", "bind"},
+				},
 			},
 		},
 	}

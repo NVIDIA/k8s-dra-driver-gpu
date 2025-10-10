@@ -492,14 +492,6 @@ func (s *DeviceState) applyComputeDomainDaemonConfig(ctx context.Context, config
 		ComputeDomain: config.DomainID,
 	}
 
-	// Always inject CD config details into the CD daemon (regardless of clique
-	// ID being empty or not).
-	edits, err := s.computeDomainManager.GetComputeDomainDaemonContainerEdits(ctx, config.DomainID)
-	if err != nil {
-		return nil, fmt.Errorf("error preparing ComputeDomain daemon settings: %w", err)
-	}
-	configState.containerEdits = configState.containerEdits.Append(edits)
-
 	// Create new ComputeDomain daemon settings from the ComputeDomainManager.
 	computeDomainDaemonSettings := s.computeDomainManager.NewSettings(config.DomainID)
 
@@ -511,6 +503,14 @@ func (s *DeviceState) applyComputeDomainDaemonConfig(ctx context.Context, config
 	if err := computeDomainDaemonSettings.Prepare(ctx); err != nil {
 		return nil, fmt.Errorf("error preparing ComputeDomain daemon settings for requests '%v' in claim '%v': %w", requests, claim.UID, err)
 	}
+
+	// Always inject CD config details into the CD daemon (regardless of clique
+	// ID being empty or not).
+	edits, err := computeDomainDaemonSettings.GetCDIContainerEditsCommon(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("error getting common container edits for ComputeDomain daemon '%s': %w", config.DomainID, err)
+	}
+	configState.containerEdits = configState.containerEdits.Append(edits)
 
 	// Only inject dev nodes related to
 	// /proc/driver/nvidia/capabilities/fabric-imex-mgmt if IMEX is supported
