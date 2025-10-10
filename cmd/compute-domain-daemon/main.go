@@ -294,7 +294,7 @@ func run(ctx context.Context, cancel context.CancelFunc, flags *Flags) error {
 // IMEX daemon nodes config file and (re)starting the IMEX daemon process.
 func IMEXDaemonUpdateLoopWithIPs(ctx context.Context, controller *Controller, cliqueID string, pm *ProcessManager) error {
 	for {
-		klog.Infof("wait for nodes update")
+		klog.V(1).Infof("wait for nodes update")
 		select {
 		case <-ctx.Done():
 			klog.Infof("shutdown: stop IMEXDaemonUpdateLoopWithIPs")
@@ -327,7 +327,7 @@ func IMEXDaemonUpdateLoopWithIPs(ctx context.Context, controller *Controller, cl
 // unexpectedly and expectedly).
 func IMEXDaemonUpdateLoopWithDNSNames(ctx context.Context, controller *Controller, processManager *ProcessManager, dnsNameManager *DNSNameManager) error {
 	for {
-		klog.Infof("wait for nodes update")
+		klog.V(1).Infof("wait for nodes update")
 		select {
 		case <-ctx.Done():
 			klog.Infof("shutdown: stop IMEXDaemonUpdateLoopWithDNSNames")
