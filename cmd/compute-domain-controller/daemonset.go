@@ -119,7 +119,7 @@ func (m *DaemonSetManager) Start(ctx context.Context) (rerr error) {
 	}()
 
 	if err := addComputeDomainLabelIndexer[*appsv1.DaemonSet](m.informer); err != nil {
-		return fmt.Errorf("error adding indexer for MulitNodeEnvironment label: %w", err)
+		return fmt.Errorf("error adding indexer for MultiNodeEnvironment label: %w", err)
 	}
 
 	m.mutationCache = cache.NewIntegerResourceVersionMutationCache(
