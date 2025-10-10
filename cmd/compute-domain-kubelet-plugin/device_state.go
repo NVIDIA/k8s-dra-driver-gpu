@@ -493,7 +493,7 @@ func (s *DeviceState) applyComputeDomainDaemonConfig(ctx context.Context, config
 	}
 
 	// Always inject CD config details into the CD daemon (regardless of clique
-	// ID being emtpy or not).
+	// ID being empty or not).
 	edits, err := s.computeDomainManager.GetComputeDomainDaemonContainerEdits(ctx, config.DomainID)
 	if err != nil {
 		return nil, fmt.Errorf("error preparing ComputeDomain daemon settings: %w", err)
@@ -502,10 +502,10 @@ func (s *DeviceState) applyComputeDomainDaemonConfig(ctx context.Context, config
 
 	// Only prepare files to inject to the daemon if IMEX is supported.
 	if s.computeDomainManager.cliqueID != "" {
-		// Parse the device node info for the fabic-imex-mgmt nvcap.
+		// Parse the device node info for the fabric-imex-mgmt nvcap.
 		nvcapDeviceInfo, err := s.nvdevlib.parseNVCapDeviceInfo(nvidiaCapFabricImexMgmtPath)
 		if err != nil {
-			return nil, fmt.Errorf("error parsing nvcap device info for fabic-imex-mgmt: %w", err)
+			return nil, fmt.Errorf("error parsing nvcap device info for fabric-imex-mgmt: %w", err)
 		}
 
 		// Create new ComputeDomain daemon settings from the ComputeDomainManager.
