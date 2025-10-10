@@ -168,6 +168,13 @@ func (m *ComputeDomainManager) GetComputeDomainDaemonContainerEdits(ctx context.
 
 	edits := &cdiapi.ContainerEdits{
 		ContainerEdits: &cdispec.ContainerEdits{
+			Mounts: []*cdispec.Mount{
+				{
+					ContainerPath: "/etc/nvidia-imex",
+					HostPath:      fmt.Sprintf("%s/%s", m.configFilesRoot, domainID),
+					Options:       []string{"rw", "nosuid", "nodev", "bind"},
+				},
+			},
 			Env: []string{
 				fmt.Sprintf("CLIQUE_ID=%s", m.cliqueID),
 				fmt.Sprintf("COMPUTE_DOMAIN_UUID=%s", cd.UID),
@@ -184,17 +191,10 @@ func (s *ComputeDomainDaemonSettings) GetDomainID() string {
 }
 
 // GetCDIContainerEditsForImex() returns the CDI spec edits only required for
-// launching the CD Daemon when it actually wraps an IMEX daemon.
+// launching the CD daemon when it actually wraps an IMEX daemon.
 func (s *ComputeDomainDaemonSettings) GetCDIContainerEditsForImex(ctx context.Context, devRoot string, info *nvcapDeviceInfo) *cdiapi.ContainerEdits {
 	edits := &cdiapi.ContainerEdits{
 		ContainerEdits: &cdispec.ContainerEdits{
-			Mounts: []*cdispec.Mount{
-				{
-					ContainerPath: "/etc/nvidia-imex",
-					HostPath:      s.rootDir,
-					Options:       []string{"rw", "nosuid", "nodev", "bind"},
-				},
-			},
 			DeviceNodes: []*cdispec.DeviceNode{
 				{
 					Path:     info.path,
