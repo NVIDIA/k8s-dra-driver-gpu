@@ -120,3 +120,9 @@ get_all_cd_daemon_logs_for_cd_name() {
       --all-containers \
       --timestamps
 }
+
+# Intended use case: one pod in Running state; then this function returns the
+# specific name of that pod.
+get_current_controller_pod_name() {
+  kubectl get pod -l nvidia-dra-driver-gpu-component=controller -n nvidia-dra-driver-gpu | awk '{print $1}'
+}

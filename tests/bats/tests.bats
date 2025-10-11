@@ -141,6 +141,7 @@ log_objects() {
   assert_output --partial "channel2047"
   assert_output --partial "channel222"
   kubectl delete -f demo/specs/imex/channel-injection-all.yaml
+  kubectl wait --for=delete pods imex-channel-injection-all --timeout=10s
 }
 
 @test "CD daemon shutdown: confirm CD status cleanup" {
@@ -228,6 +229,7 @@ log_objects() {
   # Clean up.
   kubectl delete "${POD}"
   kubectl delete resourceclaim batssuite-rc-bad-opaque-config
+  kubectl wait --for=delete "${POD}" --timeout=10s
 }
 
 @test "nickelpie (NCCL send/recv/broadcast, 2 pods, 2 nodes, small payload)" {
@@ -365,11 +367,18 @@ log_objects() {
   kubectl wait --for=delete pods imex-channel-injection --timeout=10s
 
   echo "test level 0"
-  # Reconfigure log verbosity for CD daemons spawned in the future.
-  # This deployment mutation is expected to restart the controller.
+  # Reconfigure (only the) log verbosity for CD daemons spawned in the future.
+  # The deployment mutation via `set env` below is expected to restart the
+  # controller. Wait for the old controller pod to go away (to be sure that the
+  # new LOG_VERBOSITY_CD_DAEMON setting applies).
+  CPOD="$(get_current_controller_pod_name)"
+  log_objects
   kubectl set env deployment nvidia-dra-driver-gpu-controller -n nvidia-dra-driver-gpu  LOG_VERBOSITY_CD_DAEMON=0
+  echo "waiting for pod $CPOD"
+  kubectl wait --for=delete pods "$CPOD" -n nvidia-dra-driver-gpu --timeout=10s
+  echo "done waiting"
+  log_objects
 
-  sleep 5
   # Spawn new workload
   kubectl apply -f demo/specs/imex/channel-injection.yaml
   kubectl wait --for=condition=READY pods imex-channel-injection --timeout=100s
