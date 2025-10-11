@@ -31,6 +31,11 @@ kubectl get pods -n nvidia-dra-driver-gpu
 helm list -A
 
 set -x
+
+# If a previous run leaves e.g. the controller behind in CrashLoopBackOff then
+# the next installation with --wait won't succeed.
+timeout -v 5 helm uninstall nvidia-dra-driver-gpu-batssuite -n nvidia-dra-driver-gpu
+
 # When the CRD has been left behind deleted by a partially performed
 # test then the deletions below cannot succeed. Apply a CRD version that
 # likely helps deletion.

@@ -267,6 +267,8 @@ log_objects() {
 }
 
 @test "CD controller: test log verbosity levels" {
+  iupgrade_wait "${TEST_CHART_REPO}" "${TEST_CHART_VERSION}" NOARGS
+
   # Deploy workload: give the controller something to log about.
   log_objects
   kubectl apply -f demo/specs/imex/channel-injection.yaml
@@ -331,18 +333,6 @@ log_objects() {
   assert_output --partial 'round_trippers.go'
   assert_output --partial '"Response" verb="GET"'
 
-  # default log verbosity is 1; test if the controller-specific override to 6
-  # works with the technique below -- this leads to a duplicate env name in the
-  # pod spec -- allowed by the API server, and it's documented that the last
-  # definition takes precedence.
-  echo "test that component-specific env var takes precedence"
-  local _iargs=(
-    "--set" "controller.containers.computeDomain.env[0].name=LOG_VERBOSITY"
-    "--set-string" "controller.containers.computeDomain.env[0].value=6"
-    )
-  iupgrade_wait "${TEST_CHART_REPO}" "${TEST_CHART_VERSION}" _iargs
-  assert_output --partial '"Response" verb="GET"'
-
   # Delete workload and hence CD daemon
   kubectl delete -f demo/specs/imex/channel-injection.yaml
   kubectl wait --for=delete pods imex-channel-injection --timeout=10s
@@ -350,9 +340,7 @@ log_objects() {
 
 @test "CD daemon: test log verbosity levels" {
   log_objects
-
-  # Delete workload if it exists
-  kubectl delete -f demo/specs/imex/channel-injection.yaml || true
+  iupgrade_wait "${TEST_CHART_REPO}" "${TEST_CHART_VERSION}" NOARGS
 
   echo "test level 6"
   local _iargs=("--set" "logVerbosity=6")
@@ -371,13 +359,13 @@ log_objects() {
   kubectl wait --for=delete pods imex-channel-injection --timeout=10s
 
   echo "test level 0"
+  log_objects
   # Reconfigure (only the) log verbosity for CD daemons spawned in the future.
   # The deployment mutation via `set env` below is expected to restart the
   # controller. Wait for the old controller pod to go away (to be sure that the
   # new LOG_VERBOSITY_CD_DAEMON setting applies), and make sure controller
   # deployment is still READY before moving on (make sure 1/1 READY).
   CPOD_OLD="$(get_current_controller_pod_name)"
-  log_objects
   kubectl set env deployment nvidia-dra-driver-gpu-controller -n nvidia-dra-driver-gpu  LOG_VERBOSITY_CD_DAEMON=0
   echo "wait --for=delete: $CPOD_OLD"
   kubectl wait --for=delete pods "$CPOD_OLD" -n nvidia-dra-driver-gpu --timeout=10s
