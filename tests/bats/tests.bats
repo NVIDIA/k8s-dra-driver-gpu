@@ -266,6 +266,22 @@ log_objects() {
   echo "${output}" | grep -E '^.*SUM multinode_device_to_device_memcpy_read_ce [0-9]+\.[0-9]+.*$'
 }
 
+@test "Confirm startup config / detail in logs on level 0" {
+  local _iargs=("--set" "logVerbosity=0")
+  iupgrade_wait "${TEST_CHART_REPO}" "${TEST_CHART_VERSION}" _iargs
+
+  run kubectl logs -l nvidia-dra-driver-gpu-component=controller -n nvidia-dra-driver-gpu --tail=-1
+  assert_output --partial "Verbosity:"
+  assert_output --partial '"MPSSupport":false'
+  assert_output --partial 'additionalNamespaces:'
+
+  run kubectl logs -l nvidia-dra-driver-gpu-component=kubelet-plugin -n nvidia-dra-driver-gpu --tail=-1
+  assert_output --partial "Verbosity"
+  assert_output --partial "nodeName"
+  assert_output --partial "identified fabric clique"
+  assert_output --partial "driver version validation"
+}
+
 @test "CD controller: test log verbosity levels" {
   iupgrade_wait "${TEST_CHART_REPO}" "${TEST_CHART_VERSION}" NOARGS
 
