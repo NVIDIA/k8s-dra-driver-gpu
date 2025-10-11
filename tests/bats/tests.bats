@@ -6,7 +6,6 @@ setup() {
   _common_setup
 }
 
-
 # Currently, the tests defined in this file deliberately depend on each other
 # and are expected to execute in the order defined. In the future, we want to
 # build test dependency injection (with fixtures), and work towards clean
@@ -14,6 +13,10 @@ setup() {
 # reliable strategies to conceptually prevent cross-contamination from
 # happening. Tools like `etcdctl` will be helpful.
 
+# Hint: when developing/testing a specific test, for faster iteration add the
+# comment `# bats test_tags=bats:focus` on top of the current test. This can
+# help (requires the test to be self-contained though, i.e. it sets up its
+# dependencies' does not rely on a previous test for that).
 
 # Note(JP): bats swallows output of setup upon success (regardless of cmdline
 # args such as `--show-output-of-passing-tests`). Ref:
@@ -59,6 +62,7 @@ log_objects() {
   kubectl get resourceclaims || true
   kubectl get computedomain || true
   kubectl get pods -o wide || true
+  kubectl get pods -o wide -n nvidia-dra-driver-gpu || true
 }
 
 # A test that covers local dev tooling, we don't want to
@@ -370,14 +374,17 @@ log_objects() {
   # Reconfigure (only the) log verbosity for CD daemons spawned in the future.
   # The deployment mutation via `set env` below is expected to restart the
   # controller. Wait for the old controller pod to go away (to be sure that the
-  # new LOG_VERBOSITY_CD_DAEMON setting applies).
-  CPOD="$(get_current_controller_pod_name)"
+  # new LOG_VERBOSITY_CD_DAEMON setting applies), and make sure controller
+  # deployment is still READY before moving on (make sure 1/1 READY).
+  CPOD_OLD="$(get_current_controller_pod_name)"
   log_objects
   kubectl set env deployment nvidia-dra-driver-gpu-controller -n nvidia-dra-driver-gpu  LOG_VERBOSITY_CD_DAEMON=0
-  echo "waiting for pod $CPOD"
-  kubectl wait --for=delete pods "$CPOD" -n nvidia-dra-driver-gpu --timeout=10s
-  echo "done waiting"
-  log_objects
+  echo "wait --for=delete: $CPOD_OLD"
+  kubectl wait --for=delete pods "$CPOD_OLD" -n nvidia-dra-driver-gpu --timeout=10s
+  echo "returned: wait --for=delete"
+  CPOD_NEW="$(get_current_controller_pod_name)"
+  kubectl wait --for=condition=READY pods "$CPOD_NEW" -n nvidia-dra-driver-gpu --timeout=10s
+  echo "new controller pod is in effect"
 
   # Spawn new workload
   kubectl apply -f demo/specs/imex/channel-injection.yaml

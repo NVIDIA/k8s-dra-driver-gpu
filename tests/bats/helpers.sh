@@ -121,8 +121,17 @@ get_all_cd_daemon_logs_for_cd_name() {
       --timestamps
 }
 
-# Intended use case: one pod in Running state; then this function returns the
-# specific name of that pod.
+# Intended use case: one pod in Running or ContainerCreating state; then this
+# function returns the specific name of that pod. Specifically, ignore pods that
+# were just deleted or are terminating (this is important during the small time
+# window of restarting the controller, say in response to a deployment podspec
+# template mutation).
 get_current_controller_pod_name() {
-  kubectl get pod -l nvidia-dra-driver-gpu-component=controller -n nvidia-dra-driver-gpu | awk '{print $1}'
+  kubectl get pod \
+    -l nvidia-dra-driver-gpu-component=controller \
+    -n nvidia-dra-driver-gpu \
+      | grep -iv "NAME" \
+      | grep -iv 'completed' \
+      | grep -iv 'terminating' \
+      | awk '{print $1}'
 }
