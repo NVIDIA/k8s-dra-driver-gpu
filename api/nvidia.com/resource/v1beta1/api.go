@@ -29,6 +29,7 @@ const (
 
 	GpuConfigKind                  = "GpuConfig"
 	MigDeviceConfigKind            = "MigDeviceConfig"
+	VfioDeviceConfigKind           = "VfioDeviceConfig"
 	ComputeDomainChannelConfigKind = "ComputeDomainChannelConfig"
 	ComputeDomainDaemonConfigKind  = "ComputeDomainDaemonConfig"
 	ComputeDomainKind              = "ComputeDomain"
@@ -66,6 +67,7 @@ func init() {
 	scheme.AddKnownTypes(schemeGroupVersion,
 		&GpuConfig{},
 		&MigDeviceConfig{},
+		&VfioDeviceConfig{},
 		&ComputeDomainChannelConfig{},
 		&ComputeDomainDaemonConfig{},
 		&ComputeDomain{},
