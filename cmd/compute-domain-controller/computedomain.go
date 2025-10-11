@@ -93,7 +93,7 @@ func (m *ComputeDomainManager) Start(ctx context.Context) (rerr error) {
 	defer func() {
 		if rerr != nil {
 			if err := m.Stop(); err != nil {
-				klog.Errorf("error stopping ComputeDomain manager: %v", err)
+				klog.Errorf("Error stopping ComputeDomain manager: %v", err)
 			}
 		}
 	}()

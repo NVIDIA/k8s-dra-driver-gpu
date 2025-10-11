@@ -64,7 +64,7 @@ func startHealthcheck(ctx context.Context, config *Config) (*healthcheck, error)
 		// are enabled and the filename includes a uid.
 		Path: path.Join(config.flags.kubeletRegistrarDirectoryPath, DriverName+"-reg.sock"),
 	}).String()
-	klog.V(6).Infof("connecting to registration socket path=%s", regSockPath)
+	klog.V(6).Infof("Connecting to registration socket path=%s", regSockPath)
 	regConn, err := grpc.NewClient(
 		regSockPath,
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
@@ -77,7 +77,7 @@ func startHealthcheck(ctx context.Context, config *Config) (*healthcheck, error)
 		Scheme: "unix",
 		Path:   path.Join(config.DriverPluginPath(), "dra.sock"),
 	}).String()
-	klog.V(6).Infof("connecting to DRA socket path=%s", draSockPath)
+	klog.V(6).Infof("Connecting to DRA socket path=%s", draSockPath)
 	draConn, err := grpc.NewClient(
 		draSockPath,
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
@@ -97,9 +97,9 @@ func startHealthcheck(ctx context.Context, config *Config) (*healthcheck, error)
 	healthcheck.wg.Add(1)
 	go func() {
 		defer healthcheck.wg.Done()
-		klog.Infof("starting healthcheck service at %s", lis.Addr().String())
+		klog.Infof("Starting healthcheck service at %s", lis.Addr().String())
 		if err := server.Serve(lis); err != nil {
-			klog.Errorf("failed to serve healthcheck service on %s: %v", addr, err)
+			klog.Errorf("Failed to serve healthcheck service on %s: %v", addr, err)
 		}
 	}()
 

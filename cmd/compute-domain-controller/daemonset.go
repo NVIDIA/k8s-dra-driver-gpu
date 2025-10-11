@@ -112,7 +112,7 @@ func (m *DaemonSetManager) Start(ctx context.Context) (rerr error) {
 	defer func() {
 		if rerr != nil {
 			if err := m.Stop(); err != nil {
-				klog.Errorf("error stopping DaemonSet manager: %v", err)
+				klog.Errorf("Error stopping DaemonSet manager: %v", err)
 			}
 		}
 	}()

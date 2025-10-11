@@ -122,7 +122,7 @@ func (l deviceLib) init() error {
 func (l deviceLib) alwaysShutdown() {
 	ret := l.nvmllib.Shutdown()
 	if ret != nvml.SUCCESS {
-		klog.Warningf("error shutting down NVML: %v", ret)
+		klog.Warningf("Error shutting down NVML: %v", ret)
 	}
 }
 
@@ -217,7 +217,7 @@ func (l deviceLib) getCliqueID() (string, error) {
 		}
 
 		if !isFabricAttached {
-			klog.Infof("no-clique fallback: fabric not attached (device %d/%s)", i, duid)
+			klog.Infof("No-clique fallback: fabric not attached (device %d/%s)", i, duid)
 			return nil
 		}
 
@@ -240,7 +240,7 @@ func (l deviceLib) getCliqueID() (string, error) {
 
 		uniqueClusterUUIDs[clusterUUID.String()] = struct{}{}
 		uniqueCliqueIDs[cliqueID] = struct{}{}
-		klog.Infof("identified fabric clique UUID/ID (device %d/%s): %s/%s", i, duid, clusterUUID.String(), cliqueID)
+		klog.Infof("Identified fabric clique UUID/ID (device %d/%s): %s/%s", i, duid, clusterUUID.String(), cliqueID)
 
 		return nil
 	})

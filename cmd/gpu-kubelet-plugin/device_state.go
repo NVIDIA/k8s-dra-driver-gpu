@@ -68,7 +68,7 @@ func NewDeviceState(ctx context.Context, config *Config) (*DeviceState, error) {
 	}
 
 	devRoot := containerDriverRoot.getDevRoot()
-	klog.Infof("using devRoot=%v", devRoot)
+	klog.Infof("Using devRoot=%v", devRoot)
 
 	hostDriverRoot := config.flags.hostDriverRoot
 	cdi, err := NewCDIHandler(
@@ -152,14 +152,14 @@ func (s *DeviceState) Prepare(ctx context.Context, claim *resourceapi.ResourceCl
 	if err != nil {
 		return nil, fmt.Errorf("unable to update checkpoint: %w", err)
 	}
-	klog.V(6).Infof("checkpoint updated for claim %v", claimUID)
+	klog.V(6).Infof("Checkpoint updated for claim %v", claimUID)
 
 	preparedClaim, exists := checkpoint.V2.PreparedClaims[claimUID]
 	if exists && preparedClaim.CheckpointState == ClaimCheckpointStatePrepareCompleted {
 		// Make this a noop. Associated device(s) has/ave been prepared by us.
 		// Prepare() must be idempotent, as it may be invoked more than once per
 		// claim (and actual device preparation must happen at most once).
-		klog.V(6).Infof("skip prepare: claim %v found in checkpoint", claimUID)
+		klog.V(6).Infof("Skip prepare: claim %v found in checkpoint", claimUID)
 		return preparedClaim.PreparedDevices.GetDevices(), nil
 	}
 
@@ -182,7 +182,7 @@ func (s *DeviceState) Prepare(ctx context.Context, claim *resourceapi.ResourceCl
 	if err != nil {
 		return nil, fmt.Errorf("unable to update checkpoint: %w", err)
 	}
-	klog.V(6).Infof("checkpoint updated for claim %v", claimUID)
+	klog.V(6).Infof("Checkpoint updated for claim %v", claimUID)
 
 	return preparedDevices.GetDevices(), nil
 }
@@ -202,13 +202,13 @@ func (s *DeviceState) Unprepare(ctx context.Context, claimUID string) error {
 		// device was never prepared or has already been unprepared (assume that
 		// Prepare+Checkpoint are done transactionally). Note that
 		// claimRef.String() contains namespace, name, UID.
-		klog.Infof("unprepare noop: claim not found in checkpoint data: %v", claimUID)
+		klog.Infof("Unprepare noop: claim not found in checkpoint data: %v", claimUID)
 		return nil
 	}
 
 	switch pc.CheckpointState {
 	case ClaimCheckpointStatePrepareStarted:
-		klog.Infof("unprepare noop: claim preparation started but not completed: %v", claimUID)
+		klog.Infof("Unprepare noop: claim preparation started but not completed: %v", claimUID)
 		return nil
 	case ClaimCheckpointStatePrepareCompleted:
 		if err := s.unprepareDevices(ctx, claimUID, pc.PreparedDevices); err != nil {

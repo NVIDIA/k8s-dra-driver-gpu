@@ -96,7 +96,7 @@ func (q *WorkQueue) EnqueueRaw(obj any, callback func(ctx context.Context, obj a
 func (q *WorkQueue) Enqueue(obj any, callback func(ctx context.Context, obj any) error) {
 	runtimeObj, ok := obj.(runtime.Object)
 	if !ok {
-		klog.Warningf("unexpected object type %T: runtime.Object required", obj)
+		klog.Warningf("Unexpected object type %T: runtime.Object required", obj)
 		return
 	}
 
@@ -124,7 +124,7 @@ func (q *WorkQueue) EnqueueRawWithKey(obj any, key string, callback func(ctx con
 func (q *WorkQueue) EnqueueWithKey(obj any, key string, callback func(ctx context.Context, obj any) error) {
 	runtimeObj, ok := obj.(runtime.Object)
 	if !ok {
-		klog.Warningf("unexpected object type %T: runtime.Object required", obj)
+		klog.Warningf("Unexpected object type %T: runtime.Object required", obj)
 		return
 	}
 

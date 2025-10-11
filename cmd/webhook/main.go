@@ -102,7 +102,7 @@ func newApp() *cli.App {
 				Handler: newMux(),
 				Addr:    fmt.Sprintf(":%d", flags.port),
 			}
-			klog.Info("starting webhook server on", server.Addr)
+			klog.Info("Starting webhook server on", server.Addr)
 			return server.ListenAndServeTLS(flags.certFile, flags.keyFile)
 		},
 	}
@@ -150,7 +150,7 @@ func serve(w http.ResponseWriter, r *http.Request, admit func(admissionv1.Admiss
 		return
 	}
 
-	klog.V(2).Infof("handling request: %s", body)
+	klog.V(2).Infof("Handling request: %s", body)
 
 	requestedAdmissionReview, err := readAdmissionReview(body)
 	if err != nil {
@@ -164,7 +164,7 @@ func serve(w http.ResponseWriter, r *http.Request, admit func(admissionv1.Admiss
 	responseAdmissionReview.Response = admit(*requestedAdmissionReview)
 	responseAdmissionReview.Response.UID = requestedAdmissionReview.Request.UID
 
-	klog.V(2).Infof("sending response: %v", responseAdmissionReview)
+	klog.V(2).Infof("Sending response: %v", responseAdmissionReview)
 	respBytes, err := json.Marshal(responseAdmissionReview)
 	if err != nil {
 		klog.Error(err)
@@ -199,7 +199,7 @@ func readAdmissionReview(data []byte) (*admissionv1.AdmissionReview, error) {
 // admitResourceClaimParameters accepts both ResourceClaims and ResourceClaimTemplates and validates their
 // opaque device configuration parameters for this driver.
 func admitResourceClaimParameters(ar admissionv1.AdmissionReview) *admissionv1.AdmissionResponse {
-	klog.V(2).Info("admitting resource claim parameters")
+	klog.V(2).Info("Admitting resource claim parameters")
 
 	var deviceConfigs []resourceapi.DeviceClaimConfiguration
 	var specPath string

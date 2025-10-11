@@ -75,7 +75,7 @@ func (m *NodeManager) Start(ctx context.Context) (rerr error) {
 	defer func() {
 		if rerr != nil {
 			if err := m.Stop(); err != nil {
-				klog.Errorf("error stopping Node manager: %v", err)
+				klog.Errorf("Error stopping Node manager: %v", err)
 			}
 		}
 	}()
