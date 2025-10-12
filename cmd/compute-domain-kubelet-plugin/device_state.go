@@ -48,12 +48,13 @@ type DeviceConfigState struct {
 
 type DeviceState struct {
 	sync.Mutex
-	cdi                  *CDIHandler
-	computeDomainManager *ComputeDomainManager
-	allocatable          AllocatableDevices
-	config               *Config
+	cdi                      *CDIHandler
+	computeDomainManager     *ComputeDomainManager
+	checkpointCleanupManager *CheckpointCleanupManager
+	allocatable              AllocatableDevices
+	config                   *Config
+	nvdevlib                 *deviceLib
 
-	nvdevlib          *deviceLib
 	checkpointManager checkpointmanager.CheckpointManager
 }
 
@@ -120,6 +121,7 @@ func NewDeviceState(ctx context.Context, config *Config) (*DeviceState, error) {
 		nvdevlib:             nvdevlib,
 		checkpointManager:    checkpointManager,
 	}
+	state.checkpointCleanupManager = NewCheckpointCleanupManager(state, config.clientsets.Resource)
 
 	checkpoints, err := state.checkpointManager.ListCheckpoints()
 	if err != nil {
@@ -128,10 +130,12 @@ func NewDeviceState(ctx context.Context, config *Config) (*DeviceState, error) {
 
 	for _, c := range checkpoints {
 		if c == DriverPluginCheckpointFileBasename {
+			klog.Infof("Found previous checkpoint: %s", c)
 			return state, nil
 		}
 	}
 
+	klog.Infof("Create empty checkpoint")
 	if err := state.createCheckpoint(&Checkpoint{}); err != nil {
 		return nil, fmt.Errorf("unable to create checkpoint: %w", err)
 	}
@@ -155,7 +159,7 @@ func (s *DeviceState) Prepare(ctx context.Context, claim *resourceapi.ResourceCl
 		// Make this a noop. Associated device(s) has/ave been prepared by us.
 		// Prepare() must be idempotent, as it may be invoked more than once per
 		// claim (and actual device preparation must happen at most once).
-		klog.V(6).Infof("skip prepare: claim %v found in checkpoint", claimUID)
+		klog.V(4).Infof("Skip prepare: claim %v found in checkpoint", claimUID)
 		return preparedClaim.PreparedDevices.GetDevices(), nil
 	}
 
@@ -163,6 +167,8 @@ func (s *DeviceState) Prepare(ctx context.Context, claim *resourceapi.ResourceCl
 		checkpoint.V2.PreparedClaims[claimUID] = PreparedClaim{
 			CheckpointState: ClaimCheckpointStatePrepareStarted,
 			Status:          claim.Status,
+			Name:            claim.Name,
+			Namespace:       claim.Namespace,
 		}
 	})
 	if err != nil {
@@ -179,6 +185,10 @@ func (s *DeviceState) Prepare(ctx context.Context, claim *resourceapi.ResourceCl
 		return nil, fmt.Errorf("unable to create CDI spec file for claim: %w", err)
 	}
 
+	// Some errors above along the Prepare() path leave the claim in the
+	// checkpoint, in the 'PrepareStarted' state. That's deliberate, to annotate
+	// potentially partially prepared claims. There is an asynchronous
+	// checkpoint cleanup procedure that identifies when such entry goes stale.
 	err = s.updateCheckpoint(func(checkpoint *Checkpoint) {
 		checkpoint.V2.PreparedClaims[claimUID] = PreparedClaim{
 			CheckpointState: ClaimCheckpointStatePrepareCompleted,
@@ -198,7 +208,7 @@ func (s *DeviceState) Unprepare(ctx context.Context, claimRef kubeletplugin.Name
 	s.Lock()
 	defer s.Unlock()
 
-	claimUID := string(claimRef.UID)
+	klog.V(6).Infof("Unprepare() for claim '%s'", claimRef.String())
 
 	// Rely on local checkpoint state for ability to clean up.
 	checkpoint, err := s.getCheckpoint()
@@ -206,6 +216,7 @@ func (s *DeviceState) Unprepare(ctx context.Context, claimRef kubeletplugin.Name
 		return fmt.Errorf("unable to get checkpoint: %w", err)
 	}
 
+	claimUID := string(claimRef.UID)
 	pc, exists := checkpoint.V2.PreparedClaims[claimUID]
 	if !exists {
 		// Not an error: if this claim UID is not in the checkpoint then this
@@ -222,16 +233,20 @@ func (s *DeviceState) Unprepare(ctx context.Context, claimRef kubeletplugin.Name
 	//
 	// TODO: Remove this one release cycle following the v25.3.0 release
 	if pc.Status.Allocation == nil {
-		klog.Infof("PreparedClaim status was unset in Checkpoint for ResourceClaim %s: attempting to pull it from API server", claimRef.String())
+		klog.Infof("PreparedClaim Status not set in Checkpoint for claim '%s': attempting to pull it from API server", claimRef.String())
 		claim, err := s.config.clientsets.Resource.ResourceClaims(claimRef.Namespace).Get(
 			ctx,
 			claimRef.Name,
 			metav1.GetOptions{})
 
+		// TODO: distinguish errors -- if this is a 'not found' error then this
+		// is permanent and we may want to drop the claim from the checkpoint.
+		// Otherwise, this might be worth retrying?
 		if err != nil {
 			return permanentError{fmt.Errorf("failed to fetch ResourceClaim %s: %w", claimRef.String(), err)}
 		}
 		if claim.Status.Allocation == nil {
+			// TODO: drop claim from checkpoint?
 			return permanentError{fmt.Errorf("no allocation set in ResourceClaim %s", claim.String())}
 		}
 		pc.Status = claim.Status
@@ -246,17 +261,18 @@ func (s *DeviceState) Unprepare(ctx context.Context, claimRef kubeletplugin.Name
 		return fmt.Errorf("unsupported ClaimCheckpointState: %v", pc.CheckpointState)
 	}
 
-	if err := s.cdi.DeleteClaimSpecFile(claimUID); err != nil {
+	// Assume that this is a retryable error. If there is any chance for this
+	// error to be permanent: drop the claim from checkpoint then regardless?
+	if err := s.cdi.DeleteClaimSpecFileIfExists(claimUID); err != nil {
 		return fmt.Errorf("unable to delete CDI spec file for claim: %w", err)
 	}
 
-	// Write new checkpoint reflecting that all devices for this claim have been
-	// unprepared (by virtue of removing its UID from all mappings).
-	delete(checkpoint.V2.PreparedClaims, claimUID)
-	if err := s.createCheckpoint(checkpoint); err != nil {
-		return fmt.Errorf("create checkpoint failed: %w", err)
+	// Mutate checkpoint reflecting that all devices for this claim have been
+	// unprepared, by virtue of removing its UID from the PreparedClaims map.
+	err = s.deleteClaimFromCheckpoint(claimRef)
+	if err != nil {
+		return fmt.Errorf("error deleting claim from checkpoint: %w", err)
 	}
-
 	return nil
 }
 
@@ -272,18 +288,35 @@ func (s *DeviceState) getCheckpoint() (*Checkpoint, error) {
 	return checkpoint.ToLatestVersion(), nil
 }
 
-func (s *DeviceState) updateCheckpoint(f func(*Checkpoint)) error {
+// Read checkpoint from store, perform mutation, and write checkpoint back. Any
+// mutation of the checkpoint must go through this function. The
+// read-mutate-write sequence must be performed under a lock: we must be
+// conceptually certain that multiple read-mutate-write actions never overlap.
+// Currently, it is assumed that any caller gets here by first acquiring
+// driver's `pulock`.
+func (s *DeviceState) updateCheckpoint(mutate func(*Checkpoint)) error {
 	checkpoint, err := s.getCheckpoint()
 	if err != nil {
 		return fmt.Errorf("unable to get checkpoint: %w", err)
 	}
 
-	f(checkpoint)
+	mutate(checkpoint)
 
 	if err := s.checkpointManager.CreateCheckpoint(DriverPluginCheckpointFileBasename, checkpoint); err != nil {
 		return fmt.Errorf("unable to create checkpoint: %w", err)
 	}
 
+	return nil
+}
+
+func (s *DeviceState) deleteClaimFromCheckpoint(claimRef kubeletplugin.NamespacedObject) error {
+	err := s.updateCheckpoint(func(cp *Checkpoint) {
+		delete(cp.V2.PreparedClaims, string(claimRef.UID))
+	})
+	if err != nil {
+		return fmt.Errorf("unable to update checkpoint: %w", err)
+	}
+	klog.V(6).Infof("Deleted claim from checkpoint: %s", claimRef.String())
 	return nil
 }
 
@@ -612,7 +645,7 @@ func (s *DeviceState) assertImexChannelNotAllocated(id int) error {
 		// of being prepared, but either retried soon (in which case we are
 		// faster and win over it) or never retried (in which case we can also
 		// safely allocate).
-		if claim.CheckpointState != "PrepareCompleted" {
+		if claim.CheckpointState != ClaimCheckpointStatePrepareCompleted {
 			continue
 		}
 

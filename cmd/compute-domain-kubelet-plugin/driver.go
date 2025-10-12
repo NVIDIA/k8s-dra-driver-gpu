@@ -119,7 +119,12 @@ func NewDriver(ctx context.Context, config *Config) (*driver, error) {
 	}
 
 	if err := state.computeDomainManager.Start(ctx); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("error starting ComputeDomain manager: %w", err)
+	}
+
+	// Pass `nodeUnprepareResource` function in the cleanup manager.
+	if err := state.checkpointCleanupManager.Start(ctx, driver.nodeUnprepareResource); err != nil {
+		return nil, fmt.Errorf("error starting CheckpointCleanupManager: %w", err)
 	}
 
 	healthcheck, err := startHealthcheck(ctx, config)
@@ -129,7 +134,7 @@ func NewDriver(ctx context.Context, config *Config) (*driver, error) {
 	driver.healthcheck = healthcheck
 
 	if err := driver.pluginhelper.PublishResources(ctx, resources); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("error in PublishResources(): %w", err)
 	}
 
 	return driver, nil
@@ -142,6 +147,10 @@ func (d *driver) Shutdown() error {
 
 	if err := d.state.computeDomainManager.Stop(); err != nil {
 		return fmt.Errorf("error stopping ComputeDomainManager: %w", err)
+	}
+
+	if err := d.state.checkpointCleanupManager.Stop(); err != nil {
+		return fmt.Errorf("error stopping CheckpointCleanupManager: %w", err)
 	}
 
 	if d.healthcheck != nil {
@@ -251,7 +260,7 @@ func (d *driver) nodePrepareResource(ctx context.Context, claim *resourceapi.Res
 	devs, err := d.state.Prepare(ctx, claim)
 	if err != nil {
 		res := kubeletplugin.PrepareResult{
-			Err: fmt.Errorf("error preparing devices for claim %s/%s:%s: %w", claim.Namespace, claim.Name, claim.UID, err),
+			Err: fmt.Errorf("error preparing devices for claim '%s': %w", ResourceClaimToString(claim), err),
 		}
 		if isPermanentError(err) {
 			klog.Infof("Permanent error preparing devices for claim %v: %v", claim.UID, err)
@@ -260,11 +269,13 @@ func (d *driver) nodePrepareResource(ctx context.Context, claim *resourceapi.Res
 		return false, res
 	}
 
-	klog.V(1).Infof("prepared devices for claim '%s/%s:%s': %v", claim.Namespace, claim.Name, claim.UID, devs)
+	klog.V(1).Infof("Prepared devices for claim '%s': %v", ResourceClaimToString(claim), devs)
 
 	return true, kubeletplugin.PrepareResult{Devices: devs}
 }
 
+// Return 2-tuple: the first value is a boolean indicating to the retry logic
+// whether the work is 'done'.
 func (d *driver) nodeUnprepareResource(ctx context.Context, claimRef kubeletplugin.NamespacedObject) (bool, error) {
 	release, err := d.pulock.Acquire(ctx, flock.WithTimeout(10*time.Second))
 	if err != nil {

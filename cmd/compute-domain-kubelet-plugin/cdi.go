@@ -259,7 +259,7 @@ func (cdi *CDIHandler) CreateClaimSpecFile(claimUID string, preparedDevices Prep
 	return cdi.cache.WriteSpec(spec.Raw(), specName)
 }
 
-func (cdi *CDIHandler) DeleteClaimSpecFile(claimUID string) error {
+func (cdi *CDIHandler) DeleteClaimSpecFileIfExists(claimUID string) error {
 	specName := cdiapi.GenerateTransientSpecName(cdi.vendor, cdi.claimClass, claimUID)
 	return cdi.cache.RemoveSpec(specName)
 }

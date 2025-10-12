@@ -155,7 +155,7 @@ func (m *CleanupManager[T]) periodicCleanup(ctx context.Context) {
 			return
 		case <-ticker.C:
 			if m.EnqueueCleanup() {
-				klog.V(6).Infof("Periodoc cleanup requested for %T objects", *new(T))
+				klog.V(6).Infof("Periodic cleanup requested for %T objects", *new(T))
 			}
 		}
 	}

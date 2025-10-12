@@ -16,8 +16,18 @@
 
 package main
 
+import (
+	"fmt"
+
+	resourcev1 "k8s.io/api/resource/v1"
+)
+
 const (
 	ComputeDomainChannelType = "channel"
 	ComputeDomainDaemonType  = "daemon"
 	UnknownDeviceType        = "unknown"
 )
+
+func ResourceClaimToString(rc *resourcev1.ResourceClaim) string {
+	return fmt.Sprintf("%s/%s:%s", rc.Namespace, rc.Name, rc.UID)
+}

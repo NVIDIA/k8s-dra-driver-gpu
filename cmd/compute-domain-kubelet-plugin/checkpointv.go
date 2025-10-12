@@ -32,6 +32,8 @@ type PreparedClaimV2 struct {
 	CheckpointState ClaimCheckpointState            `json:"checkpointState"`
 	Status          resourceapi.ResourceClaimStatus `json:"status,omitempty"`
 	PreparedDevices PreparedDevices                 `json:"preparedDevices,omitempty"`
+	Name            string                          `json:"name,omitempty"`
+	Namespace       string                          `json:"namespace,omitempty"`
 }
 
 // V1 types

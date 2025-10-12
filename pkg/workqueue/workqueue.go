@@ -156,8 +156,8 @@ func (q *WorkQueue) processNextWorkItem(ctx context.Context) {
 	err := q.reconcile(ctx, workItem)
 	if err != nil {
 		// Most often, this is an expected, retryable error in the context of an
-		// eventually consistent system. Hence, do not log an error level. Rely
-		// on inner business logic to log unexpected errors on error level.
+		// eventually consistent system. Hence, do not log on an error level. Rely
+		// on inner business logic to log unexpected errors on an error level.
 		klog.V(1).Infof("Reconcile: %v", err)
 		// Only retry if we're still the current operation for this key
 		q.Lock()
