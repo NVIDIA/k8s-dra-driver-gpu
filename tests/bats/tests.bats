@@ -193,6 +193,7 @@ log_objects() {
 
 @test "NodePrepareResources: catch unknown field in opaque cfg in ResourceClaim" {
   log_objects
+  iupgrade_wait "${TEST_CHART_REPO}" "${TEST_CHART_VERSION}" NOARGS
 
   envsubst < tests/bats/specs/rc-opaque-cfg-unknown-field.yaml.tmpl > \
     "${BATS_TEST_TMPDIR}"/rc-opaque-cfg-unknown-field.yaml
@@ -234,6 +235,74 @@ log_objects() {
   kubectl delete "${POD}"
   kubectl delete resourceclaim batssuite-rc-bad-opaque-config
   kubectl wait --for=delete "${POD}" --timeout=10s
+}
+
+@test "Self-initiated unprepare of stale RCs in PrepareStarted" {
+  log_objects
+  iupgrade_wait "${TEST_CHART_REPO}" "${TEST_CHART_VERSION}" NOARGS
+
+  # Stage 1: provoke partially prepared claim.
+  #
+  # Based on the "catch unknown field in opaque cfg in ResourceClaim" test
+  # above: Provoke a permanent Prepare() error, leaving behind a partially
+  # prepared claim in the checkpoint.
+  envsubst < tests/bats/specs/rc-opaque-cfg-unknown-field.yaml.tmpl > \
+    "${BATS_TEST_TMPDIR}"/rc-opaque-cfg-unknown-field.yaml
+  local SPEC="${BATS_TEST_TMPDIR}/rc-opaque-cfg-unknown-field.yaml"
+  local POD
+  POD=$(kubectl create -f "${SPEC}" | grep pod | awk '{print $1;}')
+  kubectl wait \
+    --for=jsonpath='{.status.containerStatuses[0].state.waiting.reason}'=ContainerCreating \
+    --timeout=10s \
+    "${POD}"
+  wait_for_pod_event "${POD}" FailedPrepareDynamicResources 10
+  run kubectl logs \
+    -l nvidia-dra-driver-gpu-component=kubelet-plugin \
+    -n nvidia-dra-driver-gpu \
+    --prefix --tail=-1
+  assert_output --partial 'strict decoding error: unknown field "unexpectedField"'
+
+  # Stage 2: test that cleanup routine leaves this claim alone ('not stale')
+  #
+  # Re-install, flip log verbosity just to enforce container restart. This
+  # ensures that the cleanup runs immediately (it runs upon startup, and then
+  # only N minutes later again).
+  local _iargs=("--set" "logVerbosity=5")
+  iupgrade_wait "${TEST_CHART_REPO}" "${TEST_CHART_VERSION}" _iargs
+  sleep 1   # give the on-startup cleanup a chance to run.
+  run kubectl logs \
+    -l nvidia-dra-driver-gpu-component=kubelet-plugin \
+    -n nvidia-dra-driver-gpu \
+    --prefix --tail=-1
+  assert_output --partial "partially prepared claim not stale: default/batssuite-rc-bad-opaque-config"
+
+  # Stage 3: simulate stale claim, test cleanup.
+  #
+  # To that end, uninstall the driver and then remove both pod and RC from the API server.
+  # Then, re-install DRA driver and confirm detection and removal of stale claim.
+  helm uninstall -n nvidia-dra-driver-gpu nvidia-dra-driver-gpu-batssuite --wait
+  kubectl delete "${POD}" --force
+  kubectl delete resourceclaim batssuite-rc-bad-opaque-config
+  local _iargs=("--set" "logVerbosity=6")
+  iupgrade_wait "${TEST_CHART_REPO}" "${TEST_CHART_VERSION}" _iargs
+  sleep 1  # give the on-startup cleanup a chance to run.
+
+  run kubectl logs \
+    -l nvidia-dra-driver-gpu-component=kubelet-plugin \
+    -n nvidia-dra-driver-gpu \
+    --prefix --tail=-1
+  assert_output --partial "Deleted claim from checkpoint: default/batssuite-rc-bad-opaque-config"
+  assert_output --partial "Checkpointed RC cleanup: unprepared stale claim: default/batssuite-rc-bad-opaque-config"
+
+  # Stage 4: appendix -- happens shortly thereafter: we do get a
+  # UnprepareResourceClaims() call for this claim. Why? It's a noop because the
+  # cleanup above was faster.
+  sleep 4
+  run kubectl logs \
+    -l nvidia-dra-driver-gpu-component=kubelet-plugin \
+    -n nvidia-dra-driver-gpu \
+    --prefix --tail=-1
+  assert_output --partial "Unprepare noop: claim not found in checkpoint data"
 }
 
 @test "nickelpie (NCCL send/recv/broadcast, 2 pods, 2 nodes, small payload)" {
