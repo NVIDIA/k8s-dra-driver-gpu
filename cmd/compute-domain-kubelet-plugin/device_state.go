@@ -498,8 +498,8 @@ func (s *DeviceState) applyComputeDomainDaemonConfig(ctx context.Context, config
 	// Prepare injecting IMEX daemon config files even if IMEX is not supported.
 	// This for example creates
 	// '/var/lib/kubelet/plugins/compute-domain.nvidia.com/domains/<uid>' on the
-	// host which is used as mount source mapped to /etc/nvidia-imex in the CD
-	// daemon container.
+	// host which is used as mount source mapped to /imexd in the CD daemon
+	// container.
 	if err := computeDomainDaemonSettings.Prepare(ctx); err != nil {
 		return nil, fmt.Errorf("error preparing ComputeDomain daemon settings for requests '%v' in claim '%v': %w", requests, claim.UID, err)
 	}

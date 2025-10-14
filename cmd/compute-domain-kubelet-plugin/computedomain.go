@@ -133,8 +133,8 @@ func (m *ComputeDomainManager) NewSettings(domainID string) *ComputeDomainDaemon
 		manager:         m,
 		domainID:        domainID,
 		rootDir:         fmt.Sprintf("%s/%s", m.configFilesRoot, domainID),
-		configTmplPath:  fmt.Sprintf("%s/%s/%s", m.configFilesRoot, domainID, "config.tmpl.cfg"),
-		nodesConfigPath: fmt.Sprintf("%s/%s/%s", m.configFilesRoot, domainID, "nodes_config.cfg"),
+		configTmplPath:  fmt.Sprintf("%s/%s/%s", m.configFilesRoot, domainID, "imexd.cfg.tmpl"),
+		nodesConfigPath: fmt.Sprintf("%s/%s/%s", m.configFilesRoot, domainID, "nodes.cfg"),
 	}
 }
 
@@ -176,7 +176,8 @@ func (s *ComputeDomainDaemonSettings) GetCDIContainerEditsCommon(ctx context.Con
 			},
 			Mounts: []*cdispec.Mount{
 				{
-					ContainerPath: "/etc/nvidia-imex",
+					// imexDaemonConfigDirPath   = "/imexd"
+					ContainerPath: "/imexd",
 					HostPath:      s.rootDir,
 					Options:       []string{"rw", "nosuid", "nodev", "bind"},
 				},
