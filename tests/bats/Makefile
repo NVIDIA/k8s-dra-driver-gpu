@@ -56,10 +56,14 @@ endif
 BATS_IMAGE = batstests:$(GIT_COMMIT_SHORT)
 KUBECONFIG ?= $(HOME)/.kube/config
 
-# Add `docker run` arguments when not running
-# in Github Actions / GitLab CI.
+
+TMPDIR ?= "/tmp"
+
+# Add `docker run` arguments when not running in Github Actions / GitLab CI. Set
+# TMPDIR to checkout directory (easier for runner setup).
 DOCKER_RUN_FLAGS :=
 ifeq ($(CI),)
+  TMPDIR = "."
   DOCKER_RUN_FLAGS += -it
 endif
 
@@ -82,7 +86,7 @@ image:
 .PHONY: tests
 tests: image
 	echo "KUBECONFIG: $(KUBECONFIG)" && \
-	export _RUNDIR=$${TMPDIR:=/tmp}/k8s-dra-driver-gpu-tests-out/bats-tests-$$(date +%s) && \
+	export _RUNDIR=$(TMPDIR)/k8s-dra-driver-gpu-tests-out/bats-tests-$$(date +%s) && \
 	mkdir -p "$${_RUNDIR}" && stat "$${_RUNDIR}" && \
 	docker run \
 		--rm \
