@@ -12,7 +12,7 @@ ARG BUILDARCH
 # Install bats for running cmdline tests.
 # This is the image used when invoking `make bats-test`.
 RUN git clone https://github.com/bats-core/bats-core.git && cd bats-core && \
-    git checkout 855844b8344e67d60dc0f43fa39817ed7787f141 && ./install.sh /usr/local
+    git checkout 658f442f0fcdd6f9e2ea01625999217e8f7bfe7d && ./install.sh /usr/local
 
 RUN mkdir -p /bats-libraries
 RUN git clone https://github.com/bats-core/bats-support /bats-libraries/bats-support

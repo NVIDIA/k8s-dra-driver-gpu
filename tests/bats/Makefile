@@ -103,5 +103,6 @@ tests: image
 			--print-output-on-failure \
 			--no-tempdir-cleanup \
 			--timing \
+			--abort \
 			tests/bats/tests.bats \
 		"
