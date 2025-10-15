@@ -1,0 +1,88 @@
+---
+apiVersion: resource.nvidia.com/v1beta1
+kind: ComputeDomain
+metadata:
+  name: test-failover-cd
+spec:
+  numNodes: 2
+  channel:
+    resourceClaimTemplate:
+      name: test-failover-rct-channel
+---
+apiVersion: kubeflow.org/v2beta1
+kind: MPIJob
+metadata:
+  name: test-failover-job
+spec:
+  slotsPerWorker: 2
+  launcherCreationPolicy: WaitForWorkersReady
+  runPolicy:
+    cleanPodPolicy: Running
+  sshAuthMountPath: /home/mpiuser/.ssh
+  mpiReplicaSpecs:
+    Launcher:
+      replicas: 1
+      template:
+        metadata:
+          labels:
+            mpi-memcpy-dra-test-replica: mpi-launcher
+        spec:
+          containers:
+          - image: ghcr.io/nvidia/k8s-samples:nvbandwidth-6dc12f17
+            name: mpi-launcher
+            securityContext:
+              runAsUser: 1000
+            command:
+            - mpirun
+            args:
+            - --show-progress
+            - --bind-to
+            - core
+            - --map-by
+            - ppr:2:node
+            - -np
+            - "4"
+            - --report-bindings
+            - -q
+            - nvbandwidth
+            - --verbose
+            - --testSamples
+            - "20"
+            - --bufferSize
+            - "2048"
+            - -t
+            - multinode_device_to_device_memcpy_read_ce
+          affinity:
+            nodeAffinity:
+              requiredDuringSchedulingIgnoredDuringExecution:
+                nodeSelectorTerms:
+                - matchExpressions:
+                  - key: node-role.kubernetes.io/control-plane
+                    operator: Exists
+    Worker:
+      replicas: 2
+      template:
+        metadata:
+          labels:
+            mpi-memcpy-dra-test-replica: mpi-worker
+        spec:
+          containers:
+          - image: ghcr.io/nvidia/k8s-samples:nvbandwidth-6dc12f17
+            name: mpi-worker
+            securityContext:
+              runAsUser: 1000
+            env:
+            command:
+            - /usr/sbin/sshd
+            args:
+            - -De
+            - -f
+            - /home/mpiuser/.sshd_config
+            resources:
+              limits:
+                nvidia.com/gpu: 2
+              claims:
+              - name: test-failover-rc-channel
+          resourceClaims:
+          - name: test-failover-rc-channel
+            resourceClaimTemplateName: test-failover-rct-channel

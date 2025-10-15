@@ -2,8 +2,9 @@ FROM debian:trixie
 
 # GNU parallel: bats may want to use that
 # gettext-base: provides envsubst, used by nickelpie
+# bc: by bash wrappers, for calculation
 RUN apt-get update && apt-get install -y -q --no-install-recommends \
-    parallel git ca-certificates curl make gettext-base jq && \
+    parallel git ca-certificates curl make gettext-base jq bc yq && \
     rm -rf /var/lib/apt/lists/*
 
 # Set by BuiltKit, of the form amd64/arm64.
@@ -15,6 +16,7 @@ RUN git clone https://github.com/bats-core/bats-core.git && cd bats-core && \
     git checkout 658f442f0fcdd6f9e2ea01625999217e8f7bfe7d && ./install.sh /usr/local
 
 RUN mkdir -p /bats-libraries
+# These are conservatively patched -- so far; maybe pin them in the future
 RUN git clone https://github.com/bats-core/bats-support /bats-libraries/bats-support
 RUN git clone https://github.com/bats-core/bats-assert /bats-libraries/bats-assert
 RUN git clone https://github.com/bats-core/bats-file /bats-libraries/bats-file
