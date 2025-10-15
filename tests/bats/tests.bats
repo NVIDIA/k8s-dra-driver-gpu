@@ -54,12 +54,11 @@ apply_check_delete_workload_imex_chan_inject() {
   kubectl apply -f demo/specs/imex/channel-injection.yaml
   kubectl wait --for=condition=READY pods imex-channel-injection --timeout=100s
   run kubectl logs imex-channel-injection
-  kubectl delete -f demo/specs/imex/channel-injection.yaml
-  # Check output after attempted deletion.
   assert_output --partial "channel0"
 
   # Wait for deletion to complete; this is critical before moving on to the next
   # test (as long as we don't wipe state entirely between tests).
+  kubectl delete -f demo/specs/imex/channel-injection.yaml
   kubectl wait --for=delete pods imex-channel-injection --timeout=10s
 }
 
@@ -109,12 +108,9 @@ log_objects() {
   kubectl get crd computedomains.resource.nvidia.com
 }
 
-@test "wait for kubelet plugin pods READY" {
+@test "wait for plugin & controller pods READY" {
   kubectl wait --for=condition=READY pods -A \
     -l nvidia-dra-driver-gpu-component=kubelet-plugin --timeout=10s
-}
-
-@test "wait for controller pod READY" {
   kubectl wait --for=condition=READY pods -A \
     -l nvidia-dra-driver-gpu-component=controller --timeout=10s
 }
