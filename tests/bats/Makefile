@@ -114,6 +114,7 @@ tests: image
 			--print-output-on-failure \
 			--no-tempdir-cleanup \
 			--timing \
+			--formatter pretty \
 			--abort \
 			tests/bats/test_basics.bats \
 			tests/bats/tests.bats \
