@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 	"path/filepath"
+	"sync"
 	"time"
 
 	resourceapi "k8s.io/api/resource/v1"
@@ -48,6 +49,7 @@ type driver struct {
 	pulock              *flock.Flock
 	healthcheck         *healthcheck
 	deviceHealthMonitor *deviceHealthMonitor
+	wg                  sync.WaitGroup
 }
 
 func NewDriver(ctx context.Context, config *Config) (*driver, error) {
@@ -104,7 +106,12 @@ func NewDriver(ctx context.Context, config *Config) (*driver, error) {
 		}
 
 		driver.deviceHealthMonitor = deviceHealthMonitor
-		go driver.deviceHealthEvents(ctx, config.flags.nodeName)
+
+		driver.wg.Add(1)
+		go func() {
+			defer driver.wg.Done()
+			driver.deviceHealthEvents(ctx, config.flags.nodeName)
+		}()
 	}
 
 	if err := driver.pluginhelper.PublishResources(ctx, resources); err != nil {
@@ -126,6 +133,8 @@ func (d *driver) Shutdown() error {
 	if d.deviceHealthMonitor != nil {
 		d.deviceHealthMonitor.Stop()
 	}
+
+	d.wg.Wait()
 
 	d.pluginhelper.Stop()
 	return nil
@@ -227,7 +236,7 @@ func (d *driver) deviceHealthEvents(ctx context.Context, nodeName string) {
 				continue
 			}
 
-			ds := d.state.buildDeviceStatusApply(result, device.Health)
+			ds := d.state.buildDeviceStatus(result, device.Health)
 			if err := d.state.applyClaimDeviceStatuses(ctx, claim.Namespace, claim.Name, ds); err != nil {
 				klog.Errorf("Failed to update status for claim %s/%s: %v", claim.Namespace, claim.Name, err)
 			} else {

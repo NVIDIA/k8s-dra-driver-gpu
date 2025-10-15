@@ -294,8 +294,7 @@ func (s *DeviceState) prepareDevices(ctx context.Context, claim *resourceapi.Res
 	// Look through the configs and figure out which one will be applied to
 	// each device allocation result based on their order of precedence and type.
 	configResultsMap := make(map[runtime.Object][]*resourceapi.DeviceRequestAllocationResult)
-	results := claim.Status.Allocation.Devices.Results
-	for _, result := range results {
+	for _, result := range claim.Status.Allocation.Devices.Results {
 		if result.Driver != DriverName {
 			continue
 		}
@@ -304,8 +303,10 @@ func (s *DeviceState) prepareDevices(ctx context.Context, claim *resourceapi.Res
 			return nil, fmt.Errorf("requested device is not allocatable: %v", result.Device)
 		}
 
-		deviceStatus := s.buildDeviceStatusApply(&result, device.Health)
-		deviceStatuses = append(deviceStatuses, deviceStatus)
+		if featuregates.Enabled(featuregates.DeviceHealthCheck) {
+			deviceStatus := s.buildDeviceStatus(&result, device.Health)
+			deviceStatuses = append(deviceStatuses, deviceStatus)
+		}
 
 		// SWATI: Confirm if we want to take this action or not
 		// Only proceed with config mapping for healthy devices
@@ -589,7 +590,7 @@ func (s *DeviceState) MarkDeviceUnhealthy(device *AllocatableDevice) {
 	klog.Infof("Marked device:%s unhealthy", device.GetUUID())
 }
 
-func (s *DeviceState) buildDeviceStatusApply(res *resourceapi.DeviceRequestAllocationResult, health string) *resourceapply.AllocatedDeviceStatusApplyConfiguration {
+func (s *DeviceState) buildDeviceStatus(res *resourceapi.DeviceRequestAllocationResult, health string) *resourceapply.AllocatedDeviceStatusApplyConfiguration {
 	var status metav1.ConditionStatus
 	var reason, message string
 
@@ -600,7 +601,7 @@ func (s *DeviceState) buildDeviceStatusApply(res *resourceapi.DeviceRequestAlloc
 	} else {
 		status = metav1.ConditionFalse
 		reason = "DeviceUnhealthy"
-		message = fmt.Sprintf("Device %s has become unhealthy.", res.Device)
+		message = fmt.Sprintf("Device %s is unhealthy.", res.Device)
 	}
 
 	cond := metav1apply.Condition().

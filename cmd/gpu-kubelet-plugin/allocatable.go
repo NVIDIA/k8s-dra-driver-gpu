@@ -32,9 +32,10 @@ const (
 type AllocatableDevices map[string]*AllocatableDevice
 
 type AllocatableDevice struct {
-	Gpu    *GpuInfo
-	Mig    *MigDeviceInfo
-	Health string // from device-plugin
+	Gpu *GpuInfo
+	Mig *MigDeviceInfo
+	// Defined similarly as https://pkg.go.dev/k8s.io/kubelet/pkg/apis/deviceplugin/v1beta1#Healthy
+	Health string
 }
 
 func (d AllocatableDevice) Type() string {
@@ -88,7 +89,7 @@ func (d *AllocatableDevice) GetUUID() string {
 	if d.Mig != nil {
 		return d.Mig.UUID
 	}
-	return ""
+	panic("unexpected type for AllocatableDevice")
 }
 
 func (d AllocatableDevices) GpuUUIDs() []string {
