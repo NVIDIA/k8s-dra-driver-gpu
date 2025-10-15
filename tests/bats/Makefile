@@ -75,8 +75,13 @@ image:
 # suite/file 'setup' in bats, but we'd lose output on success). During dev, you
 # may want to add --show-output-of-passing-tests (and read bats docs for other
 # cmdline args).
+#
+# In CI, this target is executed containerized (and uses docker-in-docker).
+# $(KUBECONFIG) (a mount source) must be a path on the host.
+#
 .PHONY: tests
 tests: image
+	echo "KUBECONFIG: $(KUBECONFIG)" && \
 	export _RUNDIR_PARENT=/tmp/k8s-dra-driver-gpu-tests-out && \
 	mkdir -p "$${_RUNDIR_PARENT}" && \
 	export _RUNDIR=$$(mktemp -p $${_RUNDIR_PARENT} -d -t bats-tests-$$(date +%s)-XXXXX) && \
@@ -85,8 +90,8 @@ tests: image
 		$(DOCKER_RUN_FLAGS) \
 		-v /tmp:/tmp \
 		-v $(CURDIR):/cwd \
-		-v $(HOME)/.kube/:$(HOME)/.kube \
-		--env KUBECONFIG=$(KUBECONFIG) \
+		-v $(KUBECONFIG):/kubeconfig \
+		--env KUBECONFIG=/kubeconfig \
 		--env TEST_CHART_REPO=$(TEST_CHART_REPO) \
 		--env TEST_CHART_VERSION=$(TEST_CHART_VERSION) \
 		--env TEST_CHART_LASTSTABLE_REPO=$(TEST_CHART_LASTSTABLE_REPO) \
@@ -97,7 +102,7 @@ tests: image
 		-u $(shell id -u ${USER}):$(shell id -g ${USER}) \
 		--entrypoint "/bin/bash"\
 		$(BATS_IMAGE) \
-		-c "set -ex; cd /cwd; \
+		-c "set -ex; cd /cwd; cat /kubeconfig | head -n2; kubectl get nodes; \
 			echo 'Running k8s cluster cleanup (invasive)... '; \
 			bash tests/bats/cleanup-from-previous-run.sh 2>&1 | tee -a $${_RUNDIR}/cleanup.outerr; \
 			TMPDIR=$${_RUNDIR} bats \
