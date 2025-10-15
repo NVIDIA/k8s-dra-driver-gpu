@@ -153,7 +153,7 @@ tests: image
 .PHONY: tests
 tests: image
 	echo "KUBECONFIG: $(KUBECONFIG)" && \
-	export _RUNDIR=/tmp/k8s-dra-driver-gpu-tests-out/bats-tests-$$(date +%s) && \
+	export _RUNDIR=$${TMPDIR:=/tmp}/k8s-dra-driver-gpu-tests-out/bats-tests-$$(date +%s) && \
 	mkdir -p "$${_RUNDIR}" && stat "$${_RUNDIR}" && \
 	docker run \
 		--rm \
