@@ -112,14 +112,26 @@ get_all_cd_daemon_logs_for_cd_name() {
   CD_NAME="$1"
   CD_UID=$(kubectl describe computedomains.resource.nvidia.com "${CD_NAME}" | grep UID | awk '{print $2}')
   CD_LABEL_KV="resource.nvidia.com/computeDomain=${CD_UID}"
-    kubectl logs \
-      -n nvidia-dra-driver-gpu \
-      -l "${CD_LABEL_KV}" \
-      --tail=-1 \
-      --prefix \
-      --all-containers \
-      --timestamps
+  echo "CD daemon logs for CD: $CD_UID"
+  kubectl logs \
+    -n nvidia-dra-driver-gpu \
+    -l "${CD_LABEL_KV}" \
+    --tail=-1 \
+    --prefix \
+    --all-containers
 }
+
+show_kubelet_plugin_error_logs() {
+  echo -e "\nKUBELET PLUGIN ERROR LOGS START"
+  (
+    kubectl logs \
+    -l nvidia-dra-driver-gpu-component=kubelet-plugin \
+    -n nvidia-dra-driver-gpu \
+    --prefix --tail=-1 | grep -E "^(E|W)[0-9]{4}"
+  ) || true
+  echo -e "KUBELET PLUGIN ERROR LOGS END\n\n"
+}
+
 
 # Intended use case: one pod in Running or ContainerCreating state; then this
 # function returns the specific name of that pod. Specifically, ignore pods that

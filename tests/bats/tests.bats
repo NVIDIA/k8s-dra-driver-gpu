@@ -42,6 +42,14 @@ setup_file() {
   helm repo add nvidia https://helm.ngc.nvidia.com/nvidia && helm repo update
 }
 
+bats::on_failure() {
+  echo -e "\n\nFAILURE HOOK START"
+  log_objects
+  show_kubelet_plugin_error_logs
+  get_all_cd_daemon_logs_for_cd_name "imex-channel-injection" || true
+  echo -e "FAILURE HOOK END\n\n"
+}
+
 apply_check_delete_workload_imex_chan_inject() {
   kubectl apply -f demo/specs/imex/channel-injection.yaml
   kubectl wait --for=condition=READY pods imex-channel-injection --timeout=100s
