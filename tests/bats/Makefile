@@ -105,5 +105,10 @@ tests: image
 			--no-tempdir-cleanup \
 			--timing \
 			--abort \
-			tests/bats/tests.bats \
+			tests/bats/test_basics.bats \
+			tests/bats/test_cd_imex_chan_inject.bats \
+			tests/bats/test_cd_mnnvl_workload.bats \
+			tests/bats/test_cd_misc.bats \
+			tests/bats/test_cd_logging.bats \
+			tests/bats/test_cd_updowngrade.bats \
 		"
