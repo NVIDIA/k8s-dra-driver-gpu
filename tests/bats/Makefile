@@ -64,8 +64,9 @@ TMPDIR ?= "/tmp"
 # TMPDIR to checkout directory (easier for runner setup).
 DOCKER_RUN_FLAGS :=
 ifeq ($(CI),)
-  TMPDIR="./"
   DOCKER_RUN_FLAGS += -it
+else
+  TMPDIR="."
 endif
 
 DOCKER_ENVS = \
@@ -180,7 +181,7 @@ tests: image
 		-c "set -ex; cd /cwd; stat $${_RUNDIR}; cat /kubeconfig | head -n2; kubectl get nodes; \
 			echo 'Running k8s cluster cleanup (invasive)... '; \
 			bash tests/bats/cleanup-from-previous-run.sh; \
-			TMPDIR=$${_RUNDIR} bats \
+			bats \
 			--print-output-on-failure \
 			--no-tempdir-cleanup \
 			--timing \
