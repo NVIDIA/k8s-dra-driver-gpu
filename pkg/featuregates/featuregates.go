@@ -36,6 +36,9 @@ const (
 
 	// IMEXDaemonsWithDNSNames allows using DNS names instead of raw IPs for IMEX daemons.
 	IMEXDaemonsWithDNSNames featuregate.Feature = "IMEXDaemonsWithDNSNames"
+
+	// PassthroughSupport allows gpus to be configured with the vfio-pci driver.
+	PassthroughSupport featuregate.Feature = "PassthroughSupport"
 )
 
 // FeatureGates is a singleton representing the set of all feature gates and their values.
@@ -63,6 +66,13 @@ var defaultFeatureGates = map[featuregate.Feature]featuregate.VersionedSpecs{
 		{
 			Default:    true,
 			PreRelease: featuregate.Beta,
+			Version:    version.MajorMinor(25, 8),
+		},
+	},
+	PassthroughSupport: {
+		{
+			Default:    false,
+			PreRelease: featuregate.Alpha,
 			Version:    version.MajorMinor(25, 8),
 		},
 	},

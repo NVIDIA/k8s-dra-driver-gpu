@@ -43,7 +43,10 @@ RUN apt-get update && \
         make \
         git \
         gcc-aarch64-linux-gnu \
-        gcc
+        gcc \
+        kmod \
+        lsof \
+        util-linux
 
 # Install dependencies for `bash-static` build.
 RUN apt-get install -y gpg curl autoconf file
@@ -138,13 +141,30 @@ LABEL org.opencontainers.image.source="https://github.com/NVIDIA/k8s-dra-driver-
 # Add top-level license (AL2) file into the container image
 COPY LICENSE /
 
-COPY --from=toolkit /artifacts/rpm/usr/bin/nvidia-cdi-hook   /usr/bin/nvidia-cdi-hook
-COPY --from=build   /bashbuild/bash                          /bin/bash
-COPY --from=build   /artifacts/compute-domain-controller     /usr/bin/compute-domain-controller
-COPY --from=build   /artifacts/compute-domain-kubelet-plugin /usr/bin/compute-domain-kubelet-plugin
-COPY --from=build   /artifacts/compute-domain-daemon         /usr/bin/compute-domain-daemon
-COPY --from=build   /artifacts/gpu-kubelet-plugin            /usr/bin/gpu-kubelet-plugin
-COPY --from=build   /artifacts/webhook                       /usr/bin/webhook
+COPY --from=toolkit /artifacts/rpm/usr/bin/nvidia-cdi-hook    /usr/bin/nvidia-cdi-hook
+COPY --from=build   /artifacts/compute-domain-controller      /usr/bin/compute-domain-controller
+COPY --from=build   /artifacts/compute-domain-kubelet-plugin  /usr/bin/compute-domain-kubelet-plugin
+COPY --from=build   /artifacts/compute-domain-daemon          /usr/bin/compute-domain-daemon
+COPY --from=build   /artifacts/gpu-kubelet-plugin             /usr/bin/gpu-kubelet-plugin
+COPY --from=build   /artifacts/webhook                        /usr/bin/webhook
+COPY --from=build   /bashbuild/bash                           /bin/bash
+COPY --from=build   /build/scripts/bind_to_driver.sh          /usr/bin/bind_to_driver.sh
+COPY --from=build   /build/scripts/unbind_from_driver.sh      /usr/bin/unbind_from_driver.sh
+COPY --from=build   /lib/x86_64-linux-gnu/libselinux.so.1     /lib/x86_64-linux-gnu/libselinux.so.1
+COPY --from=build   /lib/x86_64-linux-gnu/libtirpc.so.3       /lib/x86_64-linux-gnu/libtirpc.so.3
+COPY --from=build   /lib/x86_64-linux-gnu/libpcre2-8.so.0     /lib/x86_64-linux-gnu/libpcre2-8.so.0
+COPY --from=build   /lib/x86_64-linux-gnu/libgssapi_krb5.so.2 /lib/x86_64-linux-gnu/libgssapi_krb5.so.2
+COPY --from=build   /lib/x86_64-linux-gnu/libkrb5.so.3        /lib/x86_64-linux-gnu/libkrb5.so.3
+COPY --from=build   /lib/x86_64-linux-gnu/libk5crypto.so.3    /lib/x86_64-linux-gnu/libk5crypto.so.3
+COPY --from=build   /lib/x86_64-linux-gnu/libcom_err.so.2     /lib/x86_64-linux-gnu/libcom_err.so.2
+COPY --from=build   /lib/x86_64-linux-gnu/libkrb5support.so.0 /lib/x86_64-linux-gnu/libkrb5support.so.0
+COPY --from=build   /lib/x86_64-linux-gnu/libkeyutils.so.1    /lib/x86_64-linux-gnu/libkeyutils.so.1
+COPY --from=build   /lib/x86_64-linux-gnu/libzstd.so.1        /lib/x86_64-linux-gnu/libzstd.so.1
+COPY --from=build   /lib/x86_64-linux-gnu/liblzma.so.5        /lib/x86_64-linux-gnu/liblzma.so.5
+COPY --from=build   /lib/x86_64-linux-gnu/libcrypto.so.3      /lib/x86_64-linux-gnu/libcrypto.so.3   
+COPY --from=build   /usr/bin/lsof                             /usr/bin/lsof
+COPY --from=build   /usr/sbin/modprobe                        /usr/sbin/modprobe
+COPY --from=build   /usr/bin/nsenter                          /usr/bin/nsenter
 COPY /hack/kubelet-plugin-prestart.sh /usr/bin/kubelet-plugin-prestart.sh
 COPY /templates /templates
 

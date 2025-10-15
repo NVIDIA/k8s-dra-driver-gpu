@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2022, NVIDIA CORPORATION.  All rights reserved.
+ * Copyright (c) 2022-2025, NVIDIA CORPORATION.  All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -24,9 +24,22 @@ import (
 
 type AllocatableDevices map[string]*AllocatableDevice
 
+func (d AllocatableDevices) GetGPUByPCIeBusID(pcieBusID string) *AllocatableDevice {
+	for _, device := range d {
+		if device.Type() != GpuDeviceType {
+			continue
+		}
+		if device.Gpu.pcieBusID == pcieBusID {
+			return device
+		}
+	}
+	return nil
+}
+
 type AllocatableDevice struct {
-	Gpu *GpuInfo
-	Mig *MigDeviceInfo
+	Gpu  *GpuInfo
+	Mig  *MigDeviceInfo
+	Vfio *VfioDeviceInfo
 }
 
 func (d AllocatableDevice) Type() string {
@@ -35,6 +48,9 @@ func (d AllocatableDevice) Type() string {
 	}
 	if d.Mig != nil {
 		return MigDeviceType
+	}
+	if d.Vfio != nil {
+		return VfioDeviceType
 	}
 	return UnknownDeviceType
 }
@@ -45,6 +61,8 @@ func (d *AllocatableDevice) CanonicalName() string {
 		return d.Gpu.CanonicalName()
 	case MigDeviceType:
 		return d.Mig.CanonicalName()
+	case VfioDeviceType:
+		return d.Vfio.CanonicalName()
 	}
 	panic("unexpected type for AllocatableDevice")
 }
@@ -55,6 +73,8 @@ func (d *AllocatableDevice) GetDevice() resourceapi.Device {
 		return d.Gpu.GetDevice()
 	case MigDeviceType:
 		return d.Mig.GetDevice()
+	case VfioDeviceType:
+		return d.Vfio.GetDevice()
 	}
 	panic("unexpected type for AllocatableDevice")
 }
@@ -65,6 +85,9 @@ func (d AllocatableDevice) UUID() string {
 	}
 	if d.Mig != nil {
 		return d.Mig.UUID
+	}
+	if d.Vfio != nil {
+		return d.Vfio.UUID
 	}
 	panic("unexpected type for AllocatableDevice")
 }
@@ -91,8 +114,20 @@ func (d AllocatableDevices) MigDeviceUUIDs() []string {
 	return uuids
 }
 
+func (d AllocatableDevices) VfioDeviceUUIDs() []string {
+	var uuids []string
+	for _, device := range d {
+		if device.Type() == VfioDeviceType {
+			uuids = append(uuids, device.Vfio.UUID)
+		}
+	}
+	slices.Sort(uuids)
+	return uuids
+}
+
 func (d AllocatableDevices) UUIDs() []string {
 	uuids := append(d.GpuUUIDs(), d.MigDeviceUUIDs()...)
+	uuids = append(uuids, d.VfioDeviceUUIDs()...)
 	slices.Sort(uuids)
 	return uuids
 }

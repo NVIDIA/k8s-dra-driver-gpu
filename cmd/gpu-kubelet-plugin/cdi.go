@@ -42,6 +42,7 @@ const (
 	cdiClaimKind   = cdiVendor + "/" + cdiClaimClass
 
 	cdiBaseSpecIdentifier = "base"
+	cdiVfioSpecIdentifier = "vfio"
 
 	defaultCDIRoot = "/var/run/cdi"
 )
@@ -139,7 +140,69 @@ func NewCDIHandler(opts ...cdiOption) (*CDIHandler, error) {
 	return h, nil
 }
 
+func (cdi *CDIHandler) writeSpec(spec spec.Interface, specName string) error {
+	// Transform the spec to make it aware that it is running inside a container.
+	err := transformroot.New(
+		transformroot.WithRoot(cdi.driverRoot),
+		transformroot.WithTargetRoot(cdi.targetDriverRoot),
+		transformroot.WithRelativeTo("host"),
+	).Transform(spec.Raw())
+	if err != nil {
+		return fmt.Errorf("failed to transform driver root in CDI spec: %w", err)
+	}
+
+	// Update the spec to include only the minimum version necessary.
+	minVersion, err := cdispec.MinimumRequiredVersion(spec.Raw())
+	if err != nil {
+		return fmt.Errorf("failed to get minimum required CDI spec version: %w", err)
+	}
+	spec.Raw().Version = minVersion
+
+	// Write the spec out to disk.
+	return cdi.cache.WriteSpec(spec.Raw(), specName)
+
+}
+
 func (cdi *CDIHandler) CreateStandardDeviceSpecFile(allocatable AllocatableDevices) error {
+	if err := cdi.createStandardNvidiaDeviceSpecFile(allocatable); err != nil {
+		return err
+	}
+	if err := cdi.createStandardVfioDeviceSpecFile(allocatable); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (cdi *CDIHandler) createStandardVfioDeviceSpecFile(allocatable AllocatableDevices) error {
+	commonEdits := GetVfioCommonCDIContainerEdits()
+	var deviceSpecs []cdispec.Device
+	for _, device := range allocatable {
+		if device.Type() != VfioDeviceType {
+			continue
+		}
+		edits := GetVfioCDIContainerEdits(device.Vfio)
+		dspec := cdispec.Device{
+			Name:           device.CanonicalName(),
+			ContainerEdits: *edits.ContainerEdits,
+		}
+		deviceSpecs = append(deviceSpecs, dspec)
+	}
+
+	spec, err := spec.New(
+		spec.WithVendor(cdiVendor),
+		spec.WithClass(cdiDeviceClass),
+		spec.WithDeviceSpecs(deviceSpecs),
+		spec.WithEdits(*commonEdits.ContainerEdits),
+	)
+	if err != nil {
+		return fmt.Errorf("failed to creat CDI spec: %w", err)
+	}
+
+	specName := cdiapi.GenerateTransientSpecName(cdiVendor, cdiDeviceClass, cdiVfioSpecIdentifier)
+	return cdi.writeSpec(spec, specName)
+}
+
+func (cdi *CDIHandler) createStandardNvidiaDeviceSpecFile(allocatable AllocatableDevices) error {
 	// Initialize NVML in order to get the device edits.
 	if r := cdi.nvml.Init(); r != nvml.SUCCESS {
 		return fmt.Errorf("failed to initialize NVML: %v", r)
@@ -166,6 +229,10 @@ func (cdi *CDIHandler) CreateStandardDeviceSpecFile(allocatable AllocatableDevic
 	// Generate device specs for all full GPUs and MIG devices.
 	var deviceSpecs []cdispec.Device
 	for _, device := range allocatable {
+		if device.Type() == VfioDeviceType {
+			continue
+		}
+
 		dspecs, err := cdi.nvcdiDevice.GetDeviceSpecsByID(device.UUID())
 		if err != nil {
 			return fmt.Errorf("unable to get device spec for %s: %w", device.CanonicalName(), err)
@@ -185,26 +252,8 @@ func (cdi *CDIHandler) CreateStandardDeviceSpecFile(allocatable AllocatableDevic
 		return fmt.Errorf("failed to creat CDI spec: %w", err)
 	}
 
-	// Transform the spec to make it aware that it is running inside a container.
-	err = transformroot.New(
-		transformroot.WithRoot(cdi.driverRoot),
-		transformroot.WithTargetRoot(cdi.targetDriverRoot),
-		transformroot.WithRelativeTo("host"),
-	).Transform(spec.Raw())
-	if err != nil {
-		return fmt.Errorf("failed to transform driver root in CDI spec: %w", err)
-	}
-
-	// Update the spec to include only the minimum version necessary.
-	minVersion, err := cdispec.MinimumRequiredVersion(spec.Raw())
-	if err != nil {
-		return fmt.Errorf("failed to get minimum required CDI spec version: %w", err)
-	}
-	spec.Raw().Version = minVersion
-
-	// Write the spec out to disk.
-	specName := cdiapi.GenerateTransientSpecName(cdiVendor, cdiDeviceClass, cdiBaseSpecIdentifier)
-	return cdi.cache.WriteSpec(spec.Raw(), specName)
+	specName := cdiapi.GenerateTransientSpecName(cdiVendor, cdiDeviceClass, cdiVfioSpecIdentifier)
+	return cdi.writeSpec(spec, specName)
 }
 
 func (cdi *CDIHandler) CreateClaimSpecFile(claimUID string, preparedDevices PreparedDevices) error {

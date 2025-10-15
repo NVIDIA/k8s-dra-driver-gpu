@@ -166,7 +166,12 @@ spec:
       {{- if .Values.resources.gpus.enabled }}
       - name: gpus
         securityContext:
+          {{- if .Values.kubeletPlugin.containers.gpus.securityContext }}
           {{- toYaml .Values.kubeletPlugin.containers.gpus.securityContext | nindent 10 }}
+          {{- else }}
+          privileged: true
+          runAsNonRoot: false
+          {{- end }}
         image: {{ include "nvidia-dra-driver-gpu.fullimage" . }}
         imagePullPolicy: {{ .Values.image.pullPolicy }}
         command: ["bash", "-c"]
@@ -244,8 +249,13 @@ spec:
           mountPath: /var/run/cdi
         - name: driver-root
           mountPath: /driver-root
-          readOnly: true
           mountPropagation: HostToContainer
+        - name: sysfs
+          mountPath: /sys/
+          mountPropagation: Bidirectional
+        - name: procfs
+          mountPath: /proc/
+          mountPropagation: Bidirectional
       {{- end }}
       volumes:
       - name: plugins-registry
@@ -273,6 +283,14 @@ spec:
         hostPath:
           path: {{ .Values.nvidiaDriverRoot }}
           type: DirectoryOrCreate
+      - name: sysfs
+        hostPath:
+          path: /sys/
+          type: Directory
+      - name: procfs
+        hostPath:
+          path: /proc/
+          type: Directory
       {{- with .Values.kubeletPlugin.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}
