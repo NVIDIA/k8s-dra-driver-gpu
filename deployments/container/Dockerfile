@@ -64,7 +64,7 @@ RUN ARCH="$TARGETARCH" && STRIP=strip && \
     echo "strip to use: $STRIP" && \
     cd bash-static && git checkout ${BASH_STATIC_GIT_REF} && \
     sed -i 's|https://ftp\.gnu\.org/gnu|https://ftpmirror.gnu.org/|g' ./build.sh && \
-    sed -i 's/-sLO/-sSfLO --retry 300 --connect-timeout 20 --retry-delay 2/g' ./build.sh && \
+    sed -i 's/-sLO/-sSfLO --retry 300 --connect-timeout 20 --retry-delay 5 --retry-all-errors /g' ./build.sh && \
     sed -i 's/strip/$STRIP/g' ./build.sh && \
     sed -i 's/make -s \&\& make -s tests/make -j4/g' ./build.sh && \
     bash version-52.sh && STRIP=$STRIP CC=$CC ./build.sh linux $ARCH
