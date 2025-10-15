@@ -84,6 +84,18 @@ iupgrade_wait() {
   # maybe: check version on labels (to confirm that we set labels correctly)
 }
 
+
+log_objects() {
+  # Never fail, but show output in case a test fails, to facilitate debugging.
+  # Could this be part of setup()? If setup succeeds and when a test fails:
+  # does this show the output of setup? Then we could do this.
+  kubectl get resourceclaims || true
+  kubectl get computedomain || true
+  kubectl get pods -o wide || true
+  kubectl get pods -o wide -n nvidia-dra-driver-gpu || true
+}
+
+
 # Events accumulate over time, so for certainty it's best to use a unique pod
 # name. Right now, this inspects an entire line which includes REASON, MESSAGE,
 # and OBJECT, so choose the needle (grepped for) precisely enough.
@@ -146,4 +158,17 @@ get_current_controller_pod_name() {
       | grep -iv 'completed' \
       | grep -iv 'terminating' \
       | awk '{print $1}'
+}
+
+
+apply_check_delete_workload_imex_chan_inject() {
+  kubectl apply -f demo/specs/imex/channel-injection.yaml
+  kubectl wait --for=condition=READY pods imex-channel-injection --timeout=100s
+  run kubectl logs imex-channel-injection
+  assert_output --partial "channel0"
+
+  # Wait for deletion to complete; this is critical before moving on to the next
+  # test (as long as we don't wipe state entirely between tests).
+  kubectl delete -f demo/specs/imex/channel-injection.yaml
+  kubectl wait --for=delete pods imex-channel-injection --timeout=10s
 }
