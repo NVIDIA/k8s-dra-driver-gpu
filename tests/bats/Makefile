@@ -153,9 +153,8 @@ tests: image
 .PHONY: tests
 tests: image
 	echo "KUBECONFIG: $(KUBECONFIG)" && \
-	export _RUNDIR_PARENT=/tmp/k8s-dra-driver-gpu-tests-out && \
-	mkdir -p "$${_RUNDIR_PARENT}" && \
-	export _RUNDIR=$$(mktemp -p $${_RUNDIR_PARENT} -d -t bats-tests-$$(date +%s)-XXXXX) && \
+	export _RUNDIR=/tmp/k8s-dra-driver-gpu-tests-out/bats-tests-$$(date +%s) && \
+	mkdir -p "$${_RUNDIR}" && stat "$${_RUNDIR}" && \
 	docker run \
 		--rm \
 		$(DOCKER_RUN_FLAGS) \
@@ -173,7 +172,7 @@ tests: image
 		-u $(shell id -u ${USER}):$(shell id -g ${USER}) \
 		--entrypoint "/bin/bash"\
 		$(BATS_IMAGE) \
-		-c "set -ex; cd /cwd; cat /kubeconfig | head -n2; kubectl get nodes; \
+		-c "set -ex; cd /cwd; stat $${_RUNDIR}; cat /kubeconfig | head -n2; kubectl get nodes; \
 			echo 'Running k8s cluster cleanup (invasive)... '; \
 			bash tests/bats/cleanup-from-previous-run.sh; \
 			TMPDIR=$${_RUNDIR} bats \
