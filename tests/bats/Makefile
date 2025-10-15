@@ -63,8 +63,9 @@ TMPDIR ?= "/tmp"
 # TMPDIR to checkout directory (easier for runner setup).
 DOCKER_RUN_FLAGS :=
 ifeq ($(CI),)
-  TMPDIR="./"
   DOCKER_RUN_FLAGS += -it
+else
+  TMPDIR="./"
 endif
 
 default: tests
