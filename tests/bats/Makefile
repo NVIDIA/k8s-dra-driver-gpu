@@ -104,7 +104,7 @@ tests: image
 		$(BATS_IMAGE) \
 		-c "set -ex; cd /cwd; cat /kubeconfig | head -n2; kubectl get nodes; \
 			echo 'Running k8s cluster cleanup (invasive)... '; \
-			bash tests/bats/cleanup-from-previous-run.sh 2>&1 | tee -a $${_RUNDIR}/cleanup.outerr; \
+			bash tests/bats/cleanup-from-previous-run.sh; \
 			TMPDIR=$${_RUNDIR} bats \
 			--print-output-on-failure \
 			--no-tempdir-cleanup \
