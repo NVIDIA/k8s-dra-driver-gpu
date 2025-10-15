@@ -65,7 +65,7 @@ DOCKER_RUN_FLAGS :=
 ifeq ($(CI),)
   DOCKER_RUN_FLAGS += -it
 else
-  TMPDIR="./"
+  TMPDIR="."
 endif
 
 default: tests
