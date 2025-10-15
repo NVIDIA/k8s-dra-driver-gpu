@@ -110,5 +110,6 @@ tests: image
 			tests/bats/test_cd_mnnvl_workload.bats \
 			tests/bats/test_cd_misc.bats \
 			tests/bats/test_cd_logging.bats \
+			tests/bats/test_cd_failover.bats \
 			tests/bats/test_cd_updowngrade.bats \
 		"
