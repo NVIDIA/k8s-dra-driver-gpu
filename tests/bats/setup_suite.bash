@@ -19,9 +19,9 @@
 # https://bats-core.readthedocs.io/en/latest/writing-tests.html#setup-and-teardown-pre-and-post-test-hooks
 
 # Validate that some prerequisites are met, and inspect environment for
-# characteristics, such as DRA API group version. A failing setup_suit()
+# characteristics, such as DRA API group version. A failing setup_suite()
 # function aborts the suite (fail fast).
-setup_suite () {
+validate_prerequisites() {
     # Probe: kubectl configured against a k8s cluster.
     kubectl cluster-info | grep "control plane is running at"
 
@@ -48,3 +48,26 @@ setup_suite () {
     # Examples: v1, or v1beta1
     export TEST_K8S_RESOURCE_API_VERSION
 }
+
+
+setup_suite () {
+    validate_prerequisites
+    # Create Helm repo cache dir and point `helm` to it, otherwise `Error:
+    # INSTALLATION FAILED: mkdir /.cache: permission denied`
+    HELM_REPOSITORY_CACHE=$(mktemp -d -t helm-XXXXX)
+    export HELM_REPOSITORY_CACHE
+
+    # Consumed by the helm CLI.
+    export HELM_REPOSITORY_CONFIG=${HELM_REPOSITORY_CACHE}/repo.cfg
+
+    # Prepare CRD upgrade URL.
+    export CRD_URL_PFX="https://raw.githubusercontent.com/NVIDIA/k8s-dra-driver-gpu/"
+    export CRD_URL_SFX="/deployments/helm/nvidia-dra-driver-gpu/crds/resource.nvidia.com_computedomains.yaml"
+    export CRD_UPGRADE_URL="${CRD_URL_PFX}${TEST_CRD_UPGRADE_TARGET_GIT_REF}${CRD_URL_SFX}"
+
+    # Prepare for installing releases from NGC (that merely mutates local
+    # filesystem state).
+    helm repo add nvidia https://helm.ngc.nvidia.com/nvidia && helm repo update
+}
+
+
