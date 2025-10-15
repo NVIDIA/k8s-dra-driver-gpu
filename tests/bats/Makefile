@@ -63,7 +63,7 @@ TMPDIR ?= "/tmp"
 # TMPDIR to checkout directory (easier for runner setup).
 DOCKER_RUN_FLAGS :=
 ifeq ($(CI),)
-  TMPDIR = "."
+  TMPDIR="./"
   DOCKER_RUN_FLAGS += -it
 endif
 
@@ -86,6 +86,7 @@ image:
 .PHONY: tests
 tests: image
 	echo "KUBECONFIG: $(KUBECONFIG)" && \
+	echo "TMPDIR: $(TMPDIR)" && \
 	export _RUNDIR=$(TMPDIR)/k8s-dra-driver-gpu-tests-out/bats-tests-$$(date +%s) && \
 	mkdir -p "$${_RUNDIR}" && stat "$${_RUNDIR}" && \
 	docker run \
