@@ -77,8 +77,9 @@ image:
 # cmdline args).
 .PHONY: tests
 tests: image
-	mkdir -p tests-out && \
-	export _RUNDIR=$$(mktemp -p tests-out -d -t bats-tests-$$(date +%s)-XXXXX) && \
+	export _RUNDIR_PARENT=/tmp/k8s-dra-driver-gpu-tests-out && \
+	mkdir -p "$${_RUNDIR_PARENT}" && \
+	export _RUNDIR=$$(mktemp -p $${_RUNDIR_PARENT} -d -t bats-tests-$$(date +%s)-XXXXX) && \
 	docker run \
 		--rm \
 		$(DOCKER_RUN_FLAGS) \
@@ -99,7 +100,7 @@ tests: image
 		-c "set -ex; cd /cwd; \
 			echo 'Running k8s cluster cleanup (invasive)... '; \
 			bash tests/bats/cleanup-from-previous-run.sh 2>&1 | tee -a $${_RUNDIR}/cleanup.outerr; \
-			TMPDIR=/cwd/$${_RUNDIR} bats \
+			TMPDIR=$${_RUNDIR} bats \
 			--print-output-on-failure \
 			--no-tempdir-cleanup \
 			--timing \
