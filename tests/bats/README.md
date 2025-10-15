@@ -67,7 +67,8 @@ Make wise usage of
 
 Misc notes:
 
+* The test suite stops on first failure (using the [new](https://github.com/bats-core/bats-core/issues/209) `--abort` flag for bats).
+  The tests are not perfectly independent yet, and hence that's sane default behavior.
 * Don't skip the section about when [not to use `run`](https://bats-core.readthedocs.io/en/stable/writing-tests.html#when-not-to-use-run).
 * Take inspiration from [cri-o tests](https://github.com/cri-o/cri-o/tree/81e69a58c7e6ec8699b3bdd8696b1d0e25e32bfb/test).
-* Stop test suite on first failure? No first-class support in bats. See [this](https://github.com/bats-core/bats-core/issues/209) discussion.
 * We can and should radically iterate on the test suite's config interface to satisfy our needs.
