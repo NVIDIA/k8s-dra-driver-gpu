@@ -65,8 +65,6 @@ DOCKER_RUN_FLAGS :=
 ifeq ($(CI),)
   DOCKER_RUN_FLAGS += -it
 else
-  DOCKER_RUN_FLAGS += "--env"
-  DOCKER_RUN_FLAGS += "TERM=xterm-256color"
   TMPDIR="."
 endif
 
@@ -116,7 +114,6 @@ tests: image
 			--print-output-on-failure \
 			--no-tempdir-cleanup \
 			--timing \
-			--formatter pretty \
 			--abort \
 			tests/bats/test_basics.bats \
 			tests/bats/tests.bats \
