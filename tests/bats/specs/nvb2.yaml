@@ -33,25 +33,21 @@ spec:
             securityContext:
               runAsUser: 1000
             command:
-            - mpirun
-            args:
-            - --show-progress
-            - --bind-to
-            - core
-            - --map-by
-            - ppr:2:node
-            - -np
-            - "4"
-            - --report-bindings
-            - -q
-            - nvbandwidth
-            - --verbose
-            - --testSamples
-            - "20"
-            - --bufferSize
-            - "2048"
-            - -t
-            - multinode_device_to_device_memcpy_read_ce
+            - sh
+            - -c
+            - |
+              echo "container start"
+              exec mpirun \
+                --show-progress \
+                --bind-to core \
+                --map-by ppr:2:node \
+                -np 4 \
+                --report-bindings \
+                  nvbandwidth \
+                  --verbose \
+                  --testSamples 20 \
+                  --bufferSize 2048 \
+                  -t multinode_device_to_device_memcpy_read_ce
           affinity:
             nodeAffinity:
               requiredDuringSchedulingIgnoredDuringExecution:

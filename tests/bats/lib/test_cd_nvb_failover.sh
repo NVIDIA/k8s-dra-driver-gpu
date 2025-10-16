@@ -108,7 +108,7 @@ while true; do
     # correct solution for this type of problem is to have a proper log
     # streaming pipeline. Collect heavily duplicated logs (dedup later)
     kubectl logs -l job-name="${JOB_NAME}" $KLOGS_ARGS >> "${LAUNCHER_LOG_PATH}".dup 2>&1 || true
-    kubectl logs -l job-name="${JOB_NAME}" $KLOGS_ARGS --previous >> "${LAUNCHER_LOG_PATH}".dup 2>&1 || true
+    kubectl logs -l job-name="${JOB_NAME}" $KLOGS_ARGS --previous --ignore-not-found >> "${LAUNCHER_LOG_PATH}".dup 2>&1 || true
 
 
     date -u +'%Y-%m-%dT%H:%M:%S.%3NZ ' >> "${RUNID}_pods_over_time"
@@ -141,18 +141,22 @@ while true; do
             log "sleep, pre-injection jitter: $_jitter_seconds s"
             sleep "$_jitter_seconds"
 
-            # A failing CUDA mem import/export API call in a worker process is
-            # propagated to the launcher, in which case the launcher container
-            # terminates (without logging). The launcher pod then restarts the
-            # container. After that, the MPI workload (the benchmark) is
-            # reinitialized by new new launcher. It starts again from scratch
-            # (while the MPI SSH-type worker processes stay alive, they actually
-            # start new workload child processes). Another type of failure that
-            # that launcher handles by restarting itself is clean TCP connection
-            # shutdown initiated by (clean) worker pod deletion. Any type of
-            # failure that is propagated to the launcher is met with the
-            # launcher container crashing, and restarting worker processes. This
-            # type of error handling after all facilitates "healing" the
+            # MPI error handling between launcher and worker: here, and MPI
+            # worker process tries to actively propagate any error that _it_
+            # experiences (such as a failing CUDA mem import/export API call in
+            # a worker process) to the launcher. When that error propagation
+            # works (via TCP), the launcher container attempts to log error
+            # detail and then terminates itself. The launcher pod then restarts
+            # the launcher container. After that, the MPI workload (the nvb
+            # benchmark in this case, running across the workers) is
+            # re-initialized by the new launcher. It starts again from scratch
+            # (while the MPI SSH-type worker processes stay alive -- they
+            # actually just start new workload child processes). Another type of
+            # failure that that launcher handles by restarting itself is clean
+            # TCP connection shutdown initiated by (clean) worker pod deletion.
+            # Any type of failure that is propagated to the launcher is met with
+            # the launcher container crashing, and restarting worker processes.
+            # This type of error handling after all facilitates "healing" the
             # workload.
             #
             # Here, however, the workload _never_ proceeds from where it left
@@ -213,13 +217,13 @@ while true; do
         break
     fi
 
-    sleep 1
+    sleep 0.5
 done
 
 
 log "terminate children, wait"
 jobs -p
-kill $(jobs -p) || true
+kill $(jobs -p) 2> /dev/null || true
 wait
 
 log "dedup launcher logs"
