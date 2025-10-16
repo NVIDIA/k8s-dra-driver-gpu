@@ -30,7 +30,6 @@ import (
 )
 
 const (
-	hostNamespaceMount     = "/proc/1/ns/mnt"
 	kernelIommuGroupPath   = "/sys/kernel/iommu_groups"
 	vfioPciModule          = "vfio_pci"
 	vfioPciDriver          = "vfio-pci"
@@ -116,7 +115,7 @@ func (vm *VfioPciManager) isVfioPCIModuleLoaded() bool {
 }
 
 func (vm *VfioPciManager) loadVfioPciModule() error {
-	_, err := execCommandInHostNamespace("modprobe", []string{vfioPciModule}) //nolint:gosec
+	_, err := execCommandWithChroot(vm.driverRoot, "modprobe", []string{vfioPciModule}) //nolint:gosec
 	if err != nil {
 		return err
 	}
@@ -257,10 +256,10 @@ func GetVfioCDIContainerEdits(info *VfioDeviceInfo) *cdiapi.ContainerEdits {
 	}
 }
 
-func execCommandInHostNamespace(cmd string, args []string) ([]byte, error) {
-	nsenterArgs := []string{"--mount=/proc/1/ns/mnt", cmd}
-	nsenterArgs = append(nsenterArgs, args...)
-	return exec.Command("nsenter", nsenterArgs...).CombinedOutput()
+func execCommandWithChroot(fsRoot, cmd string, args []string) ([]byte, error) {
+	chrootArgs := []string{fsRoot, cmd}
+	chrootArgs = append(chrootArgs, args...)
+	return exec.Command("chroot", chrootArgs...).CombinedOutput()
 }
 
 func execCommand(cmd string, args []string) ([]byte, error) {

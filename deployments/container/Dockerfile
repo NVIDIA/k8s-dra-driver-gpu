@@ -44,9 +44,7 @@ RUN apt-get update && \
         git \
         gcc-aarch64-linux-gnu \
         gcc \
-        kmod \
-        lsof \
-        util-linux
+        lsof
 
 # Install dependencies for `bash-static` build.
 RUN apt-get install -y gpg curl autoconf file
@@ -159,12 +157,7 @@ COPY --from=build   /lib/x86_64-linux-gnu/libk5crypto.so.3    /lib/x86_64-linux-
 COPY --from=build   /lib/x86_64-linux-gnu/libcom_err.so.2     /lib/x86_64-linux-gnu/libcom_err.so.2
 COPY --from=build   /lib/x86_64-linux-gnu/libkrb5support.so.0 /lib/x86_64-linux-gnu/libkrb5support.so.0
 COPY --from=build   /lib/x86_64-linux-gnu/libkeyutils.so.1    /lib/x86_64-linux-gnu/libkeyutils.so.1
-COPY --from=build   /lib/x86_64-linux-gnu/libzstd.so.1        /lib/x86_64-linux-gnu/libzstd.so.1
-COPY --from=build   /lib/x86_64-linux-gnu/liblzma.so.5        /lib/x86_64-linux-gnu/liblzma.so.5
-COPY --from=build   /lib/x86_64-linux-gnu/libcrypto.so.3      /lib/x86_64-linux-gnu/libcrypto.so.3   
 COPY --from=build   /usr/bin/lsof                             /usr/bin/lsof
-COPY --from=build   /usr/sbin/modprobe                        /usr/sbin/modprobe
-COPY --from=build   /usr/bin/nsenter                          /usr/bin/nsenter
 COPY /hack/kubelet-plugin-prestart.sh /usr/bin/kubelet-plugin-prestart.sh
 COPY /templates /templates
 
