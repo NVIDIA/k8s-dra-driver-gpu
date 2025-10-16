@@ -5,8 +5,10 @@ metadata:
 spec:
   devices:
     requests:
-    - deviceClassName: compute-domain-default-channel.nvidia.com
-      name: chan
+    - name: chan
+      # This part of the ResourceClaim spec changed in
+      # resource.k8s.io/v1 compared to previous API versions.
+      ${TEST_DEVCLASSNAME_CD_CHANNEL}
     config:
     - opaque:
         driver: compute-domain.nvidia.com

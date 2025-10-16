@@ -47,6 +47,13 @@ validate_prerequisites() {
 
     # Examples: v1, or v1beta1
     export TEST_K8S_RESOURCE_API_VERSION
+
+    # For resource.k8s.io API versions before v1, a ResourceClaim spec looks
+    # slightly differently. Use flow-style YAML.
+    export TEST_DEVCLASSNAME_CD_CHANNEL="exactly: {deviceClassName: compute-domain-default-channel.nvidia.com}"
+    if [[ "${TEST_K8S_RESOURCE_API_VERSION}" != "v1" ]]; then
+        export TEST_DEVCLASSNAME_CD_CHANNEL="deviceClassName: compute-domain-default-channel.nvidia.com"
+    fi
 }
 
 
