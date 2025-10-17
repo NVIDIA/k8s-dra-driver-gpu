@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2022, NVIDIA CORPORATION.  All rights reserved.
+ * Copyright (c) 2022-2025, NVIDIA CORPORATION.  All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -45,11 +45,12 @@ type DeviceConfigState struct {
 
 type DeviceState struct {
 	sync.Mutex
-	cdi         *CDIHandler
-	tsManager   *TimeSlicingManager
-	mpsManager  *MpsManager
-	allocatable AllocatableDevices
-	config      *Config
+	cdi            *CDIHandler
+	tsManager      *TimeSlicingManager
+	mpsManager     *MpsManager
+	vfioPciManager *VfioPciManager
+	allocatable    AllocatableDevices
+	config         *Config
 
 	nvdevlib          *deviceLib
 	checkpointManager checkpointmanager.CheckpointManager
@@ -95,6 +96,16 @@ func NewDeviceState(ctx context.Context, config *Config) (*DeviceState, error) {
 		mpsManager = NewMpsManager(config, nvdevlib, hostDriverRoot, MpsControlDaemonTemplatePath)
 	}
 
+	var vfioPciManager *VfioPciManager
+	if featuregates.Enabled(featuregates.PassthroughSupport) {
+		manager := NewVfioPciManager(string(containerDriverRoot))
+		if err := manager.Prechecks(); err == nil {
+			vfioPciManager = manager
+		} else {
+			klog.Warningf("vfio-pci manager failed prechecks, will not be initialize: %v", err)
+		}
+	}
+
 	if err := cdi.CreateStandardDeviceSpecFile(allocatable); err != nil {
 		return nil, fmt.Errorf("unable to create base CDI spec file: %v", err)
 	}
@@ -108,11 +119,12 @@ func NewDeviceState(ctx context.Context, config *Config) (*DeviceState, error) {
 		cdi:               cdi,
 		tsManager:         tsManager,
 		mpsManager:        mpsManager,
-		allocatable:       allocatable,
+		vfioPciManager:    vfioPciManager,
 		config:            config,
 		nvdevlib:          nvdevlib,
 		checkpointManager: checkpointManager,
 	}
+	state.allocatable = allocatable
 
 	checkpoints, err := state.checkpointManager.ListCheckpoints()
 	if err != nil {
@@ -284,6 +296,12 @@ func (s *DeviceState) prepareDevices(ctx context.Context, claim *resourceapi.Res
 		Requests: []string{},
 		Config:   configapi.DefaultMigDeviceConfig(),
 	})
+	if featuregates.Enabled(featuregates.PassthroughSupport) {
+		configs = slices.Insert(configs, 0, &OpaqueDeviceConfig{
+			Requests: []string{},
+			Config:   configapi.DefaultVfioDeviceConfig(),
+		})
+	}
 
 	// Look through the configs and figure out which one will be applied to
 	// each device allocation result based on their order of precedence and type.
@@ -304,6 +322,9 @@ func (s *DeviceState) prepareDevices(ctx context.Context, claim *resourceapi.Res
 				if _, ok := c.Config.(*configapi.MigDeviceConfig); ok && device.Type() != MigDeviceType {
 					return nil, fmt.Errorf("cannot apply MIG device config to request: %v", result.Request)
 				}
+				if _, ok := c.Config.(*configapi.VfioDeviceConfig); ok && device.Type() != VfioDeviceType {
+					return nil, fmt.Errorf("cannot apply VFIO device config to request: %v", result.Request)
+				}
 				configResultsMap[c.Config] = append(configResultsMap[c.Config], &result)
 				break
 			}
@@ -312,6 +333,9 @@ func (s *DeviceState) prepareDevices(ctx context.Context, claim *resourceapi.Res
 					continue
 				}
 				if _, ok := c.Config.(*configapi.MigDeviceConfig); ok && device.Type() != MigDeviceType {
+					continue
+				}
+				if _, ok := c.Config.(*configapi.VfioDeviceConfig); ok && device.Type() != VfioDeviceType {
 					continue
 				}
 				configResultsMap[c.Config] = append(configResultsMap[c.Config], &result)
@@ -331,6 +355,8 @@ func (s *DeviceState) prepareDevices(ctx context.Context, claim *resourceapi.Res
 		case *configapi.GpuConfig:
 			config = castConfig
 		case *configapi.MigDeviceConfig:
+			config = castConfig
+		case *configapi.VfioDeviceConfig:
 			config = castConfig
 		default:
 			return nil, fmt.Errorf("runtime object is not a recognized configuration")
@@ -392,6 +418,11 @@ func (s *DeviceState) prepareDevices(ctx context.Context, claim *resourceapi.Res
 					Info:   s.allocatable[result.Device].Mig,
 					Device: device,
 				}
+			case VfioDeviceType:
+				preparedDevice.Vfio = &PreparedVfioDevice{
+					Info:   s.allocatable[result.Device].Vfio,
+					Device: device,
+				}
 			}
 
 			preparedDeviceGroup.Devices = append(preparedDeviceGroup.Devices, preparedDevice)
@@ -404,6 +435,14 @@ func (s *DeviceState) prepareDevices(ctx context.Context, claim *resourceapi.Res
 
 func (s *DeviceState) unprepareDevices(ctx context.Context, claimUID string, devices PreparedDevices) error {
 	for _, group := range devices {
+		// Unconfigure the vfio-pci devices.
+		if featuregates.Enabled(featuregates.PassthroughSupport) {
+			err := s.unprepareVfioDevices(ctx, group.Devices.VfioDevices())
+			if err != nil {
+				return err
+			}
+		}
+
 		// Stop any MPS control daemons started for each group of prepared devices.
 		if featuregates.Enabled(featuregates.MPSSupport) {
 			mpsControlDaemon := s.mpsManager.NewMpsControlDaemon(claimUID, group)
@@ -419,6 +458,40 @@ func (s *DeviceState) unprepareDevices(ctx context.Context, claimUID string, dev
 				return fmt.Errorf("error setting timeslice for devices: %w", err)
 			}
 		}
+
+	}
+	return nil
+}
+
+func (s *DeviceState) getAllocatableVfioDevice(uuid string) (*AllocatableDevice, error) {
+	for _, allocatable := range s.allocatable {
+		if allocatable.Type() != VfioDeviceType {
+			continue
+		}
+		if allocatable.Vfio.UUID == uuid {
+			return allocatable, nil
+		}
+	}
+	return nil, fmt.Errorf("allocatable device not found for vfio-pci device: %v", uuid)
+}
+
+func (s *DeviceState) unprepareVfioDevices(ctx context.Context, devices PreparedDeviceList) error {
+	for _, device := range devices {
+		vfioAllocatable, err := s.getAllocatableVfioDevice(device.Vfio.Info.UUID)
+		if err != nil {
+			return fmt.Errorf("error getting allocatable device for vfio-pci device: %w", err)
+		}
+		if err := s.vfioPciManager.Unconfigure(vfioAllocatable.Vfio); err != nil {
+			return fmt.Errorf("error unconfiguring vfio-pci device: %w", err)
+		}
+
+		// Rediscover the GPU to account for possible device minor changes.
+		allocatableDevice, err := s.nvdevlib.discoverGPUByPCIBusID(vfioAllocatable.Vfio.pcieBusID)
+		if err != nil {
+			return fmt.Errorf("error rediscovering GPU by PCIe bus ID: %w", err)
+		}
+		vfioAllocatable.Vfio.parent = allocatableDevice.Gpu
+		s.allocatable[allocatableDevice.Gpu.CanonicalName()] = allocatableDevice
 	}
 	return nil
 }
@@ -429,6 +502,8 @@ func (s *DeviceState) applyConfig(ctx context.Context, config configapi.Interfac
 		return s.applySharingConfig(ctx, castConfig.Sharing, claim, results)
 	case *configapi.MigDeviceConfig:
 		return s.applySharingConfig(ctx, castConfig.Sharing, claim, results)
+	case *configapi.VfioDeviceConfig:
+		return s.applyVfioDeviceConfig(ctx, castConfig, claim, results)
 	default:
 		return nil, fmt.Errorf("unknown config type: %T", castConfig)
 	}
@@ -479,6 +554,25 @@ func (s *DeviceState) applySharingConfig(ctx context.Context, config configapi.S
 		}
 		configState.MpsControlDaemonID = mpsControlDaemon.GetID()
 		configState.containerEdits = mpsControlDaemon.GetCDIContainerEdits()
+	}
+
+	return &configState, nil
+}
+
+func (s *DeviceState) applyVfioDeviceConfig(ctx context.Context, config *configapi.VfioDeviceConfig, claim *resourceapi.ResourceClaim, results []*resourceapi.DeviceRequestAllocationResult) (*DeviceConfigState, error) {
+	if !featuregates.Enabled(featuregates.PassthroughSupport) {
+		return nil, nil
+	}
+	var configState DeviceConfigState
+
+	// Configure the vfio-pci devices.
+	for _, r := range results {
+		info := s.allocatable[r.Device]
+		err := s.vfioPciManager.Configure(info.Vfio)
+		if err != nil {
+			return nil, err
+		}
+		delete(s.allocatable, info.Vfio.parent.CanonicalName())
 	}
 
 	return &configState, nil

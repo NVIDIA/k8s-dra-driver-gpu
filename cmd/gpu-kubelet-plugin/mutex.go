@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2024, NVIDIA CORPORATION.  All rights reserved.
+ * Copyright (c) 2025, NVIDIA CORPORATION.  All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,15 +16,28 @@
 
 package main
 
-const (
-	GpuDeviceType     = "gpu"
-	MigDeviceType     = "mig"
-	VfioDeviceType    = "vfio"
-	UnknownDeviceType = "unknown"
+import (
+	"sync"
 )
 
-type UUIDProvider interface {
-	UUIDs() []string
-	GpuUUIDs() []string
-	MigDeviceUUIDs() []string
+type PerGPUMutex struct {
+	sync.Mutex
+	submutex map[string]*sync.Mutex
+}
+
+var perGpuLock *PerGPUMutex
+
+func init() {
+	perGpuLock = &PerGPUMutex{
+		submutex: make(map[string]*sync.Mutex),
+	}
+}
+
+func (pgm *PerGPUMutex) Get(gpu string) *sync.Mutex {
+	pgm.Lock()
+	defer pgm.Unlock()
+	if pgm.submutex[gpu] == nil {
+		pgm.submutex[gpu] = &sync.Mutex{}
+	}
+	return pgm.submutex[gpu]
 }

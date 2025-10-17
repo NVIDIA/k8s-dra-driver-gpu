@@ -75,25 +75,13 @@ func NewDriver(ctx context.Context, config *Config) (*driver, error) {
 	}
 	driver.pluginhelper = helper
 
-	// Enumerate the set of GPU and MIG devices and publish them
-	var resourceSlice resourceslice.Slice
-	for _, device := range state.allocatable {
-		resourceSlice.Devices = append(resourceSlice.Devices, device.GetDevice())
-	}
-
-	resources := resourceslice.DriverResources{
-		Pools: map[string]resourceslice.Pool{
-			config.flags.nodeName: {Slices: []resourceslice.Slice{resourceSlice}},
-		},
-	}
-
 	healthcheck, err := startHealthcheck(ctx, config)
 	if err != nil {
 		return nil, fmt.Errorf("start healthcheck: %w", err)
 	}
 	driver.healthcheck = healthcheck
 
-	if err := driver.pluginhelper.PublishResources(ctx, resources); err != nil {
+	if err := driver.publishResources(ctx, config); err != nil {
 		return nil, err
 	}
 
@@ -158,6 +146,12 @@ func (d *driver) nodePrepareResource(ctx context.Context, claim *resourceapi.Res
 			Err: fmt.Errorf("error preparing devices for claim %v: %w", claim.UID, err),
 		}
 	}
+	if err = d.publishResources(ctx, d.state.config); err != nil {
+		return kubeletplugin.PrepareResult{
+			Err: fmt.Errorf("error preparing devices for claim %v: %w", claim.UID, err),
+		}
+
+	}
 
 	klog.Infof("Returning newly prepared devices for claim '%v': %v", claim.UID, devs)
 	return kubeletplugin.PrepareResult{Devices: devs}
@@ -172,6 +166,26 @@ func (d *driver) nodeUnprepareResource(ctx context.Context, claimNs kubeletplugi
 
 	if err := d.state.Unprepare(ctx, string(claimNs.UID)); err != nil {
 		return fmt.Errorf("error unpreparing devices for claim %v: %w", claimNs.UID, err)
+	}
+
+	return d.publishResources(ctx, d.state.config)
+}
+
+func (d *driver) publishResources(ctx context.Context, config *Config) error {
+	// Enumerate the set of GPU, MIG and VFIO devices and publish them
+	var resourceSlice resourceslice.Slice
+	for _, device := range d.state.allocatable {
+		resourceSlice.Devices = append(resourceSlice.Devices, device.GetDevice())
+	}
+
+	resources := resourceslice.DriverResources{
+		Pools: map[string]resourceslice.Pool{
+			config.flags.nodeName: {Slices: []resourceslice.Slice{resourceSlice}},
+		},
+	}
+
+	if err := d.pluginhelper.PublishResources(ctx, resources); err != nil {
+		return err
 	}
 
 	return nil

@@ -26,8 +26,9 @@ type PreparedDeviceList []PreparedDevice
 type PreparedDevices []*PreparedDeviceGroup
 
 type PreparedDevice struct {
-	Gpu *PreparedGpu       `json:"gpu"`
-	Mig *PreparedMigDevice `json:"mig"`
+	Gpu  *PreparedGpu        `json:"gpu"`
+	Mig  *PreparedMigDevice  `json:"mig"`
+	Vfio *PreparedVfioDevice `json:"vfio"`
 }
 
 type PreparedGpu struct {
@@ -37,6 +38,11 @@ type PreparedGpu struct {
 
 type PreparedMigDevice struct {
 	Info   *MigDeviceInfo        `json:"info"`
+	Device *kubeletplugin.Device `json:"device"`
+}
+
+type PreparedVfioDevice struct {
+	Info   *VfioDeviceInfo       `json:"info"`
 	Device *kubeletplugin.Device `json:"device"`
 }
 
@@ -52,6 +58,9 @@ func (d PreparedDevice) Type() string {
 	if d.Mig != nil {
 		return MigDeviceType
 	}
+	if d.Vfio != nil {
+		return VfioDeviceType
+	}
 	return UnknownDeviceType
 }
 
@@ -61,6 +70,8 @@ func (d *PreparedDevice) CanonicalName() string {
 		return d.Gpu.Info.CanonicalName()
 	case MigDeviceType:
 		return d.Mig.Info.CanonicalName()
+	case VfioDeviceType:
+		return d.Vfio.Info.CanonicalName()
 	}
 	panic("unexpected type for AllocatableDevice")
 }
@@ -85,6 +96,16 @@ func (l PreparedDeviceList) MigDevices() PreparedDeviceList {
 	return devices
 }
 
+func (l PreparedDeviceList) VfioDevices() PreparedDeviceList {
+	var devices PreparedDeviceList
+	for _, device := range l {
+		if device.Type() == VfioDeviceType {
+			devices = append(devices, device)
+		}
+	}
+	return devices
+}
+
 func (d PreparedDevices) GetDevices() []kubeletplugin.Device {
 	var devices []kubeletplugin.Device
 	for _, group := range d {
@@ -101,6 +122,8 @@ func (g *PreparedDeviceGroup) GetDevices() []kubeletplugin.Device {
 			devices = append(devices, *device.Gpu.Device)
 		case MigDeviceType:
 			devices = append(devices, *device.Mig.Device)
+		case VfioDeviceType:
+			devices = append(devices, *device.Vfio.Device)
 		}
 	}
 	return devices
@@ -108,18 +131,21 @@ func (g *PreparedDeviceGroup) GetDevices() []kubeletplugin.Device {
 
 func (l PreparedDeviceList) UUIDs() []string {
 	uuids := append(l.GpuUUIDs(), l.MigDeviceUUIDs()...)
+	uuids = append(uuids, l.VfioDeviceUUIDs()...)
 	slices.Sort(uuids)
 	return uuids
 }
 
 func (g *PreparedDeviceGroup) UUIDs() []string {
 	uuids := append(g.GpuUUIDs(), g.MigDeviceUUIDs()...)
+	uuids = append(uuids, g.VfioDeviceUUIDs()...)
 	slices.Sort(uuids)
 	return uuids
 }
 
 func (d PreparedDevices) UUIDs() []string {
 	uuids := append(d.GpuUUIDs(), d.MigDeviceUUIDs()...)
+	uuids = append(uuids, d.VfioDeviceUUIDs()...)
 	slices.Sort(uuids)
 	return uuids
 }
@@ -163,6 +189,28 @@ func (d PreparedDevices) MigDeviceUUIDs() []string {
 	var uuids []string
 	for _, group := range d {
 		uuids = append(uuids, group.MigDeviceUUIDs()...)
+	}
+	slices.Sort(uuids)
+	return uuids
+}
+
+func (g *PreparedDeviceGroup) VfioDeviceUUIDs() []string {
+	return g.Devices.VfioDevices().UUIDs()
+}
+
+func (l PreparedDeviceList) VfioDeviceUUIDs() []string {
+	var uuids []string
+	for _, device := range l.VfioDevices() {
+		uuids = append(uuids, device.Vfio.Info.UUID)
+	}
+	slices.Sort(uuids)
+	return uuids
+}
+
+func (d PreparedDevices) VfioDeviceUUIDs() []string {
+	var uuids []string
+	for _, group := range d {
+		uuids = append(uuids, group.VfioDeviceUUIDs()...)
 	}
 	slices.Sort(uuids)
 	return uuids
