@@ -22,11 +22,20 @@ import (
 	resourceapi "k8s.io/api/resource/v1"
 )
 
+const (
+	// Healthy means that the device is healthy
+	Healthy = "Healthy"
+	// Unhealthy means that the device is unhealthy
+	Unhealthy = "Unhealthy"
+)
+
 type AllocatableDevices map[string]*AllocatableDevice
 
 type AllocatableDevice struct {
 	Gpu *GpuInfo
 	Mig *MigDeviceInfo
+	// Defined similarly as https://pkg.go.dev/k8s.io/kubelet/pkg/apis/deviceplugin/v1beta1#Healthy
+	Health string
 }
 
 func (d AllocatableDevice) Type() string {
@@ -95,4 +104,8 @@ func (d AllocatableDevices) UUIDs() []string {
 	uuids := append(d.GpuUUIDs(), d.MigDeviceUUIDs()...)
 	slices.Sort(uuids)
 	return uuids
+}
+
+func (d *AllocatableDevice) IsHealthy() bool {
+	return d.Health == Healthy
 }

@@ -249,6 +249,10 @@ spec:
         - name: HEALTHCHECK_PORT
           value: {{ .Values.kubeletPlugin.containers.gpus.healthcheckPort | quote }}
         {{- end }}
+        {{- if .Values.kubeletPlugin.containers.gpus.additionalXidsToIgnore }}
+        - name: ADDITIONAL_XIDs_TO_IGNORE
+          value: {{ .Values.kubeletPlugin.containers.gpus.additionalXidsToIgnore | quote }}
+        {{- end }}
         {{- with .Values.kubeletPlugin.containers.gpus.env }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
