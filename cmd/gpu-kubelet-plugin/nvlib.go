@@ -208,6 +208,13 @@ func (l deviceLib) getGpuInfo(index int, device nvdev.Device) (*GpuInfo, error) 
 		klog.Warningf("error getting PCIe root for device %d, continuing without attribute: %v", index, err)
 	}
 
+	var numaNodeID *int
+	if id, ret := device.GetNumaNodeId(); ret == nvml.SUCCESS {
+		numaNodeID = &id
+	} else {
+		klog.Warningf("error getting NUMA node ID for device %d, continuing without attribute: %v", index, ret)
+	}
+
 	var migProfiles []*MigProfileInfo
 	for i := 0; i < nvml.GPU_INSTANCE_PROFILE_COUNT; i++ {
 		giProfileInfo, ret := device.GetGpuInstanceProfileInfo(i)
@@ -275,6 +282,7 @@ func (l deviceLib) getGpuInfo(index int, device nvdev.Device) (*GpuInfo, error) 
 		pcieBusID:             pcieBusID,
 		pcieRootAttr:          pcieRootAttr,
 		migProfiles:           migProfiles,
+		numaNodeID:            numaNodeID,
 	}
 
 	return gpuInfo, nil
@@ -368,6 +376,7 @@ func (l deviceLib) getMigDevices(gpuInfo *GpuInfo) (map[string]*MigDeviceInfo, e
 			ciInfo:        &ciInfo,
 			pcieBusID:     gpuInfo.pcieBusID,
 			pcieRootAttr:  gpuInfo.pcieRootAttr,
+			numaNodeID:    gpuInfo.numaNodeID,
 		}
 		return nil
 	})
