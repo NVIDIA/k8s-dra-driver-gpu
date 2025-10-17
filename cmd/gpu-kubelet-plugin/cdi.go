@@ -51,6 +51,14 @@ const (
 	procNvCapsPath = "/proc/driver/nvidia/capabilities"
 )
 
+func getTalosLibrarySearchPaths() []string {
+	return []string{
+		"/driver-root/usr/local/glibc/usr/lib",
+		"/driver-root/usr/local/glibc/lib",
+		"/driver-root/usr/local/glibc/lib64",
+	}
+}
+
 type CDIHandler struct {
 	logger            *logrus.Logger
 	nvml              nvml.Interface
@@ -108,6 +116,7 @@ func NewCDIHandler(opts ...cdiOption) (*CDIHandler, error) {
 			nvcdi.WithVendor(h.vendor),
 			nvcdi.WithClass(h.deviceClass),
 			nvcdi.WithNVIDIACDIHookPath(h.nvidiaCDIHookPath),
+			nvcdi.WithLibrarySearchPaths(getTalosLibrarySearchPaths()),
 		)
 		if err != nil {
 			return nil, fmt.Errorf("unable to create CDI library for devices: %w", err)
@@ -125,6 +134,7 @@ func NewCDIHandler(opts ...cdiOption) (*CDIHandler, error) {
 			nvcdi.WithVendor(h.vendor),
 			nvcdi.WithClass(h.claimClass),
 			nvcdi.WithNVIDIACDIHookPath(h.nvidiaCDIHookPath),
+			nvcdi.WithLibrarySearchPaths(getTalosLibrarySearchPaths()),
 		)
 		if err != nil {
 			return nil, fmt.Errorf("unable to create CDI library for claims: %w", err)
