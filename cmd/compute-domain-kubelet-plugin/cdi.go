@@ -48,9 +48,9 @@ const (
 
 func getTalosLibrarySearchPaths() []string {
 	return []string{
-		"/usr/local/glibc/usr/lib",
-		"/usr/local/glibc/lib",
-		"/usr/local/glibc/lib64",
+		"/driver-root/usr/local/glibc/usr/lib",
+		"/driver-root/usr/local/glibc/lib",
+		"/driver-root/usr/local/glibc/lib64",
 	}
 }
 
