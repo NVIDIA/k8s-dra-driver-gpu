@@ -46,6 +46,14 @@ const (
 	defaultCDIRoot = "/var/run/cdi"
 )
 
+func getTalosLibrarySearchPaths() []string {
+	return []string{
+		"/usr/local/glibc/usr/lib",
+		"/usr/local/glibc/lib",
+		"/usr/local/glibc/lib64",
+	}
+}
+
 type CDIHandler struct {
 	logger            *logrus.Logger
 	nvml              nvml.Interface
@@ -103,6 +111,7 @@ func NewCDIHandler(opts ...cdiOption) (*CDIHandler, error) {
 			nvcdi.WithVendor(h.vendor),
 			nvcdi.WithClass(h.deviceClass),
 			nvcdi.WithNVIDIACDIHookPath(h.nvidiaCDIHookPath),
+			nvcdi.WithLibrarySearchPaths(getTalosLibrarySearchPaths()),
 		)
 		if err != nil {
 			return nil, fmt.Errorf("unable to create CDI library for devices: %w", err)
@@ -120,6 +129,7 @@ func NewCDIHandler(opts ...cdiOption) (*CDIHandler, error) {
 			nvcdi.WithVendor(h.vendor),
 			nvcdi.WithClass(h.claimClass),
 			nvcdi.WithNVIDIACDIHookPath(h.nvidiaCDIHookPath),
+			nvcdi.WithLibrarySearchPaths(getTalosLibrarySearchPaths()),
 		)
 		if err != nil {
 			return nil, fmt.Errorf("unable to create CDI library for claims: %w", err)
