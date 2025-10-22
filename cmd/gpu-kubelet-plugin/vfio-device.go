@@ -47,12 +47,14 @@ const (
 type VfioPciManager struct {
 	driverRoot string
 	driver     string
+	nvlib      *deviceLib
 }
 
-func NewVfioPciManager(driverRoot string) *VfioPciManager {
+func NewVfioPciManager(driverRoot string, nvlib *deviceLib) *VfioPciManager {
 	vm := &VfioPciManager{
 		driverRoot: driverRoot,
 		driver:     vfioPciDriver,
+		nvlib:      nvlib,
 	}
 	if !vm.isVfioPCIModuleLoaded() {
 		err := vm.loadVfioPciModule()
@@ -149,6 +151,19 @@ func (vm *VfioPciManager) WaitForGPUFree(info *VfioDeviceInfo) error {
 	}
 }
 
+// Verify there are no VFs on the GPU.
+func (vm *VfioPciManager) verifyDisabledVFs(pcieBusID string) error {
+	gpu, err := vm.nvlib.nvpci.GetGPUByPciBusID(pcieBusID)
+	if err != nil {
+		return err
+	}
+	numVFs := gpu.SriovInfo.PhysicalFunction.NumVFs
+	if numVFs > 0 {
+		return fmt.Errorf("gpu has %d VFs, cannot unbind", numVFs)
+	}
+	return nil
+}
+
 // Configure binds the GPU to the vfio-pci driver.
 func (vm *VfioPciManager) Configure(info *VfioDeviceInfo) error {
 	perGpuLock.Get(info.pcieBusID).Lock()
@@ -162,6 +177,10 @@ func (vm *VfioPciManager) Configure(info *VfioDeviceInfo) error {
 		return nil
 	}
 	err = vm.WaitForGPUFree(info)
+	if err != nil {
+		return err
+	}
+	err = vm.verifyDisabledVFs(info.pcieBusID)
 	if err != nil {
 		return err
 	}

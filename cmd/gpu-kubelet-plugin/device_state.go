@@ -98,7 +98,7 @@ func NewDeviceState(ctx context.Context, config *Config) (*DeviceState, error) {
 
 	var vfioPciManager *VfioPciManager
 	if featuregates.Enabled(featuregates.PassthroughSupport) {
-		manager := NewVfioPciManager(string(containerDriverRoot))
+		manager := NewVfioPciManager(string(containerDriverRoot), nvdevlib)
 		if err := manager.Prechecks(); err == nil {
 			vfioPciManager = manager
 		} else {
