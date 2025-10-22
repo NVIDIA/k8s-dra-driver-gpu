@@ -59,6 +59,7 @@ validate_and_exit_on_success () {
             /driver-root/usr/lib64 \
             /driver-root/usr/lib/x86_64-linux-gnu \
             /driver-root/usr/lib/aarch64-linux-gnu \
+            /driver-root/usr/lib \
             /driver-root/lib64 \
             /driver-root/lib/x86_64-linux-gnu \
             /driver-root/lib/aarch64-linux-gnu \
