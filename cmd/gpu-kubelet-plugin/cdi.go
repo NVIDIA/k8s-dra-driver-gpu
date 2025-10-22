@@ -165,9 +165,11 @@ func (cdi *CDIHandler) writeSpec(spec spec.Interface, specName string) error {
 
 func (cdi *CDIHandler) CreateStandardDeviceSpecFile(allocatable AllocatableDevices) error {
 	if err := cdi.createStandardNvidiaDeviceSpecFile(allocatable); err != nil {
+		klog.Errorf("failed to create standard nvidia device spec file: %v", err)
 		return err
 	}
 	if err := cdi.createStandardVfioDeviceSpecFile(allocatable); err != nil {
+		klog.Errorf("failed to create standard vfio device spec file: %v", err)
 		return err
 	}
 	return nil
@@ -199,6 +201,7 @@ func (cdi *CDIHandler) createStandardVfioDeviceSpecFile(allocatable AllocatableD
 	}
 
 	specName := cdiapi.GenerateTransientSpecName(cdiVendor, cdiDeviceClass, cdiVfioSpecIdentifier)
+	klog.Infof("Writing vfio spec for %s to %s", specName, cdi.cdiRoot)
 	return cdi.writeSpec(spec, specName)
 }
 
@@ -252,7 +255,8 @@ func (cdi *CDIHandler) createStandardNvidiaDeviceSpecFile(allocatable Allocatabl
 		return fmt.Errorf("failed to creat CDI spec: %w", err)
 	}
 
-	specName := cdiapi.GenerateTransientSpecName(cdiVendor, cdiDeviceClass, cdiVfioSpecIdentifier)
+	specName := cdiapi.GenerateTransientSpecName(cdiVendor, cdiDeviceClass, cdiBaseSpecIdentifier)
+	klog.Infof("Writing spec for %s to %s", specName, cdi.cdiRoot)
 	return cdi.writeSpec(spec, specName)
 }
 
@@ -291,26 +295,10 @@ func (cdi *CDIHandler) CreateClaimSpecFile(claimUID string, preparedDevices Prep
 		return fmt.Errorf("failed to creat CDI spec: %w", err)
 	}
 
-	// Transform the spec to make it aware that it is running inside a container.
-	err = transformroot.New(
-		transformroot.WithRoot(cdi.driverRoot),
-		transformroot.WithTargetRoot(cdi.targetDriverRoot),
-		transformroot.WithRelativeTo("host"),
-	).Transform(spec.Raw())
-	if err != nil {
-		return fmt.Errorf("failed to transform driver root in CDI spec: %w", err)
-	}
-
-	// Update the spec to include only the minimum version necessary.
-	minVersion, err := cdispec.MinimumRequiredVersion(spec.Raw())
-	if err != nil {
-		return fmt.Errorf("failed to get minimum required CDI spec version: %w", err)
-	}
-	spec.Raw().Version = minVersion
-
 	// Write the spec out to disk.
 	specName := cdiapi.GenerateTransientSpecName(cdiVendor, cdiClaimClass, claimUID)
-	return cdi.cache.WriteSpec(spec.Raw(), specName)
+	klog.Infof("Writing claim spec for %s to %s", specName, cdi.cdiRoot)
+	return cdi.writeSpec(spec, specName)
 }
 
 func (cdi *CDIHandler) DeleteClaimSpecFile(claimUID string) error {

@@ -180,6 +180,17 @@ func (s *DeviceState) Prepare(ctx context.Context, claim *resourceapi.ResourceCl
 		return nil, fmt.Errorf("prepare devices failed: %w", err)
 	}
 
+	if featuregates.Enabled(featuregates.PassthroughSupport) {
+		for _, device := range preparedDevices.GetDevices() {
+			allocatableDevice, ok := s.allocatable[device.DeviceName]
+			if !ok {
+				klog.Warningf("allocatable not found for device: %v", device.DeviceName)
+				continue
+			}
+			s.allocatable.RemoveSiblingDevices(allocatableDevice)
+		}
+	}
+
 	if err := s.cdi.CreateClaimSpecFile(claimUID, preparedDevices); err != nil {
 		return nil, fmt.Errorf("unable to create CDI spec file for claim: %w", err)
 	}
@@ -230,6 +241,19 @@ func (s *DeviceState) Unprepare(ctx context.Context, claimUID string) error {
 		return fmt.Errorf("unsupported ClaimCheckpointState: %v", pc.CheckpointState)
 	}
 
+	if featuregates.Enabled(featuregates.PassthroughSupport) {
+		for _, device := range pc.PreparedDevices.GetDevices() {
+			allocatableDevice, ok := s.allocatable[device.DeviceName]
+			if !ok {
+				klog.Warningf("allocatable not found for device: %v", device.DeviceName)
+				continue
+			}
+			err := s.discoverSiblingAllocatables(allocatableDevice)
+			if err != nil {
+				return fmt.Errorf("error discovering sibling allocatables: %w", err)
+			}
+		}
+	}
 	if err := s.cdi.DeleteClaimSpecFile(claimUID); err != nil {
 		return fmt.Errorf("unable to delete CDI spec file for claim: %w", err)
 	}
@@ -472,26 +496,40 @@ func (s *DeviceState) getAllocatableVfioDevice(uuid string) (*AllocatableDevice,
 			return allocatable, nil
 		}
 	}
-	return nil, fmt.Errorf("allocatable device not found for vfio-pci device: %v", uuid)
+	return nil, fmt.Errorf("allocatable device not found for vfio device: %v", uuid)
 }
 
 func (s *DeviceState) unprepareVfioDevices(ctx context.Context, devices PreparedDeviceList) error {
 	for _, device := range devices {
 		vfioAllocatable, err := s.getAllocatableVfioDevice(device.Vfio.Info.UUID)
 		if err != nil {
-			return fmt.Errorf("error getting allocatable device for vfio-pci device: %w", err)
+			return fmt.Errorf("error getting allocatable device for vfio device: %w", err)
 		}
 		if err := s.vfioPciManager.Unconfigure(vfioAllocatable.Vfio); err != nil {
-			return fmt.Errorf("error unconfiguring vfio-pci device: %w", err)
+			return fmt.Errorf("error unconfiguring vfio device: %w", err)
 		}
+	}
+	return nil
+}
 
-		// Rediscover the GPU to account for possible device minor changes.
-		allocatableDevice, err := s.nvdevlib.discoverGPUByPCIBusID(vfioAllocatable.Vfio.pcieBusID)
+func (s *DeviceState) discoverSiblingAllocatables(device *AllocatableDevice) error {
+	switch device.Type() {
+	case GpuDeviceType, MigDeviceType:
+		vfio, err := s.nvdevlib.discoverVfioDevice(device.Gpu)
 		if err != nil {
-			return fmt.Errorf("error rediscovering GPU by PCIe bus ID: %w", err)
+			return fmt.Errorf("error discovering vfio device: %w", err)
 		}
-		vfioAllocatable.Vfio.parent = allocatableDevice.Gpu
-		s.allocatable[allocatableDevice.Gpu.CanonicalName()] = allocatableDevice
+		s.allocatable[vfio.CanonicalName()] = vfio
+	case VfioDeviceType:
+		gpu, migs, err := s.nvdevlib.discoverGPUByPCIBusID(device.Vfio.pcieBusID)
+		if err != nil {
+			return fmt.Errorf("error discovering gpu by pci bus id: %w", err)
+		}
+		s.allocatable[gpu.CanonicalName()] = gpu
+		device.Vfio.parent = gpu.Gpu
+		for _, mig := range migs {
+			s.allocatable[mig.CanonicalName()] = mig
+		}
 	}
 	return nil
 }
@@ -572,7 +610,6 @@ func (s *DeviceState) applyVfioDeviceConfig(ctx context.Context, config *configa
 		if err != nil {
 			return nil, err
 		}
-		delete(s.allocatable, info.Vfio.parent.CanonicalName())
 	}
 
 	return &configState, nil

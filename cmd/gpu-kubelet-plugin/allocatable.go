@@ -22,20 +22,6 @@ import (
 	resourceapi "k8s.io/api/resource/v1"
 )
 
-type AllocatableDevices map[string]*AllocatableDevice
-
-func (d AllocatableDevices) GetGPUByPCIeBusID(pcieBusID string) *AllocatableDevice {
-	for _, device := range d {
-		if device.Type() != GpuDeviceType {
-			continue
-		}
-		if device.Gpu.pcieBusID == pcieBusID {
-			return device
-		}
-	}
-	return nil
-}
-
 type AllocatableDevice struct {
 	Gpu  *GpuInfo
 	Mig  *MigDeviceInfo
@@ -92,6 +78,73 @@ func (d AllocatableDevice) UUID() string {
 	panic("unexpected type for AllocatableDevice")
 }
 
+type AllocatableDeviceList []*AllocatableDevice
+
+type AllocatableDevices map[string]*AllocatableDevice
+
+func (d AllocatableDevices) getDevicesByGPUPCIBusID(pcieBusID string) AllocatableDeviceList {
+	var devices AllocatableDeviceList
+	for _, device := range d {
+		switch device.Type() {
+		case GpuDeviceType:
+			if device.Gpu.pcieBusID == pcieBusID {
+				devices = append(devices, device)
+			}
+		case MigDeviceType:
+			if device.Mig.parent.pcieBusID == pcieBusID {
+				devices = append(devices, device)
+			}
+		case VfioDeviceType:
+			if device.Vfio.pcieBusID == pcieBusID {
+				devices = append(devices, device)
+			}
+		}
+	}
+	return devices
+}
+
+func (d AllocatableDevices) GetGPUByPCIeBusID(pcieBusID string) *AllocatableDevice {
+	for _, device := range d {
+		if device.Type() != GpuDeviceType {
+			continue
+		}
+		if device.Gpu.pcieBusID == pcieBusID {
+			return device
+		}
+	}
+	return nil
+}
+
+func (d AllocatableDevices) GetGPUs() AllocatableDeviceList {
+	var devices AllocatableDeviceList
+	for _, device := range d {
+		if device.Type() == GpuDeviceType {
+			devices = append(devices, device)
+		}
+	}
+	return devices
+}
+
+func (d AllocatableDevices) GetMigDevices() AllocatableDeviceList {
+	var devices AllocatableDeviceList
+	for _, device := range d {
+		if device.Type() == MigDeviceType {
+			devices = append(devices, device)
+		}
+	}
+	return devices
+}
+
+func (d AllocatableDevices) GetVfioDevices() AllocatableDeviceList {
+	var devices AllocatableDeviceList
+	for _, device := range d {
+		if device.Type() == VfioDeviceType {
+			devices = append(devices, device)
+		}
+	}
+	return devices
+}
+
 func (d AllocatableDevices) GpuUUIDs() []string {
 	var uuids []string
 	for _, device := range d {
@@ -130,4 +183,31 @@ func (d AllocatableDevices) UUIDs() []string {
 	uuids = append(uuids, d.VfioDeviceUUIDs()...)
 	slices.Sort(uuids)
 	return uuids
+}
+
+func (d AllocatableDevices) RemoveSiblingDevices(device *AllocatableDevice) {
+	var pciBusID string
+	switch device.Type() {
+	case GpuDeviceType:
+		pciBusID = device.Gpu.pcieBusID
+	case MigDeviceType:
+		pciBusID = device.Mig.parent.pcieBusID
+	case VfioDeviceType:
+		pciBusID = device.Vfio.pcieBusID
+	}
+
+	siblings := d.getDevicesByGPUPCIBusID(pciBusID)
+	for _, sibling := range siblings {
+		if sibling.Type() == device.Type() {
+			continue
+		}
+		switch sibling.Type() {
+		case GpuDeviceType:
+			delete(d, sibling.Gpu.CanonicalName())
+		case MigDeviceType:
+			delete(d, sibling.Mig.CanonicalName())
+		case VfioDeviceType:
+			delete(d, sibling.Vfio.CanonicalName())
+		}
+	}
 }
