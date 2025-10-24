@@ -44,7 +44,7 @@ var (
 
 func TestFeatureGateConfigBasicFunctionality(t *testing.T) {
 	// Test that the config provides basic feature gate functionality
-	fg := featuregates.FeatureGates
+	fg := featuregates.GetFeatureGates()
 
 	// Test that the feature gate is functional
 	require.NotNil(t, fg, "FeatureGate should not be nil")
@@ -93,7 +93,7 @@ func TestFeatureGateConfigSeparationOfConcerns(t *testing.T) {
 func TestFeatureGateConfigSetFromMap(t *testing.T) {
 	t.Run("EnableDisabledFeature", func(t *testing.T) {
 		// Test that we can enable a disabled feature
-		fg := featuregates.FeatureGates
+		fg := featuregates.GetFeatureGates()
 
 		// Test enabling a disabled feature - we know AllAlpha starts as false
 		require.False(t, featuregates.Enabled(testValidDisabledFeature), "AllAlpha feature should start as false")
@@ -116,7 +116,7 @@ func TestFeatureGateConfigSetFromMap(t *testing.T) {
 
 	t.Run("DisableEnabledFeature", func(t *testing.T) {
 		// Test that we can disable an enabled feature
-		fg := featuregates.FeatureGates
+		fg := featuregates.GetFeatureGates()
 
 		// First enable AllBeta so we can test disabling it
 		err := fg.SetFromMap(map[string]bool{
@@ -145,7 +145,7 @@ func TestFeatureGateConfigSetFromMap(t *testing.T) {
 }
 
 func TestFeatureGateConfigKnownFeatures(t *testing.T) {
-	fg := featuregates.FeatureGates
+	fg := featuregates.GetFeatureGates()
 
 	knownFeatures := fg.KnownFeatures()
 	require.NotEmpty(t, knownFeatures, "Should have some known features")
@@ -163,7 +163,7 @@ func TestFeatureGateConfigKnownFeatures(t *testing.T) {
 }
 
 func TestFeatureGateConfigErrorHandling(t *testing.T) {
-	fg := featuregates.FeatureGates
+	fg := featuregates.GetFeatureGates()
 
 	// Test error handling with invalid features
 	err := fg.SetFromMap(map[string]bool{
