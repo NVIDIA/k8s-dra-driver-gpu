@@ -67,7 +67,8 @@ resources:
 #   ContextualLogging: true            # Kubernetes logging feature (enabled by default)
 #   LoggingAlphaOptions: false         # Kubernetes logging alpha features
 #   LoggingBetaOptions: true           # Kubernetes logging beta features
-featureGates: {}
+featureGates:
+  DeviceHealthCheck: false
 
 # Log verbosity for all components. Zero or greater, higher number means higher
 # verbosity. Regardless of this setting, messages of type Error, Warning, and
@@ -223,6 +224,7 @@ kubeletPlugin:
       # Port running a gRPC health service checked by a livenessProbe.
       # Set to a negative value to disable the service and the probe.
       healthcheckPort: 51516
+      additionalXidsToIgnore: ""
   affinity:
     nodeAffinity:
       requiredDuringSchedulingIgnoredDuringExecution:
