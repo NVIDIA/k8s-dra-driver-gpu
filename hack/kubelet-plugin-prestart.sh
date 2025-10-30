@@ -43,9 +43,10 @@ validate_and_exit_on_success () {
 
     NV_PATH=$( \
         find \
-            /driver-root/bin \
-            /driver-root/sbin \
+            /driver-root/opt/bin \
             /driver-root/usr/bin \
+            /driver-root/usr/sbin \
+            /driver-root/bin \
             /driver-root/sbin \
         -maxdepth 1 -type f -name "nvidia-smi" 2> /dev/null | head -n1
     )

@@ -47,6 +47,7 @@ func (r root) getDriverLibraryPath() (string, error) {
 // getNvidiaSMIPath returns path to the `nvidia-smi` executable in the driver root.
 func (r root) getNvidiaSMIPath() (string, error) {
 	binarySearchPaths := []string{
+		"/opt/bin",
 		"/usr/bin",
 		"/usr/sbin",
 		"/bin",
