@@ -63,3 +63,16 @@ nodes:
   # TODO: Remove this once we have a version of the toolkit where this is not required
   - hostPath: /run/nvidia-fabricmanager/socket
     containerPath: /run/nvidia-fabricmanager/socket
+  # The generated CDI specification assumes that `nvidia-ctk` is available on a
+  # node -- specifically for the `nvidia-ctk hook` subcommand. As a workaround,
+  # we mount it from the host.
+  # TODO: Remove this once we have a more stable solution to make `nvidia-ctk`
+  # on the kind nodes.
+  - hostPath: /usr/bin/nvidia-ctk
+    containerPath: /usr/bin/nvidia-ctk
+  - hostPath: /sys/bus
+    containerPath: /sys/bus
+    readOnly: false
+  - hostPath: /dev/vfio
+    containerPath: /dev/vfio
+    readOnly: false

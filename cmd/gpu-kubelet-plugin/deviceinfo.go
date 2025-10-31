@@ -32,6 +32,7 @@ type GpuInfo struct {
 	UUID                  string `json:"uuid"`
 	minor                 int
 	migEnabled            bool
+	vfioEnabled           bool
 	memoryBytes           uint64
 	productName           string
 	brand                 string
@@ -57,6 +58,20 @@ type MigDeviceInfo struct {
 	pcieRootAttr  *deviceattribute.DeviceAttribute
 }
 
+type VfioDeviceInfo struct {
+	UUID                   string `json:"uuid"`
+	deviceID               string
+	vendorID               string
+	index                  int
+	parent                 *GpuInfo
+	productName            string
+	pcieBusID              string
+	pcieRootAttr           *deviceattribute.DeviceAttribute
+	numaNode               int
+	iommuGroup             int
+	addressableMemoryBytes uint64
+}
+
 type MigProfileInfo struct {
 	profile    nvdev.MigProfile
 	placements []*MigDevicePlacement
@@ -76,6 +91,10 @@ func (d *GpuInfo) CanonicalName() string {
 
 func (d *MigDeviceInfo) CanonicalName() string {
 	return fmt.Sprintf("gpu-%d-mig-%d-%d-%d", d.parent.minor, d.giInfo.ProfileId, d.placement.Start, d.placement.Size)
+}
+
+func (d *VfioDeviceInfo) CanonicalName() string {
+	return fmt.Sprintf("gpu-vfio-%d", d.index)
 }
 
 func (d *GpuInfo) GetDevice() resourceapi.Device {
@@ -177,6 +196,44 @@ func (d *MigDeviceInfo) GetDevice() resourceapi.Device {
 		device.Capacity[capacity] = resourceapi.DeviceCapacity{
 			Value: *resource.NewQuantity(1, resource.BinarySI),
 		}
+	}
+	if d.pcieRootAttr != nil {
+		device.Attributes[d.pcieRootAttr.Name] = d.pcieRootAttr.Value
+	}
+	return device
+}
+
+func (d *VfioDeviceInfo) GetDevice() resourceapi.Device {
+	device := resourceapi.Device{
+		Name: d.CanonicalName(),
+		Attributes: map[resourceapi.QualifiedName]resourceapi.DeviceAttribute{
+			"type": {
+				StringValue: ptr.To(VfioDeviceType),
+			},
+			"uuid": {
+				StringValue: &d.UUID,
+			},
+			"deviceID": {
+				StringValue: &d.deviceID,
+			},
+			"vendorID": {
+				StringValue: &d.vendorID,
+			},
+			"numa": {
+				IntValue: ptr.To(int64(d.numaNode)),
+			},
+			"pcieBusID": {
+				StringValue: &d.pcieBusID,
+			},
+			"productName": {
+				StringValue: &d.productName,
+			},
+		},
+		Capacity: map[resourceapi.QualifiedName]resourceapi.DeviceCapacity{
+			"addressableMemory": {
+				Value: *resource.NewQuantity(int64(d.addressableMemoryBytes), resource.BinarySI),
+			},
+		},
 	}
 	if d.pcieRootAttr != nil {
 		device.Attributes[d.pcieRootAttr.Name] = d.pcieRootAttr.Value

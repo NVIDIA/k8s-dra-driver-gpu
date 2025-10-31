@@ -138,13 +138,15 @@ LABEL org.opencontainers.image.source="https://github.com/NVIDIA/k8s-dra-driver-
 # Add top-level license (AL2) file into the container image
 COPY LICENSE /
 
-COPY --from=toolkit /artifacts/rpm/usr/bin/nvidia-cdi-hook   /usr/bin/nvidia-cdi-hook
-COPY --from=build   /bashbuild/bash                          /bin/bash
-COPY --from=build   /artifacts/compute-domain-controller     /usr/bin/compute-domain-controller
-COPY --from=build   /artifacts/compute-domain-kubelet-plugin /usr/bin/compute-domain-kubelet-plugin
-COPY --from=build   /artifacts/compute-domain-daemon         /usr/bin/compute-domain-daemon
-COPY --from=build   /artifacts/gpu-kubelet-plugin            /usr/bin/gpu-kubelet-plugin
-COPY --from=build   /artifacts/webhook                       /usr/bin/webhook
+COPY --from=toolkit /artifacts/rpm/usr/bin/nvidia-cdi-hook    /usr/bin/nvidia-cdi-hook
+COPY --from=build   /artifacts/compute-domain-controller      /usr/bin/compute-domain-controller
+COPY --from=build   /artifacts/compute-domain-kubelet-plugin  /usr/bin/compute-domain-kubelet-plugin
+COPY --from=build   /artifacts/compute-domain-daemon          /usr/bin/compute-domain-daemon
+COPY --from=build   /artifacts/gpu-kubelet-plugin             /usr/bin/gpu-kubelet-plugin
+COPY --from=build   /artifacts/webhook                        /usr/bin/webhook
+COPY --from=build   /bashbuild/bash                           /bin/bash
+COPY --from=build   /build/scripts/bind_to_driver.sh          /usr/bin/bind_to_driver.sh
+COPY --from=build   /build/scripts/unbind_from_driver.sh      /usr/bin/unbind_from_driver.sh
 COPY /hack/kubelet-plugin-prestart.sh /usr/bin/kubelet-plugin-prestart.sh
 COPY /templates /templates
 

@@ -175,7 +175,9 @@ spec:
       {{- if .Values.resources.gpus.enabled }}
       - name: gpus
         securityContext:
+          {{- if .Values.kubeletPlugin.containers.gpus.securityContext }}
           {{- toYaml .Values.kubeletPlugin.containers.gpus.securityContext | nindent 10 }}
+          {{- end }}
         image: {{ include "nvidia-dra-driver-gpu.fullimage" . }}
         imagePullPolicy: {{ .Values.image.pullPolicy }}
         command: ["bash", "-c"]
@@ -262,8 +264,19 @@ spec:
           mountPath: /var/run/cdi
         - name: driver-root
           mountPath: /driver-root
-          readOnly: true
           mountPropagation: HostToContainer
+        {{- if and .Values.featureGates (and (hasKey .Values.featureGates "PassthroughSupport") .Values.featureGates.PassthroughSupport) }}
+        - name: host-root
+          mountPath: /host-root
+          mountPropagation: HostToContainer
+          readOnly: true
+        - name: sysfs
+          mountPath: /sys/
+          mountPropagation: Bidirectional
+        - name: procfs
+          mountPath: /proc/
+          mountPropagation: Bidirectional
+        {{- end }}
       {{- end }}
       volumes:
       - name: plugins-registry
@@ -291,6 +304,20 @@ spec:
         hostPath:
           path: {{ .Values.nvidiaDriverRoot }}
           type: DirectoryOrCreate
+      {{- if and .Values.featureGates (and (hasKey .Values.featureGates "PassthroughSupport") .Values.featureGates.PassthroughSupport) }}
+      - name: host-root
+        hostPath:
+          path: /
+          type: Directory
+      - name: sysfs
+        hostPath:
+          path: /sys/
+          type: Directory
+      - name: procfs
+        hostPath:
+          path: /proc/
+          type: Directory
+      {{- end }}
       {{- with .Values.kubeletPlugin.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}
