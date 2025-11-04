@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 	"path/filepath"
+	"sync"
 	"time"
 
 	resourceapi "k8s.io/api/resource/v1"
@@ -30,6 +31,7 @@ import (
 	"k8s.io/dynamic-resource-allocation/resourceslice"
 	"k8s.io/klog/v2"
 
+	"github.com/NVIDIA/k8s-dra-driver-gpu/pkg/featuregates"
 	"github.com/NVIDIA/k8s-dra-driver-gpu/pkg/flock"
 )
 
@@ -39,11 +41,13 @@ import (
 const DriverPrepUprepFlockFileName = "pu.lock"
 
 type driver struct {
-	client       coreclientset.Interface
-	pluginhelper *kubeletplugin.Helper
-	state        *DeviceState
-	pulock       *flock.Flock
-	healthcheck  *healthcheck
+	client                  coreclientset.Interface
+	pluginhelper            *kubeletplugin.Helper
+	state                   *DeviceState
+	pulock                  *flock.Flock
+	healthcheck             *healthcheck
+	nvmlDeviceHealthMonitor *nvmlDeviceHealthMonitor
+	wg                      sync.WaitGroup
 }
 
 func NewDriver(ctx context.Context, config *Config) (*driver, error) {
@@ -93,6 +97,21 @@ func NewDriver(ctx context.Context, config *Config) (*driver, error) {
 	}
 	driver.healthcheck = healthcheck
 
+	if featuregates.Enabled(featuregates.DeviceHealthCheck) {
+		nvmlDeviceHealthMonitor, err := newNvmlDeviceHealthMonitor(ctx, config, state.allocatable, state.nvdevlib)
+		if err != nil {
+			return nil, fmt.Errorf("start nvmlDeviceHealthMonitor: %w", err)
+		}
+
+		driver.nvmlDeviceHealthMonitor = nvmlDeviceHealthMonitor
+
+		driver.wg.Add(1)
+		go func() {
+			defer driver.wg.Done()
+			driver.deviceHealthEvents(ctx, config.flags.nodeName)
+		}()
+	}
+
 	if err := driver.pluginhelper.PublishResources(ctx, resources); err != nil {
 		return nil, err
 	}
@@ -108,6 +127,12 @@ func (d *driver) Shutdown() error {
 	if d.healthcheck != nil {
 		d.healthcheck.Stop()
 	}
+
+	if d.nvmlDeviceHealthMonitor != nil {
+		d.nvmlDeviceHealthMonitor.Stop()
+	}
+
+	d.wg.Wait()
 
 	d.pluginhelper.Stop()
 	return nil
@@ -175,6 +200,61 @@ func (d *driver) nodeUnprepareResource(ctx context.Context, claimNs kubeletplugi
 	}
 
 	return nil
+}
+
+func (d *driver) deviceHealthEvents(ctx context.Context, nodeName string) {
+	klog.Info("Starting to watch for device health notifications")
+	for {
+		select {
+		case <-ctx.Done():
+			klog.V(6).Info("Stop processing device health notifications")
+			return
+		case device, ok := <-d.nvmlDeviceHealthMonitor.Unhealthy():
+			if !ok {
+				// nvmlDeviceHealthMonitor is expected to close only during driver Shutdown.
+				klog.Info("Health monitor channel closed")
+				return
+			}
+			uuid := device.UUID()
+
+			klog.Warningf("Received unhealthy notification for device: %s", uuid)
+
+			if !device.IsHealthy() {
+				klog.V(6).Infof("Device: %s is aleady marked unhealthy. Skip republishing ResourceSlice", uuid)
+				continue
+			}
+
+			// Mark device as unhealthy.
+			d.state.UpdateDeviceHealthStatus(device, Unhealthy)
+
+			// Republish resource slice with only healthy devices
+			// There is no remediation loop right now meaning if the unhealthy device is fixed,
+			// driver needs to be restarted to publish the ResourceSlice with all devices
+			var resourceSlice resourceslice.Slice
+			for _, dev := range d.state.allocatable {
+				uuid := dev.UUID()
+				if dev.IsHealthy() {
+					klog.V(6).Infof("Device: %s is healthy, added to ResoureSlice", uuid)
+					resourceSlice.Devices = append(resourceSlice.Devices, dev.GetDevice())
+				} else {
+					klog.Warningf("Device: %s is unhealthy, will be removed from ResoureSlice", uuid)
+				}
+			}
+
+			klog.V(6).Info("Rebulishing resourceslice with healthy devices")
+			resources := resourceslice.DriverResources{
+				Pools: map[string]resourceslice.Pool{
+					nodeName: {Slices: []resourceslice.Slice{resourceSlice}},
+				},
+			}
+
+			if err := d.pluginhelper.PublishResources(ctx, resources); err != nil {
+				klog.Errorf("Failed to publish resources after device health status update: %v", err)
+			} else {
+				klog.Info("Successfully republished resources without unhealthy device")
+			}
+		}
+	}
 }
 
 // TODO: implement loop to remove CDI files from the CDI path for claimUIDs
