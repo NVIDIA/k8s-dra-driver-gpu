@@ -190,6 +190,10 @@ controller:
         - matchExpressions:
           - key: "node-role.kubernetes.io/control-plane"
             operator: "Exists"
+  # Network policy settings
+  networkPolicy:
+    # If the network policy is enabled or not
+    enabled: false
 
 kubeletPlugin:
   priorityClassName: "system-node-critical"
@@ -245,3 +249,7 @@ kubeletPlugin:
             operator: In
             values:
             - "true"
+  # Network policy settings
+  networkPolicy:
+    # If the network policy is enabled or not
+    enabled: false
