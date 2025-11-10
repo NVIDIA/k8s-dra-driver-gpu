@@ -43,7 +43,7 @@ func (f *FeatureGateConfig) Flags() []cli.Flag {
 		Name: "feature-gates",
 		Usage: "A set of key=value pairs that describe feature gates for alpha/experimental features. " +
 			"Options are:\n     " + strings.Join(featuregates.KnownFeatures(), "\n     "),
-		Value: featuregates.FeatureGates.(pflag.Value), //nolint:forcetypeassert // No need for type check: FeatureGates is a *featuregate.featureGate, which implements pflag.Value.
+		Value: featuregates.FeatureGates().(pflag.Value), //nolint:forcetypeassert // No need for type check: FeatureGates is a *featuregate.featureGate, which implements pflag.Value.
 	})
 
 	var flags []cli.Flag

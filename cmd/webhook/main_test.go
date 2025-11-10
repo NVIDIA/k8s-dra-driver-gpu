@@ -413,11 +413,11 @@ func TestResourceClaimValidatingWebhook(t *testing.T) {
 
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
-			err := featuregates.FeatureGates.SetEmulationVersion(utilversion.MajorMinor(999, 999))
+			err := featuregates.FeatureGates().SetEmulationVersion(utilversion.MajorMinor(999, 999))
 			require.NoError(t, err)
 
 			if test.featureGates != nil {
-				err := featuregates.FeatureGates.SetFromMap(test.featureGates)
+				err := featuregates.FeatureGates().SetFromMap(test.featureGates)
 				require.NoError(t, err)
 			}
 
