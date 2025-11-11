@@ -53,6 +53,7 @@ type GpuInfo struct {
 	pcieRootAttr          *deviceattribute.DeviceAttribute
 	migProfiles           []*MigProfileInfo
 	Health                HealthStatus
+	addressingMode        string
 }
 
 type MigDeviceInfo struct {
@@ -139,6 +140,9 @@ func (d *GpuInfo) GetDevice() resourceapi.Device {
 			"pcieBusID": {
 				StringValue: &d.pcieBusID,
 			},
+			"addressingMode": {
+				StringValue: &d.addressingMode,
+			},
 		},
 		Capacity: map[resourceapi.QualifiedName]resourceapi.DeviceCapacity{
 			"memory": {
@@ -188,6 +192,9 @@ func (d *MigDeviceInfo) GetDevice() resourceapi.Device {
 			},
 			"pcieBusID": {
 				StringValue: &d.pcieBusID,
+			},
+			"addressingMode": {
+				StringValue: &d.parent.addressingMode,
 			},
 		},
 		Capacity: map[resourceapi.QualifiedName]resourceapi.DeviceCapacity{
