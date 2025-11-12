@@ -1,0 +1,107 @@
+# One pod, 4 containers
+# Each asking for a different MIG device on a shared mig-enabled GPU
+# Run as deployment with 4 replicas
+
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: gpu-test4
+
+---
+apiVersion: resource.k8s.io/v1
+kind: ResourceClaimTemplate
+metadata:
+  namespace: gpu-test4
+  name: mig-devices
+spec:
+  spec:
+    devices:
+      requests:
+      - name: mig-1g-5gb-0
+        exactly:
+          deviceClassName: mig.nvidia.com
+          selectors:
+          - cel:
+              expression: "device.attributes['gpu.nvidia.com'].profile == '1g.5gb'"
+      - name: mig-1g-5gb-1
+        exactly:
+          deviceClassName: mig.nvidia.com
+          selectors:
+          - cel:
+              expression: "device.attributes['gpu.nvidia.com'].profile == '1g.5gb'"
+      - name: mig-2g-10gb
+        exactly:
+          deviceClassName: mig.nvidia.com
+          selectors:
+          - cel:
+              expression: "device.attributes['gpu.nvidia.com'].profile == '2g.10gb'"
+      - name: mig-3g-20gb
+        exactly:
+          deviceClassName: mig.nvidia.com
+          selectors:
+          - cel:
+              expression: "device.attributes['gpu.nvidia.com'].profile == '3g.20gb'"
+
+      constraints:
+      - requests: []
+        matchAttribute: "gpu.nvidia.com/parentUUID"
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  namespace: gpu-test4
+  name: pod
+  labels:
+    app: gpu-test4-pod
+spec:
+  replicas: 4
+  selector:
+    matchLabels:
+      app: pod
+  template:
+    metadata:
+      labels:
+        app: pod
+    spec:
+      resourceClaims:
+      - name: mig-devices
+        resourceClaimTemplateName: mig-devices
+      containers:
+      - name: ctr0
+        image: ubuntu:22.04
+        command: ["bash", "-c"]
+        args: ["nvidia-smi -L; trap 'exit 0' TERM; sleep 9999 & wait"]
+        resources:
+          claims:
+          - name: mig-devices
+            request: mig-1g-5gb-0
+      - name: ctr1
+        image: ubuntu:22.04
+        command: ["bash", "-c"]
+        args: ["nvidia-smi -L; trap 'exit 0' TERM; sleep 9999 & wait"]
+        resources:
+          claims:
+          - name: mig-devices
+            request: mig-1g-5gb-1
+      - name: ctr2
+        image: ubuntu:22.04
+        command: ["bash", "-c"]
+        args: ["nvidia-smi -L; trap 'exit 0' TERM; sleep 9999 & wait"]
+        resources:
+          claims:
+          - name: mig-devices
+            request: mig-2g-10gb
+      - name: ctr3
+        image: ubuntu:22.04
+        command: ["bash", "-c"]
+        args: ["nvidia-smi -L; trap 'exit 0' TERM; sleep 9999 & wait"]
+        resources:
+          claims:
+          - name: mig-devices
+            request: mig-3g-20gb
+      tolerations:
+      - key: "nvidia.com/gpu"
+        operator: "Exists"
+        effect: "NoSchedule"

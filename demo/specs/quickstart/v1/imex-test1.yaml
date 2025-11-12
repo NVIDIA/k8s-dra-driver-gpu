@@ -1,0 +1,206 @@
+# One pod, 1 container
+# Run as deployment with 1 replica
+
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: imex-test1
+
+---
+apiVersion: resource.k8s.io/v1
+kind: ResourceClaim
+metadata:
+  namespace: imex-test1
+  name: deployment0-imex-channel
+spec:
+  devices:
+    requests:
+    - name: channel
+      exactly:
+        deviceClassName: imex.nvidia.com
+
+---
+apiVersion: resource.k8s.io/v1
+kind: ResourceClaim
+metadata:
+  namespace: imex-test1
+  name: deployment1-imex-channel
+spec:
+  devices:
+    requests:
+    - name: channel
+      exactly:
+        deviceClassName: imex.nvidia.com
+
+---
+apiVersion: resource.k8s.io/v1
+kind: ResourceClaim
+metadata:
+  namespace: imex-test1
+  name: deployment2-imex-channel
+spec:
+  devices:
+    requests:
+    - name: channel
+      exactly:
+        deviceClassName: imex.nvidia.com
+
+---
+apiVersion: resource.k8s.io/v1
+kind: ResourceClaim
+metadata:
+  namespace: imex-test1
+  name: deployment3-imex-channel
+spec:
+  devices:
+    requests:
+    - name: channel
+      exactly:
+        deviceClassName: imex.nvidia.com
+
+---
+apiVersion: resource.k8s.io/v1
+kind: ResourceClaimTemplate
+metadata:
+  namespace: imex-test1
+  name: node-gpus
+spec:
+  spec:
+    devices:
+      requests:
+      - name: gpu
+        exactly:
+          deviceClassName: gpu.nvidia.com
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  namespace: imex-test1
+  name: deployment0
+  labels:
+    app: imex-test1-deployment0
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: deployment0
+  template:
+    metadata:
+      labels:
+        app: deployment0
+    spec:
+      containers:
+      - name: ctr
+        image: ubuntu:22.04
+        command: ["bash", "-c"]
+        args: ["trap 'exit 0' TERM; sleep 9999 & wait"]
+        resources:
+          claims:
+          - name: gpus
+          - name: imex-channel
+      resourceClaims:
+      - name: gpus
+        resourceClaimTemplateName: node-gpus
+      - name: imex-channel
+        resourceClaimName: deployment0-imex-channel
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  namespace: imex-test1
+  name: deployment1
+  labels:
+    app: imex-test1-deployment1
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: deployment1
+  template:
+    metadata:
+      labels:
+        app: deployment1
+    spec:
+      containers:
+      - name: ctr
+        image: ubuntu:22.04
+        command: ["bash", "-c"]
+        args: ["trap 'exit 0' TERM; sleep 9999 & wait"]
+        resources:
+          claims:
+          - name: gpus
+          - name: imex-channel
+      resourceClaims:
+      - name: gpus
+        resourceClaimTemplateName: node-gpus
+      - name: imex-channel
+        resourceClaimName: deployment1-imex-channel
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  namespace: imex-test1
+  name: deployment2
+  labels:
+    app: imex-test1-deployment2
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: deployment2
+  template:
+    metadata:
+      labels:
+        app: deployment2
+    spec:
+      containers:
+      - name: ctr
+        image: ubuntu:22.04
+        command: ["bash", "-c"]
+        args: ["trap 'exit 0' TERM; sleep 9999 & wait"]
+        resources:
+          claims:
+          - name: gpus
+          - name: imex-channel
+      resourceClaims:
+      - name: gpus
+        resourceClaimTemplateName: node-gpus
+      - name: imex-channel
+        resourceClaimName: deployment2-imex-channel
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  namespace: imex-test1
+  name: deployment3
+  labels:
+    app: imex-test1-deployment3
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: deployment3
+  template:
+    metadata:
+      labels:
+        app: deployment3
+    spec:
+      containers:
+      - name: ctr
+        image: ubuntu:22.04
+        command: ["bash", "-c"]
+        args: ["trap 'exit 0' TERM; sleep 9999 & wait"]
+        resources:
+          claims:
+          - name: gpus
+          - name: imex-channel
+      resourceClaims:
+      - name: gpus
+        resourceClaimTemplateName: node-gpus
+      - name: imex-channel
+        resourceClaimName: deployment3-imex-channel
