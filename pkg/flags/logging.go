@@ -43,7 +43,7 @@ func NewLoggingConfig() *LoggingConfig {
 // line flags and before running any code which emits log entries.
 // It uses the global feature gate singleton.
 func (l *LoggingConfig) Apply() error {
-	return logsapi.ValidateAndApply(l.config, featuregates.FeatureGates)
+	return logsapi.ValidateAndApply(l.config, featuregates.FeatureGates())
 }
 
 // Flags returns the flags for logging configuration (NOT including feature gates).

@@ -18,6 +18,7 @@ package featuregates
 
 import (
 	"strings"
+	"sync"
 
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/version"
@@ -40,10 +41,6 @@ const (
 	// PassthroughSupport allows gpus to be configured with the vfio-pci driver.
 	PassthroughSupport featuregate.Feature = "PassthroughSupport"
 )
-
-// FeatureGates is a singleton representing the set of all feature gates and their values.
-// It contains both project-specific feature gates and standard Kubernetes logging feature gates.
-var FeatureGates featuregate.MutableVersionedFeatureGate
 
 // defaultFeatureGates contains the default settings for all project-specific feature gates.
 // These will be registered with the standard Kubernetes feature gate system.
@@ -78,9 +75,21 @@ var defaultFeatureGates = map[featuregate.Feature]featuregate.VersionedSpecs{
 	},
 }
 
-// init instantiates and sets the singleton 'FeatureGates' variable with newFeatureGates().
-func init() {
-	FeatureGates = newFeatureGates(parseProjectVersion())
+var (
+	featureGatesOnce sync.Once
+	featureGates     featuregate.MutableVersionedFeatureGate
+)
+
+// FeatureGates instantiates and returns the package-level singleton representing
+// the set of all feature gates and their values.
+// It contains both project-specific feature gates and standard Kubernetes logging feature gates.
+func FeatureGates() featuregate.MutableVersionedFeatureGate {
+	if featureGates == nil {
+		featureGatesOnce.Do(func() {
+			featureGates = newFeatureGates(parseProjectVersion())
+		})
+	}
+	return featureGates
 }
 
 // parseProjectVersion parses the project version string and returns major.minor version.
@@ -116,12 +125,12 @@ func newFeatureGates(version *version.Version) featuregate.MutableVersionedFeatu
 // Enabled returns true if the specified feature gate is enabled in the global FeatureGates singleton.
 // This is a convenience function that uses the global feature gate registry.
 func Enabled(feature featuregate.Feature) bool {
-	return FeatureGates.Enabled(feature)
+	return FeatureGates().Enabled(feature)
 }
 
 // KnownFeatures returns a list of known feature gates with their descriptions.
 func KnownFeatures() []string {
-	return FeatureGates.KnownFeatures()
+	return FeatureGates().KnownFeatures()
 }
 
 // ToMap returns all known feature gates as a map[string]bool suitable for
@@ -129,8 +138,8 @@ func KnownFeatures() []string {
 // Returns an empty map if no feature gates are configured.
 func ToMap() map[string]bool {
 	result := make(map[string]bool)
-	for feature := range FeatureGates.GetAll() {
-		result[string(feature)] = FeatureGates.Enabled(feature)
+	for feature := range FeatureGates().GetAll() {
+		result[string(feature)] = FeatureGates().Enabled(feature)
 	}
 	return result
 }
