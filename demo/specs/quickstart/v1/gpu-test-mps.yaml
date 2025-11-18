@@ -1,0 +1,64 @@
+# One pod, 2 containers share GPU using MPS
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: gpu-test-mps
+---
+apiVersion: resource.k8s.io/v1
+kind: ResourceClaimTemplate
+metadata:
+  namespace: gpu-test-mps
+  name: shared-gpu
+spec:
+  spec:
+    devices:
+      requests:
+      - name: mps-gpu
+        exactly:
+          deviceClassName: gpu.nvidia.com
+      config:
+      - requests: ["mps-gpu"]
+        opaque:
+          driver: gpu.nvidia.com
+          parameters:
+            apiVersion: resource.nvidia.com/v1beta1
+            kind: GpuConfig
+            sharing:
+              strategy: MPS
+              mpsConfig:
+                defaultActiveThreadPercentage: 50
+                defaultPinnedDeviceMemoryLimit: 10Gi
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  namespace: gpu-test-mps
+  name: test-pod
+  labels:
+    app: pod
+spec:
+  containers:
+  - name: mps-ctr0
+    image: nvcr.io/nvidia/k8s/cuda-sample:nbody-cuda11.6.0-ubuntu18.04
+    command: ["bash", "-c"]
+    args: ["trap 'exit 0' TERM; /tmp/sample --benchmark --numbodies=4226000 & wait"]
+    resources:
+      claims:
+      - name: shared-gpu
+        request: mps-gpu
+  - name: mps-ctr1
+    image: nvcr.io/nvidia/k8s/cuda-sample:nbody-cuda11.6.0-ubuntu18.04
+    command: ["bash", "-c"]
+    args: ["trap 'exit 0' TERM; /tmp/sample --benchmark --numbodies=4226000 & wait"]
+    resources:
+      claims:
+      - name: shared-gpu
+        request: mps-gpu
+  resourceClaims:
+  - name: shared-gpu
+    resourceClaimTemplateName: shared-gpu
+  tolerations:
+  - key: "nvidia.com/gpu"
+    operator: "Exists"
+    effect: "NoSchedule"

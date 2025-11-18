@@ -1,4 +1,6 @@
 #### Apply the half-balanced mig-parted config
+
+To enable MIG mode on your GPUs, you can use [nvidia-mig-parted](https://github.com/NVIDIA/mig-parted).
 ```console
 sudo -E nvidia-mig-parted apply -f mig-parted-config.yaml -c half-balanced
 ```
@@ -15,6 +17,7 @@ kubectl get pod -A
 
 #### Deploy the 4 example apps discussed in the slides
 ```console
+cd v1
 kubectl apply --filename=gpu-test{1,2,3,4}.yaml
 ```
 
