@@ -1,0 +1,95 @@
+# One pod, 1 container
+# Run as deployment with 1 replica
+
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: gpu-test5
+
+---
+apiVersion: resource.k8s.io/v1
+kind: ResourceClaimTemplate
+metadata:
+  namespace: gpu-test5
+  name: multiple-gpus
+spec:
+  spec:
+    devices:
+      requests:
+      - name: ts-gpu
+        exactly:
+          deviceClassName: gpu.nvidia.com
+      - name: mps-gpu
+        exactly:
+          deviceClassName: gpu.nvidia.com
+      config:
+      - requests: ["ts-gpu"]
+        opaque:
+          driver: gpu.nvidia.com
+          parameters:
+            apiVersion: resource.nvidia.com/v1beta1
+            kind: GpuConfig
+            sharing:
+              strategy: TimeSlicing
+              timeSlicingConfig:
+                interval: Long
+      - requests: ["mps-gpu"]
+        opaque:
+          driver: gpu.nvidia.com
+          parameters:
+            apiVersion: resource.nvidia.com/v1beta1
+            kind: GpuConfig
+            sharing:
+              strategy: MPS
+              mpsConfig:
+                defaultActiveThreadPercentage: 50
+                defaultPinnedDeviceMemoryLimit: 10Gi
+
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  namespace: gpu-test5
+  name: pod0
+spec:
+  containers:
+  - name: ts-ctr0
+    image: nvcr.io/nvidia/k8s/cuda-sample:nbody-cuda11.6.0-ubuntu18.04
+    command: ["bash", "-c"]
+    args: ["trap 'exit 0' TERM; /tmp/sample --benchmark --numbodies=4226000 & wait"]
+    resources:
+      claims:
+      - name: shared-gpus
+        request: ts-gpu
+  - name: ts-ctr1
+    image: nvcr.io/nvidia/k8s/cuda-sample:nbody-cuda11.6.0-ubuntu18.04
+    command: ["bash", "-c"]
+    args: ["trap 'exit 0' TERM; /tmp/sample --benchmark --numbodies=4226000 & wait"]
+    resources:
+      claims:
+      - name: shared-gpus
+        request: ts-gpu
+  - name: mps-ctr0
+    image: nvcr.io/nvidia/k8s/cuda-sample:nbody-cuda11.6.0-ubuntu18.04
+    command: ["bash", "-c"]
+    args: ["trap 'exit 0' TERM; /tmp/sample --benchmark --numbodies=4226000 & wait"]
+    resources:
+      claims:
+      - name: shared-gpus
+        request: mps-gpu
+  - name: mps-ctr1
+    image: nvcr.io/nvidia/k8s/cuda-sample:nbody-cuda11.6.0-ubuntu18.04
+    command: ["bash", "-c"]
+    args: ["trap 'exit 0' TERM; /tmp/sample --benchmark --numbodies=4226000 & wait"]
+    resources:
+      claims:
+      - name: shared-gpus
+        request: mps-gpu
+  resourceClaims:
+  - name: shared-gpus
+    resourceClaimTemplateName: multiple-gpus
+  tolerations:
+  - key: "nvidia.com/gpu"
+    operator: "Exists"
+    effect: "NoSchedule"
