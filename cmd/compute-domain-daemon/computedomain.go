@@ -368,7 +368,9 @@ func (m *ComputeDomainManager) MaybePushNodesUpdate(cd *nvapi.ComputeDomain) {
 	// perform a stable sort of IP addresses before writing them to the nodes
 	// config file.
 	if !maps.Equal(newIPs, previousIPs) {
-		klog.Infof("IP set changed: previous: %v; new: %v", previousIPs, newIPs)
+		klog.V(2).Infof("IP set changed")
+		// This log message gets large for large node numbers
+		klog.V(6).Infof("previous: %v; new: %v", previousIPs, newIPs)
 		m.previousNodes = cd.Status.Nodes
 		m.updatedNodesChan <- cd.Status.Nodes
 	} else {
