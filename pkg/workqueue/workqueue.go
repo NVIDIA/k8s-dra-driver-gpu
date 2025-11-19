@@ -140,6 +140,11 @@ func (q *WorkQueue) EnqueueWithKey(obj any, key string, callback func(ctx contex
 
 	q.Lock()
 	q.activeOps[key] = workItem
+	// Do we also want to make sure here that a previously enqueued task for
+	// this key isn't going to be run anymore, if not yet started? Currently,
+	// the next-scheduled retry attempt is still executed, and business logic is
+	// hopefully resilient enough.
+	klog.V(7).Infof("enqueue with key: %s", key)
 	q.queue.AddRateLimited(workItem)
 	q.Unlock()
 }
@@ -157,16 +162,17 @@ func (q *WorkQueue) processNextWorkItem(ctx context.Context) {
 		return
 	}
 
+	attempts := q.queue.NumRequeues(item)
 	err := q.reconcile(ctx, workItem)
 	if err != nil {
 		// Most often, this is an expected, retryable error in the context of an
 		// eventually consistent system. Hence, do not log on an error level. Rely
 		// on inner business logic to log unexpected errors on an error level.
-		klog.V(1).Infof("Reconcile: %v", err)
+		klog.Infof("Reconcile: %v (attempt %d)", err, attempts)
 		// Only retry if we're still the current operation for this key
 		q.Lock()
 		if q.activeOps[workItem.Key] != nil && q.activeOps[workItem.Key] != workItem {
-			klog.Errorf("Work item with key '%s' has been replaced with a newer enqueued one, not retrying", workItem.Key)
+			klog.Infof("Do not re-enqueue failed work item with key '%s': a newer item was enqueued", workItem.Key)
 			q.queue.Forget(workItem)
 		} else {
 			q.queue.AddRateLimited(workItem)
