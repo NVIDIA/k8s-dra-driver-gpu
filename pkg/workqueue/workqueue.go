@@ -58,6 +58,10 @@ func DefaultPrepUnprepRateLimiter() workqueue.TypedRateLimiter[any] {
 	)
 }
 
+func DefaultCDDaemonRateLimiter() workqueue.TypedRateLimiter[any] {
+	return workqueue.NewTypedItemExponentialFailureRateLimiter[any](5*time.Millisecond, 6000*time.Millisecond)
+}
+
 func DefaultControllerRateLimiter() workqueue.TypedRateLimiter[any] {
 	return workqueue.DefaultTypedControllerRateLimiter[any]()
 }

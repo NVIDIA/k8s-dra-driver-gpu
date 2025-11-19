@@ -68,7 +68,7 @@ func NewController(config *ControllerConfig) (*Controller, error) {
 		return nil, fmt.Errorf("failed to create client sets: %v", err)
 	}
 
-	workQueue := workqueue.New(workqueue.DefaultControllerRateLimiter())
+	workQueue := workqueue.New(workqueue.DefaultCDDaemonRateLimiter())
 
 	mc := &ManagerConfig{
 		workQueue:              workQueue,
