@@ -40,14 +40,20 @@ import (
 // interleave, node-globally.
 const DriverPrepUprepFlockFileName = "pu.lock"
 
+type deviceHealthMonitor interface {
+	Start(context.Context) error
+	Stop()
+	Unhealthy() <-chan *AllocatableDevice
+}
+
 type driver struct {
-	client                  coreclientset.Interface
-	pluginhelper            *kubeletplugin.Helper
-	state                   *DeviceState
-	pulock                  *flock.Flock
-	healthcheck             *healthcheck
-	nvmlDeviceHealthMonitor *nvmlDeviceHealthMonitor
-	wg                      sync.WaitGroup
+	client              coreclientset.Interface
+	pluginhelper        *kubeletplugin.Helper
+	state               *DeviceState
+	pulock              *flock.Flock
+	healthcheck         *healthcheck
+	deviceHealthMonitor deviceHealthMonitor
+	wg                  sync.WaitGroup
 }
 
 func NewDriver(ctx context.Context, config *Config) (*driver, error) {
@@ -98,12 +104,14 @@ func NewDriver(ctx context.Context, config *Config) (*driver, error) {
 	driver.healthcheck = healthcheck
 
 	if featuregates.Enabled(featuregates.DeviceHealthCheck) {
-		nvmlDeviceHealthMonitor, err := newNvmlDeviceHealthMonitor(ctx, config, state.allocatable, state.nvdevlib)
+		deviceHealthMonitor, err := newNvmlDeviceHealthMonitor(config, state.allocatable, state.nvdevlib)
 		if err != nil {
-			return nil, fmt.Errorf("start nvmlDeviceHealthMonitor: %w", err)
+			return nil, fmt.Errorf("failed to create NVML device health monitor: %w", err)
 		}
-
-		driver.nvmlDeviceHealthMonitor = nvmlDeviceHealthMonitor
+		if err := deviceHealthMonitor.Start(ctx); err != nil {
+			return nil, fmt.Errorf("failed to start device health monitor: %w", err)
+		}
+		driver.deviceHealthMonitor = deviceHealthMonitor
 
 		driver.wg.Add(1)
 		go func() {
@@ -128,8 +136,8 @@ func (d *driver) Shutdown() error {
 		d.healthcheck.Stop()
 	}
 
-	if d.nvmlDeviceHealthMonitor != nil {
-		d.nvmlDeviceHealthMonitor.Stop()
+	if d.deviceHealthMonitor != nil {
+		d.deviceHealthMonitor.Stop()
 	}
 
 	d.wg.Wait()
@@ -209,9 +217,9 @@ func (d *driver) deviceHealthEvents(ctx context.Context, nodeName string) {
 		case <-ctx.Done():
 			klog.V(6).Info("Stop processing device health notifications")
 			return
-		case device, ok := <-d.nvmlDeviceHealthMonitor.Unhealthy():
+		case device, ok := <-d.deviceHealthMonitor.Unhealthy():
 			if !ok {
-				// nvmlDeviceHealthMonitor is expected to close only during driver Shutdown.
+				// NVML based deviceHealthMonitor is expected to close only during driver Shutdown.
 				klog.Info("Health monitor channel closed")
 				return
 			}
@@ -248,6 +256,9 @@ func (d *driver) deviceHealthEvents(ctx context.Context, nodeName string) {
 				},
 			}
 
+			// only log the error on publish failure as this is the not action we intend to keep in the long run.
+			// this is a temporary solution while waiting for device taints and tolerations support
+			// as an alternative optimize this to do a patch update rather than full republish or retry on failure
 			if err := d.pluginhelper.PublishResources(ctx, resources); err != nil {
 				klog.Errorf("Failed to publish resources after device health status update: %v", err)
 			} else {

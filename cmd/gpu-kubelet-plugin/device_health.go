@@ -31,97 +31,98 @@ const (
 	FullGPUInstanceID uint32 = 0xFFFFFFFF
 )
 
+// For a MIG device the placement is defined by the 3-tuple <parent UUID, GI, CI>.
+// For a full device the returned 3-tuple is the device's uuid and (FullGPUInstanceID) 0xFFFFFFFF for the other two elements.
+type devicePlacementMap map[string]map[uint32]map[uint32]*AllocatableDevice
+
 type nvmlDeviceHealthMonitor struct {
-	nvmllib                  nvml.Interface
-	eventSet                 nvml.EventSet
-	unhealthy                chan *AllocatableDevice
-	cancelContext            context.CancelFunc
-	uuidToDeviceMap          map[string]*AllocatableDevice
-	getDeviceByParentGiCiMap map[string]map[uint32]map[uint32]*AllocatableDevice
-	wg                       sync.WaitGroup
+	nvmllib           nvml.Interface
+	eventSet          nvml.EventSet
+	unhealthy         chan *AllocatableDevice
+	cancelContext     context.CancelFunc
+	deviceByPlacement devicePlacementMap
+	skippedXids       map[uint64]bool
+	wg                sync.WaitGroup
 }
 
-func newNvmlDeviceHealthMonitor(ctx context.Context, config *Config, allocatable AllocatableDevices, nvdevlib *deviceLib) (*nvmlDeviceHealthMonitor, error) {
+func newNvmlDeviceHealthMonitor(config *Config, allocatable AllocatableDevices, nvdevlib *deviceLib) (*nvmlDeviceHealthMonitor, error) {
 	if nvdevlib.nvmllib == nil {
 		return nil, fmt.Errorf("nvml library is nil")
 	}
-
-	ctx, cancel := context.WithCancel(ctx)
-
-	m := &nvmlDeviceHealthMonitor{
-		nvmllib:       nvdevlib.nvmllib,
-		unhealthy:     make(chan *AllocatableDevice, len(allocatable)),
-		cancelContext: cancel,
-	}
-
-	if ret := m.nvmllib.Init(); ret != nvml.SUCCESS {
-		cancel()
+	if ret := nvdevlib.nvmllib.Init(); ret != nvml.SUCCESS {
 		return nil, fmt.Errorf("failed to initialize NVML: %v", ret)
 	}
+	defer func() {
+		_ = nvdevlib.nvmllib.Shutdown()
+	}()
+
+	m := &nvmlDeviceHealthMonitor{
+		nvmllib:           nvdevlib.nvmllib,
+		unhealthy:         make(chan *AllocatableDevice, len(allocatable)),
+		deviceByPlacement: getDevicePlacementMap(allocatable),
+		skippedXids:       xidsToSkip(config.flags.additionalXidsToIgnore),
+	}
+	return m, nil
+}
+
+func (m *nvmlDeviceHealthMonitor) Start(ctx context.Context) (err error) {
+	if ret := m.nvmllib.Init(); ret != nvml.SUCCESS {
+		return fmt.Errorf("failed to initialize NVML: %v", ret)
+	}
+
+	defer func() {
+		if err != nil {
+			_ = m.nvmllib.Shutdown()
+		}
+	}()
 
 	klog.V(6).Info("creating NVML events for device health monitor")
 	eventSet, ret := m.nvmllib.EventSetCreate()
 	if ret != nvml.SUCCESS {
-		_ = m.nvmllib.Shutdown()
-		cancel()
-		return nil, fmt.Errorf("failed to create event set: %w", ret)
+		return fmt.Errorf("failed to create event set: %w", ret)
 	}
+
+	ctx, cancel := context.WithCancel(ctx)
+	m.cancelContext = cancel
+
 	m.eventSet = eventSet
-
-	m.uuidToDeviceMap = getUUIDToDeviceMap(allocatable)
-
-	m.getDeviceByParentGiCiMap = getDeviceByParentGiCiMap(allocatable)
 
 	klog.V(6).Info("registering NVML events for device health monitor")
 	m.registerEventsForDevices()
 
-	skippedXids := m.xidsToSkip(config.flags.additionalXidsToIgnore)
 	klog.V(6).Info("started device health monitoring")
 	m.wg.Add(1)
-	go m.run(ctx, skippedXids)
+	go m.run(ctx)
 
-	return m, nil
+	return nil
 }
 
 func (m *nvmlDeviceHealthMonitor) registerEventsForDevices() {
 	eventMask := uint64(nvml.EventTypeXidCriticalError | nvml.EventTypeDoubleBitEccError | nvml.EventTypeSingleBitEccError)
 
-	processedUUIDs := make(map[string]bool)
-
-	for uuid, dev := range m.uuidToDeviceMap {
-		var u string
-		if dev.Type() == MigDeviceType {
-			u = dev.Mig.parent.UUID
-		} else {
-			u = uuid
-		}
-
-		if processedUUIDs[u] {
-			continue
-		}
-		gpu, ret := m.nvmllib.DeviceGetHandleByUUID(u)
+	for parentUUID, giMap := range m.deviceByPlacement {
+		gpu, ret := m.nvmllib.DeviceGetHandleByUUID(parentUUID)
 		if ret != nvml.SUCCESS {
-			klog.Infof("Unable to get device handle from UUID[%s]: %v; marking it as unhealthy", u, ret)
-			m.unhealthy <- dev
+			klog.Infof("Unable to get device handle from UUID[%s]: %v; marking it as unhealthy", parentUUID, ret)
+			m.markAllSlicesUnhealthy(giMap)
 			continue
 		}
 
 		supportedEvents, ret := gpu.GetSupportedEventTypes()
 		if ret != nvml.SUCCESS {
-			klog.Infof("unable to determine the supported events for %s: %v; marking it as unhealthy", u, ret)
-			m.unhealthy <- dev
+			klog.Infof("unable to determine the supported events for %s: %v; marking it as unhealthy", parentUUID, ret)
+			m.markAllSlicesUnhealthy(giMap)
 			continue
 		}
 
 		ret = gpu.RegisterEvents(eventMask&supportedEvents, m.eventSet)
 		if ret == nvml.ERROR_NOT_SUPPORTED {
-			klog.Warningf("Device %v is too old to support healthchecking.", u)
+			klog.Warningf("Device %v is too old to support healthchecking.", parentUUID)
 		}
 		if ret != nvml.SUCCESS {
-			klog.Infof("unable to register events for %s: %v; marking it as unhealthy", u, ret)
-			m.unhealthy <- dev
+			klog.Infof("unable to register events for %s: %v; marking it as unhealthy", parentUUID, ret)
+			m.markAllSlicesUnhealthy(giMap)
 		}
-		processedUUIDs[u] = true
 	}
 }
 
@@ -137,7 +138,9 @@ func (m *nvmlDeviceHealthMonitor) Stop() {
 
 	m.wg.Wait()
 
-	_ = m.eventSet.Free()
+	if ret := m.eventSet.Free(); ret != nvml.SUCCESS {
+		klog.Warningf("failed to unset events: %v", ret)
+	}
 
 	if ret := m.nvmllib.Shutdown(); ret != nvml.SUCCESS {
 		klog.Warningf("failed to shutdown NVML: %v", ret)
@@ -145,18 +148,7 @@ func (m *nvmlDeviceHealthMonitor) Stop() {
 	close(m.unhealthy)
 }
 
-func getUUIDToDeviceMap(allocatable AllocatableDevices) map[string]*AllocatableDevice {
-	uuidToDeviceMap := make(map[string]*AllocatableDevice)
-
-	for _, d := range allocatable {
-		if u := d.UUID(); u != "" {
-			uuidToDeviceMap[u] = d
-		}
-	}
-	return uuidToDeviceMap
-}
-
-func (m *nvmlDeviceHealthMonitor) run(ctx context.Context, skippedXids map[uint64]bool) {
+func (m *nvmlDeviceHealthMonitor) run(ctx context.Context) {
 	defer m.wg.Done()
 	for {
 		select {
@@ -164,45 +156,48 @@ func (m *nvmlDeviceHealthMonitor) run(ctx context.Context, skippedXids map[uint6
 			klog.V(6).Info("Stopping event-driven GPU health monitor...")
 			return
 		default:
-			event, ret := m.eventSet.Wait(5000)
+			event, ret := m.eventSet.Wait(5000) // timeout in 5000 ms.
 			if ret == nvml.ERROR_TIMEOUT {
 				continue
 			}
+			// not all return errors are handled as currently there is no proper way to process these errors other than marking all devices healthy.
+			// Ref doc: [https://docs.nvidia.com/deploy/nvml-api/group__nvmlEvents.html#group__nvmlEvents_1g9714b0ca9a34c7a7780f87fee16b205c].
 			if ret != nvml.SUCCESS {
-				klog.Infof("Error waiting for event: %v; Marking all devices as unhealthy", ret)
-				m.markAllDevicesUnhealthy()
+				if ret == nvml.ERROR_GPU_IS_LOST {
+					klog.Infof("GPU is lost error: %v; Marking all devices as unhealthy", ret)
+					m.markAllDevicesUnhealthy()
+					continue
+				}
+				klog.Warningf("Error waiting for NVML event: %v. Retrying...", ret)
 				continue
 			}
 
+			// To-do: check why other supported types are not considered?
 			if event.EventType != nvml.EventTypeXidCriticalError {
 				klog.Infof("Skipping non-nvmlEventTypeXidCriticalError event: %+v", event)
 				continue
 			}
 
-			if skippedXids[event.EventData] {
+			if m.skippedXids[event.EventData] {
 				klog.Infof("Skipping event %+v", event)
 				continue
 			}
 
 			klog.Infof("Processing event %+v", event)
+			// this seems an extreme action.
+			// should we just log the error and proceed anyway.
+			// To-do: look into how to properly handle this error.
 			eventUUID, ret := event.Device.GetUUID()
 			if ret != nvml.SUCCESS {
 				klog.Infof("Failed to determine uuid for event %v: %v; Marking all devices as unhealthy.", event, ret)
 				m.markAllDevicesUnhealthy()
 				continue
 			}
-
-			var affectedDevice *AllocatableDevice
-			pMap, ok1 := m.getDeviceByParentGiCiMap[eventUUID]
-			if ok1 {
-				giMap, ok2 := pMap[event.GpuInstanceId]
-				if ok2 {
-					affectedDevice = giMap[event.ComputeInstanceId]
-				}
-			}
-
+			eventGI := event.GpuInstanceId
+			eventCI := event.ComputeInstanceId
+			affectedDevice := m.deviceByPlacement.get(eventUUID, eventGI, eventCI)
 			if affectedDevice == nil {
-				klog.Infof("Ignoring event for unexpected device (UUID: %s, GI: %d, CI: %d)", eventUUID, event.GpuInstanceId, event.ComputeInstanceId)
+				klog.Infof("Ignoring event for unexpected device (UUID: %s, GI: %d, CI: %d)", eventUUID, eventGI, eventCI)
 				continue
 			}
 
@@ -217,18 +212,29 @@ func (m *nvmlDeviceHealthMonitor) Unhealthy() <-chan *AllocatableDevice {
 }
 
 func (m *nvmlDeviceHealthMonitor) markAllDevicesUnhealthy() {
-	for _, d := range m.uuidToDeviceMap {
-		// non-blocking send.
-		select {
-		case m.unhealthy <- d:
-		default:
-			klog.Errorf("Unhealthy channel buffer full. Dropping unhealthy notification for device %s in markAllDevicesUnhealthy.", d.UUID())
+	for _, giMap := range m.deviceByPlacement {
+		m.markAllSlicesUnhealthy(giMap)
+	}
+
+}
+
+// helper to mark every mig device under a parent as unhealthy.
+func (m *nvmlDeviceHealthMonitor) markAllSlicesUnhealthy(giMap map[uint32]map[uint32]*AllocatableDevice) {
+	for _, ciMap := range giMap {
+		for _, dev := range ciMap {
+			// Non-blocking send to avoid deadlocks if channel is full.
+			select {
+			case m.unhealthy <- dev:
+				klog.V(6).Infof("Marked device %s as unhealthy", dev.UUID())
+			default:
+				klog.Errorf("Unhealthy channel full. Dropping unhealthy notification for device %s", dev.UUID())
+			}
 		}
 	}
 }
 
-func getDeviceByParentGiCiMap(allocatable AllocatableDevices) map[string]map[uint32]map[uint32]*AllocatableDevice {
-	deviceByParentGiCiMap := make(map[string]map[uint32]map[uint32]*AllocatableDevice)
+func getDevicePlacementMap(allocatable AllocatableDevices) devicePlacementMap {
+	placementMap := make(devicePlacementMap)
 
 	for _, d := range allocatable {
 		var parentUUID string
@@ -242,6 +248,7 @@ func getDeviceByParentGiCiMap(allocatable AllocatableDevices) map[string]map[uin
 			}
 			giID = FullGPUInstanceID
 			ciID = FullGPUInstanceID
+
 		case MigDeviceType:
 			parentUUID = d.Mig.parent.UUID
 			if parentUUID == "" {
@@ -249,25 +256,43 @@ func getDeviceByParentGiCiMap(allocatable AllocatableDevices) map[string]map[uin
 			}
 			giID = d.Mig.giInfo.Id
 			ciID = d.Mig.ciInfo.Id
+
 		default:
 			klog.Errorf("Skipping device with unknown type: %s", d.Type())
 			continue
 		}
-
-		if _, ok := deviceByParentGiCiMap[parentUUID]; !ok {
-			deviceByParentGiCiMap[parentUUID] = make(map[uint32]map[uint32]*AllocatableDevice)
-		}
-		if _, ok := deviceByParentGiCiMap[parentUUID][giID]; !ok {
-			deviceByParentGiCiMap[parentUUID][giID] = make(map[uint32]*AllocatableDevice)
-		}
-		deviceByParentGiCiMap[parentUUID][giID][ciID] = d
+		placementMap.addDevice(parentUUID, giID, ciID, d)
 	}
-	return deviceByParentGiCiMap
+	return placementMap
+}
+
+func (p devicePlacementMap) addDevice(parentUUID string, giID uint32, ciID uint32, d *AllocatableDevice) {
+	if _, ok := p[parentUUID]; !ok {
+		p[parentUUID] = make(map[uint32]map[uint32]*AllocatableDevice)
+	}
+	if _, ok := p[parentUUID][giID]; !ok {
+		p[parentUUID][giID] = make(map[uint32]*AllocatableDevice)
+	}
+	p[parentUUID][giID][ciID] = d
+}
+
+func (p devicePlacementMap) get(uuid string, gi, ci uint32) *AllocatableDevice {
+	giMap, ok := p[uuid]
+	if !ok {
+		return nil
+	}
+
+	ciMap, ok := giMap[gi]
+	if !ok {
+		return nil
+	}
+	return ciMap[ci]
 }
 
 // getAdditionalXids returns a list of additional Xids to skip from the specified string.
 // The input is treaded as a comma-separated string and all valid uint64 values are considered as Xid values.
 // Invalid values nare ignored.
+// To-do: add list of EXPLICIT XIDs from [https://github.com/NVIDIA/k8s-device-plugin/pull/1443].
 func getAdditionalXids(input string) []uint64 {
 	if input == "" {
 		return nil
@@ -291,7 +316,7 @@ func getAdditionalXids(input string) []uint64 {
 	return additionalXids
 }
 
-func (m *nvmlDeviceHealthMonitor) xidsToSkip(additionalXids string) map[uint64]bool {
+func xidsToSkip(additionalXids string) map[uint64]bool {
 	// Add the list of hardcoded disabled (ignored) XIDs:
 	// http://docs.nvidia.com/deploy/xid-errors/index.html#topic_4
 	// Application errors: the GPU should still be healthy.
