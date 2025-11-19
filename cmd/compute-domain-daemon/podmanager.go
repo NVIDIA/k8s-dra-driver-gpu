@@ -72,11 +72,13 @@ func (pm *PodManager) Start(ctx context.Context) error {
 	pm.cancelContext = cancel
 
 	_, err := pm.podInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+		// Use `WithKey` with hard-coded key, to cancel any previous update task
+		// (we want to make sure that the latest pod status update wins).
 		AddFunc: func(obj any) {
-			pm.config.workQueue.Enqueue(obj, pm.addOrUpdate)
+			pm.config.workQueue.EnqueueWithKey(obj, "pod", pm.addOrUpdate)
 		},
 		UpdateFunc: func(oldObj, newObj any) {
-			pm.config.workQueue.Enqueue(newObj, pm.addOrUpdate)
+			pm.config.workQueue.EnqueueWithKey(newObj, "pod", pm.addOrUpdate)
 		},
 	})
 	if err != nil {

@@ -115,10 +115,10 @@ func (m *ComputeDomainManager) Start(ctx context.Context) (rerr error) {
 
 	_, err = m.informer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj any) {
-			m.config.workQueue.Enqueue(obj, m.onAddOrUpdate)
+			m.config.workQueue.EnqueueWithKey(obj, "cd", m.onAddOrUpdate)
 		},
 		UpdateFunc: func(objOld, objNew any) {
-			m.config.workQueue.Enqueue(objNew, m.onAddOrUpdate)
+			m.config.workQueue.EnqueueWithKey(objNew, "cd", m.onAddOrUpdate)
 		},
 	})
 	if err != nil {
