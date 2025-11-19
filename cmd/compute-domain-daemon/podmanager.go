@@ -178,9 +178,14 @@ func (pm *PodManager) updateNodeStatus(ctx context.Context, status string) error
 		}
 	}
 
-	// If node not found, exit early
+	// If node not found, exit early. Here, we could also assert `status ==
+	// NotReady`, assumption: the CD daemon only starts after the CD manager has
+	// performed the node info insert (leading to node != nil below), and the
+	// pod can only change its status to Ready after the CD daemon has started.
+	// Return explicit error that is being retried, and rely on the retry chain
+	// to be canceled by a newer incoming pod update).
 	if node == nil {
-		return nil
+		return fmt.Errorf("node not yet listed in CD (waiting for insertion)")
 	}
 
 	// If status hasn't changed, exit early
