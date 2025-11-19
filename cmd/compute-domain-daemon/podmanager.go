@@ -132,7 +132,7 @@ func (pm *PodManager) addOrUpdate(ctx context.Context, obj any) error {
 	}
 
 	if err := pm.updateNodeStatus(ctx, status); err != nil {
-		return fmt.Errorf("failed to update node status: %w", err)
+		return fmt.Errorf("pod update: failed to update note status in CD (%s): %w", status, err)
 	}
 
 	return nil
@@ -155,7 +155,8 @@ func (pm *PodManager) isPodReady(pod *corev1.Pod) bool {
 	return false
 }
 
-// updateNodeStatus updates the status of the current node in the CD status.
+// updateNodeStatus updates the status of the current node (the status of the
+// pod running the CD daemon) in the CD status.
 func (pm *PodManager) updateNodeStatus(ctx context.Context, status string) error {
 	// Get the current CD using the provided function
 	cd, err := pm.getComputeDomain(pm.config.computeDomainUUID)
@@ -190,6 +191,7 @@ func (pm *PodManager) updateNodeStatus(ctx context.Context, status string) error
 
 	// If status hasn't changed, exit early
 	if node.Status == status {
+		klog.V(6).Infof("updateNodeStatus noop: status not changed (%s)", status)
 		return nil
 	}
 
@@ -205,6 +207,6 @@ func (pm *PodManager) updateNodeStatus(ctx context.Context, status string) error
 	}
 	pm.computeDomainMutationCache.Mutation(newCD)
 
-	klog.Infof("Successfully updated node %s status to %s", pm.config.nodeName, status)
+	klog.Infof("Successfully updated node status in CD (new nodeinfo: %v)", node)
 	return nil
 }
