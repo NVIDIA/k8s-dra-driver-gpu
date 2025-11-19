@@ -51,7 +51,7 @@ func DefaultPrepUnprepRateLimiter() workqueue.TypedRateLimiter[any] {
 		// This is a per-item exponential backoff limiter. Each time an item
 		// fails and is retried, the delay grows exponentially starting from the
 		// lower value up to the upper bound.
-		workqueue.NewTypedItemExponentialFailureRateLimiter[any](250*time.Millisecond, 3000*time.Second),
+		workqueue.NewTypedItemExponentialFailureRateLimiter[any](250*time.Millisecond, 3000*time.Millisecond),
 		// Global (not per-item) rate limiter. Allows up to 5 retries per
 		// second, with bursts of up to 10.
 		&workqueue.TypedBucketRateLimiter[any]{Limiter: rate.NewLimiter(rate.Limit(5), 10)},
