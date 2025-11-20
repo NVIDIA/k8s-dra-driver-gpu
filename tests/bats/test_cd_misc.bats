@@ -69,7 +69,7 @@ bats::on_failure() {
   cat "$LOGPATH" | tail -n 50
 
   # Explicitly confirm cleanup-on-shutdown behavior by inspecting CD log.
-  cat "$LOGPATH" | grep -e "Successfully updated node .* status to NotReady"
+  cat "$LOGPATH" | tail -n 50 | grep -e "updated node status in CD (new nodeinfo: .* NotReady"
   cat "$LOGPATH" | grep "Successfully removed node" | \
     grep "from ComputeDomain default/imex-channel-injection"
 
