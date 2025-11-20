@@ -21,6 +21,7 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 
@@ -110,8 +111,12 @@ func (m *DNSNameManager) LogDNSNameMappings() {
 	}
 
 	klog.Infof("Current compute-domain-daemon mappings:")
-	for ip, dnsName := range m.ipToDNSName {
-		klog.Infof("  %s -> %s", ip, dnsName)
+
+	// Sort alphabetically by DNS name. Right-justify DNS names by adding
+	// whitespace to the left.
+	for _, ip := range slices.Sorted(maps.Keys(m.ipToDNSName)) {
+		dnsname := m.ipToDNSName[ip]
+		klog.Infof("%26s -> %s", dnsname, ip)
 	}
 }
 

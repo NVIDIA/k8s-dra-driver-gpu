@@ -72,11 +72,13 @@ func (pm *PodManager) Start(ctx context.Context) error {
 	pm.cancelContext = cancel
 
 	_, err := pm.podInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+		// Use `WithKey` with hard-coded key, to cancel any previous update task
+		// (we want to make sure that the latest pod status update wins).
 		AddFunc: func(obj any) {
-			pm.config.workQueue.Enqueue(obj, pm.addOrUpdate)
+			pm.config.workQueue.EnqueueWithKey(obj, "pod", pm.addOrUpdate)
 		},
 		UpdateFunc: func(oldObj, newObj any) {
-			pm.config.workQueue.Enqueue(newObj, pm.addOrUpdate)
+			pm.config.workQueue.EnqueueWithKey(newObj, "pod", pm.addOrUpdate)
 		},
 	})
 	if err != nil {
@@ -130,7 +132,7 @@ func (pm *PodManager) addOrUpdate(ctx context.Context, obj any) error {
 	}
 
 	if err := pm.updateNodeStatus(ctx, status); err != nil {
-		return fmt.Errorf("failed to update node status: %w", err)
+		return fmt.Errorf("pod update: failed to update note status in CD (%s): %w", status, err)
 	}
 
 	return nil
@@ -153,7 +155,8 @@ func (pm *PodManager) isPodReady(pod *corev1.Pod) bool {
 	return false
 }
 
-// updateNodeStatus updates the status of the current node in the CD status.
+// updateNodeStatus updates the status of the current node (the status of the
+// pod running the CD daemon) in the CD status.
 func (pm *PodManager) updateNodeStatus(ctx context.Context, status string) error {
 	// Get the current CD using the provided function
 	cd, err := pm.getComputeDomain(pm.config.computeDomainUUID)
@@ -176,13 +179,19 @@ func (pm *PodManager) updateNodeStatus(ctx context.Context, status string) error
 		}
 	}
 
-	// If node not found, exit early
+	// If node not found, exit early. Here, we could also assert `status ==
+	// NotReady`, assumption: the CD daemon only starts after the CD manager has
+	// performed the node info insert (leading to node != nil below), and the
+	// pod can only change its status to Ready after the CD daemon has started.
+	// Return explicit error that is being retried, and rely on the retry chain
+	// to be canceled by a newer incoming pod update).
 	if node == nil {
-		return nil
+		return fmt.Errorf("node not yet listed in CD (waiting for insertion)")
 	}
 
 	// If status hasn't changed, exit early
 	if node.Status == status {
+		klog.V(6).Infof("updateNodeStatus noop: status not changed (%s)", status)
 		return nil
 	}
 
@@ -198,6 +207,6 @@ func (pm *PodManager) updateNodeStatus(ctx context.Context, status string) error
 	}
 	pm.computeDomainMutationCache.Mutation(newCD)
 
-	klog.Infof("Successfully updated node %s status to %s", pm.config.nodeName, status)
+	klog.Infof("Successfully updated node status in CD (new nodeinfo: %v)", node)
 	return nil
 }
