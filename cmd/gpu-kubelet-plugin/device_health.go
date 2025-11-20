@@ -215,10 +215,9 @@ func (m *nvmlDeviceHealthMonitor) markAllDevicesUnhealthy() {
 	for _, giMap := range m.deviceByPlacement {
 		m.markAllSlicesUnhealthy(giMap)
 	}
-
 }
 
-// helper to mark every mig device under a parent as unhealthy.
+// markAllSlicesUnhealthy is a helper function to mark every mig device under a parent as unhealthy.
 func (m *nvmlDeviceHealthMonitor) markAllSlicesUnhealthy(giMap map[uint32]map[uint32]*AllocatableDevice) {
 	for _, ciMap := range giMap {
 		for _, dev := range ciMap {

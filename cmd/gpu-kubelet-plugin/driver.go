@@ -258,6 +258,7 @@ func (d *driver) deviceHealthEvents(ctx context.Context, nodeName string) {
 
 			// only log the error on publish failure as this is the not action we intend to keep in the long run.
 			// this is a temporary solution while waiting for device taints and tolerations support
+			// KEP: https://github.com/kubernetes/enhancements/issues/5055
 			// as an alternative optimize this to do a patch update rather than full republish or retry on failure
 			if err := d.pluginhelper.PublishResources(ctx, resources); err != nil {
 				klog.Errorf("Failed to publish resources after device health status update: %v", err)

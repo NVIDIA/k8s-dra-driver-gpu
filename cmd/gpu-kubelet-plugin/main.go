@@ -154,7 +154,7 @@ func newApp() *cli.App {
 			Usage:       "A comma-separated list of additional XIDs to ignore.",
 			Value:       "",
 			Destination: &flags.additionalXidsToIgnore,
-			EnvVars:     []string{"ADDITIONAL_XIDs_TO_IGNORE"},
+			EnvVars:     []string{"ADDITIONAL_XIDS_TO_IGNORE"},
 		},
 	}
 	cliFlags = append(cliFlags, flags.kubeClientConfig.Flags()...)
