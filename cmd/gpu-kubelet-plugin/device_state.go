@@ -150,32 +150,38 @@ func (s *DeviceState) Prepare(ctx context.Context, claim *resourceapi.ResourceCl
 
 	claimUID := string(claim.UID)
 
-	checkpoint, err := s.getCheckpoint()
-	if err != nil {
-		return nil, fmt.Errorf("unable to get checkpoint: %v", err)
-	}
+	var preparedDevices PreparedDevices
+	var alreadyPrepared bool
 
-	err = s.updateCheckpoint(func(checkpoint *Checkpoint) {
-		checkpoint.V2.PreparedClaims[claimUID] = PreparedClaim{
+	// Atomically check if prepare for this claim is already completed, otherwise mark as started.
+	err := s.updateCheckpoint(func(cp *Checkpoint) {
+		if pc, ok := cp.V2.PreparedClaims[claimUID]; ok &&
+			pc.CheckpointState == ClaimCheckpointStatePrepareCompleted {
+
+			alreadyPrepared = true
+			preparedDevices = pc.PreparedDevices
+			return
+		}
+
+		cp.V2.PreparedClaims[claimUID] = PreparedClaim{
 			CheckpointState: ClaimCheckpointStatePrepareStarted,
 			Status:          claim.Status,
 		}
+		klog.V(6).Infof("checkpoint updated for claim %v", claimUID)
 	})
 	if err != nil {
 		return nil, fmt.Errorf("unable to update checkpoint: %w", err)
 	}
-	klog.V(6).Infof("checkpoint updated for claim %v", claimUID)
 
-	preparedClaim, exists := checkpoint.V2.PreparedClaims[claimUID]
-	if exists && preparedClaim.CheckpointState == ClaimCheckpointStatePrepareCompleted {
+	if alreadyPrepared {
 		// Make this a noop. Associated device(s) has/ave been prepared by us.
 		// Prepare() must be idempotent, as it may be invoked more than once per
 		// claim (and actual device preparation must happen at most once).
-		klog.V(6).Infof("skip prepare: claim %v found in checkpoint", claimUID)
-		return preparedClaim.PreparedDevices.GetDevices(), nil
+		klog.V(4).Infof("skip prepare: claim %v found in checkpoint", claimUID)
+		return preparedDevices.GetDevices(), nil
 	}
 
-	preparedDevices, err := s.prepareDevices(ctx, claim)
+	preparedDevices, err = s.prepareDevices(ctx, claim)
 	if err != nil {
 		return nil, fmt.Errorf("prepare devices failed: %w", err)
 	}
