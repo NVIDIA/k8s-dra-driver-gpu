@@ -18,5 +18,5 @@ jobs:
       - name: make-bats
         run: |
           export TEST_CHART_REPO="oci://ghcr.io/nvidia/k8s-dra-driver-gpu"
-          export TEST_CHART_VERSION="25.8.0-dev-23ccbd2b-chart"
+          export TEST_CHART_VERSION="25.12.0-dev-f8fceeae-chart"
           make bats
