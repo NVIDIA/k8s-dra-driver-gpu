@@ -26,8 +26,6 @@ jobs:
 
   image:
     uses: ./.github/workflows/image.yaml
-    needs:
-    - basic
     secrets: inherit
     with:
       version: ${{ needs.basic.outputs.version }}
