@@ -173,17 +173,21 @@ func (m *nvmlDeviceHealthMonitor) run(ctx context.Context) {
 			}
 
 			// To-do: check why other supported types are not considered?
-			if event.EventType != nvml.EventTypeXidCriticalError {
-				klog.Infof("Skipping non-nvmlEventTypeXidCriticalError event: %+v", event)
+			eType := event.EventType
+			eData := event.EventData
+			eGI := event.GpuInstanceId
+			eCI := event.ComputeInstanceId
+			if eType != nvml.EventTypeXidCriticalError {
+				klog.Infof("Skipping non-nvmlEventTypeXidCriticalError event: Data=%d, Type=%d, GI=%d, CI=%d", eData, eType, eGI, eCI)
 				continue
 			}
 
-			if m.skippedXids[event.EventData] {
-				klog.Infof("Skipping event %+v", event)
+			if m.skippedXids[eData] {
+				klog.Infof("Skipping XID event: Data=%d, Type=%d, GI=%d, CI=%d", eData, eType, eGI, eCI)
 				continue
 			}
 
-			klog.Infof("Processing event %+v", event)
+			klog.Infof("Processing event XID=%d event", eData)
 			// this seems an extreme action.
 			// should we just log the error and proceed anyway.
 			// To-do: look into how to properly handle this error.
@@ -193,15 +197,13 @@ func (m *nvmlDeviceHealthMonitor) run(ctx context.Context) {
 				m.markAllDevicesUnhealthy()
 				continue
 			}
-			eventGI := event.GpuInstanceId
-			eventCI := event.ComputeInstanceId
-			affectedDevice := m.deviceByPlacement.get(eventUUID, eventGI, eventCI)
+			affectedDevice := m.deviceByPlacement.get(eventUUID, eGI, eCI)
 			if affectedDevice == nil {
-				klog.Infof("Ignoring event for unexpected device (UUID: %s, GI: %d, CI: %d)", eventUUID, eventGI, eventCI)
+				klog.Infof("Ignoring event for unexpected device (UUID:%s, GI:%d, CI:%d)", eventUUID, eGI, eCI)
 				continue
 			}
 
-			klog.Infof("Sending unhealthy notification for device %s due to event type: %v and event data: %d", affectedDevice.UUID(), event.EventType, event.EventData)
+			klog.Infof("Sending unhealthy notification for device %s due to event type:%v and event data:%d", affectedDevice.UUID(), eType, eData)
 			m.unhealthy <- affectedDevice
 		}
 	}
