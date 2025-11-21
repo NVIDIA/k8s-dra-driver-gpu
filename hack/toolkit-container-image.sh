@@ -39,7 +39,7 @@ set -euo pipefail
 
 # Find first line containing `github.com/NVIDIA/nvidia-container-toolkit` and
 # then extract second token.
-TOOLKIT_VERSION=$(cat go.mod | grep -m 1 'github.com/NVIDIA/nvidia-container-toolkit' "$1" | awk '{print $2}')
+TOOLKIT_VERSION=$(cat go.mod | grep -m 1 'github.com/NVIDIA/nvidia-container-toolkit' | awk '{print $2}')
 
 if [ -z "${TOOLKIT_VERSION}" ]; then
     echo "TOOLKIT_VERSION_NOT_SET"
