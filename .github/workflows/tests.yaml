@@ -1,0 +1,26 @@
+name: tests
+
+# on:
+#   push:
+#   pull_request:
+
+on:
+  workflow_run:
+    workflows: ["build-and-push-artifacts"]
+    types:
+      - completed
+
+# Only one job at any time, and cancel in-progress
+concurrency:
+  # Cancel when push to the same branch
+  group: ${{ github.workflow }}-${{ github.head_ref }}
+  cancel-in-progress: true
+
+jobs:
+  k8s:
+    runs-on: compute-domain-runner
+    steps:
+      - uses: actions/checkout@v5
+      - name: make-bats
+        run: |
+          make bats

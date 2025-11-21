@@ -27,15 +27,11 @@ on:
 
 jobs:
   build:
-    runs-on: linux-amd64-cpu4
+    #runs-on: linux-amd64-cpu4
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
         name: Check out code
-
-      - name: Install Go
-        uses: actions/setup-go@v6
-        with:
-          go-version: ${{ inputs.golang_version }}
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
@@ -55,15 +51,18 @@ jobs:
       - name: Build image
         env:
           IMAGE_NAME: ghcr.io/nvidia/k8s-dra-driver-gpu
-          VERSION: ${{ inputs.version }}
           PUSH_ON_BUILD: true
           BUILD_MULTI_ARCH_IMAGES: "true"
         run: |
-          echo "${VERSION}"
+          make print-VERSION
+          # shape: ghcr.io/nvidia/k8s-dra-driver-gpu:v25.12.0-dev-CCCCCCCC
+          export IMAGE_TAG="$(make print-VERSION)-$(echo $GITHUB_SHA | cut -c1-8)"
           make -f deployments/container/Makefile build
+
           # Push the image again, using a shorter tag (only the 8 character
           # commit hash). That's for consumption in downstream CI (for copying
           # the image from GHCR to elsewhere). See
           # https://github.com/NVIDIA/k8s-dra-driver-gpu/issues/688
+          # shape: ghcr.io/nvidia/k8s-dra-driver-gpu:CCCCCCCC
           export IMAGE_TAG="$(echo $GITHUB_SHA | cut -c1-8)"
           make -f deployments/container/Makefile build
