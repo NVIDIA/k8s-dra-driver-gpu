@@ -1,6 +1,7 @@
 {{- if .Values.resources.gpus.enabled }}
+{{- $resourceApiVersion := (include "nvidia-dra-driver-gpu.resourceApiVersion" . | trim) }}
 ---
-apiVersion: {{ include "nvidia-dra-driver-gpu.resourceApiVersion" . }}
+apiVersion: {{ $resourceApiVersion }}
 kind: DeviceClass
 metadata:
   name: gpu.nvidia.com
@@ -8,4 +9,7 @@ spec:
   selectors:
   - cel:
       expression: "device.driver == 'gpu.nvidia.com' && device.attributes['gpu.nvidia.com'].type == 'gpu'"
+  {{- if eq $resourceApiVersion "resource.k8s.io/v1" }}
+  extendedResourceName: nvidia.com/gpu
+  {{- end }}
 {{- end }}
