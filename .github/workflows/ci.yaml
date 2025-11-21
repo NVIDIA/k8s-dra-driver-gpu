@@ -21,15 +21,15 @@ on:
       - release-*
 
 jobs:
-  basic:
-    uses: ./.github/workflows/basic-checks.yaml
-
   image:
     uses: ./.github/workflows/image.yaml
     secrets: inherit
     with:
       version: ${{ needs.basic.outputs.version }}
       golang_version: ${{ needs.basic.outputs.golang_version }}
+
+  basic:
+    uses: ./.github/workflows/basic-checks.yaml
 
   chart:
     # For faster CI signal, do not wait for `image`.
