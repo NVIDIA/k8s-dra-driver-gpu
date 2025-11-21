@@ -24,7 +24,6 @@ FROM --platform=$BUILDPLATFORM nvcr.io/nvidia/base/ubuntu:jammy-20251013 AS buil
 
 # Require arg to be provided (set invalid default value).
 ARG GOLANG_VERSION=x.x.x
-ARG BASH_STATIC_GIT_REF=unknown
 
 # BUILDARCH, TARGETARCH (and others) are defined in the global scope by
 # BuiltKit. BUILDARCH is the architecture of the build platform. TARGETARCH is
@@ -47,10 +46,6 @@ RUN apt-get update && \
 
 # Install dependencies for `bash-static` build.
 RUN apt-get install -y gpg curl autoconf file
-
-# Build static bash binary (against musl).
-WORKDIR /bashbuild
-RUN git clone https://github.com/robxu9/bash-static/
 
 RUN wget -nv -O - https://storage.googleapis.com/golang/go${GOLANG_VERSION}.linux-${BUILDARCH}.tar.gz \
     | tar -C /usr/local -xz
