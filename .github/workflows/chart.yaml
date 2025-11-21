@@ -18,7 +18,7 @@ on:
 
 jobs:
   build-push:
-    runs-on: linux-amd64-cpu4
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
         name: checkout
