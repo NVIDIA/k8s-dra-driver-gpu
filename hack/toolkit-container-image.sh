@@ -31,14 +31,15 @@
 #  - Success: emit URL on stdout
 #  - Failure: emit TOOLKIT_VERSION_NOT_SET or TOOLKIT_VERSION_PARSE_FAILED.
 #
-# May fail in some environments that do not have Golang tooling in their PATH.
 # Currently executed upon including `versions.mk`, i.e. for all targets. Hence,
 # do not emit errors on `stderr`, but gracefully degrade (many Makefile targets
 # powered by versions.mk still work correctly with TOOLKIT_VERSION_NOT_SET).
 
 set -euo pipefail
 
-TOOLKIT_VERSION=$(go list -m -f '{{.Version}}' github.com/NVIDIA/nvidia-container-toolkit 2>/dev/null || true)
+# Find first line containing `github.com/NVIDIA/nvidia-container-toolkit` and
+# then extract second token.
+TOOLKIT_VERSION=$(cat go.mod | grep -m 1 'github.com/NVIDIA/nvidia-container-toolkit' | awk '{print $2}')
 
 if [ -z "${TOOLKIT_VERSION}" ]; then
     echo "TOOLKIT_VERSION_NOT_SET"
