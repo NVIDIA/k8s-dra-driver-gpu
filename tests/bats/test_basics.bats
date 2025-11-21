@@ -25,6 +25,11 @@ setup() {
   refute_output --partial 'Running'
 }
 
+# Make it explicit when major dependency is missing
+@test "GPU Operator installed" {
+  run helm list -A
+  assert_output --partial 'gpu-operator'
+}
 
 @test "helm-install ${TEST_CHART_REPO}/${TEST_CHART_VERSION}" {
   iupgrade_wait "${TEST_CHART_REPO}" "${TEST_CHART_VERSION}" NOARGS
