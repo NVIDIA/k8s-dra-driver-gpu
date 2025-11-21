@@ -15,10 +15,14 @@ name: "build-and-push-artifacts"
 
 on:
   push:
-    branches:
-      - "pull-request/[0-9]+"
-      - main
-      - release-*
+  pull_request:
+
+# on:
+#   push:
+#     branches:
+#       - "pull-request/[0-9]+"
+#       - main
+#       - release-*
 
 jobs:
   image:
