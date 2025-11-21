@@ -52,30 +52,6 @@ RUN apt-get install -y gpg curl autoconf file
 WORKDIR /bashbuild
 RUN git clone https://github.com/robxu9/bash-static/
 
-# Note: cross-compilation in `build.sh` isn't robust. Fix that
-# by manually setting CC, and also strip command must conditionally
-# be replaced by an aarch64-specific version.
-RUN ARCH="$TARGETARCH" && STRIP=strip && \
-    [ "$ARCH" = "arm64" ] && ARCH="aarch64" || true && \
-    [ "$ARCH" = "amd64" ] && ARCH="x86_64" || true && \
-    [ "$ARCH" = "aarch64" ] && STRIP="aarch64-linux-gnu-strip" && CC="aarch64-linux-gnu-gcc" || true && \
-    echo "detected arch: $ARCH" && \
-    echo "cc to use: $CC" && \
-    echo "strip to use: $STRIP" && \
-    cd bash-static && git checkout ${BASH_STATIC_GIT_REF} && \
-    sed -i 's|https://ftp\.gnu\.org/gnu|https://ftpmirror.gnu.org/|g' ./build.sh && \
-    sed -i 's/-sLO/-sSfLO --retry 300 --connect-timeout 20 --retry-delay 5 --retry-all-errors /g' ./build.sh && \
-    sed -i 's/strip/$STRIP/g' ./build.sh && \
-    sed -i 's/make -s \&\& make -s tests/make -j4/g' ./build.sh && \
-    bash version-52.sh && STRIP=$STRIP CC=$CC ./build.sh linux $ARCH
-
-# With above's commit, this emits
-# 'GNU bash, version 5.2.37(1)-release (aarch64-unknown-linux-musl)'
-RUN cd /bashbuild/bash-static/releases && ./bash*-static --version
-RUN mv /bashbuild/bash-static/releases/bash-*-static /bashbuild/bash
-# Capture actual file architecture in the build output.
-RUN file /bashbuild/bash
-
 RUN wget -nv -O - https://storage.googleapis.com/golang/go${GOLANG_VERSION}.linux-${BUILDARCH}.tar.gz \
     | tar -C /usr/local -xz
 
@@ -105,6 +81,10 @@ RUN if [ "$TARGETARCH" = "amd64" ]; then \
         cc=aarch64-linux-gnu-gcc; \
     fi && \
     make CC=${cc} GOARCH=${TARGETARCH} PREFIX=/artifacts cmds
+
+# GNU mirrors are down, building bash from source has been a bit of a pain for
+# various reasons. Use binaries built before, from an older image.
+FROM ghcr.io/nvidia/k8s-dra-driver-gpu:v25.12.0-dev-839e966a AS bash
 
 # Pull the nvidia-cdi-hook binary out of the relevant toolkit container
 # (arch: TARGETPLATFORM, set via --platform).
@@ -139,12 +119,12 @@ LABEL org.opencontainers.image.source="https://github.com/NVIDIA/k8s-dra-driver-
 COPY LICENSE /
 
 COPY --from=toolkit /artifacts/rpm/usr/bin/nvidia-cdi-hook    /usr/bin/nvidia-cdi-hook
+COPY --from=bash    /bin/bash                                 /bin/bash
 COPY --from=build   /artifacts/compute-domain-controller      /usr/bin/compute-domain-controller
 COPY --from=build   /artifacts/compute-domain-kubelet-plugin  /usr/bin/compute-domain-kubelet-plugin
 COPY --from=build   /artifacts/compute-domain-daemon          /usr/bin/compute-domain-daemon
 COPY --from=build   /artifacts/gpu-kubelet-plugin             /usr/bin/gpu-kubelet-plugin
 COPY --from=build   /artifacts/webhook                        /usr/bin/webhook
-COPY --from=build   /bashbuild/bash                           /bin/bash
 COPY --from=build   /build/scripts/bind_to_driver.sh          /usr/bin/bind_to_driver.sh
 COPY --from=build   /build/scripts/unbind_from_driver.sh      /usr/bin/unbind_from_driver.sh
 COPY /hack/kubelet-plugin-prestart.sh /usr/bin/kubelet-plugin-prestart.sh
