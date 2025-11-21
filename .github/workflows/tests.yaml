@@ -1,8 +1,14 @@
 name: tests
 
+# on:
+#   push:
+#   pull_request:
+
 on:
-  push:
-  pull_request:
+  workflow_run:
+    workflows: ["build-and-push-artifacts"]
+    types:
+      - completed
 
 # Only one job at any time, and cancel in-progress
 concurrency:
@@ -17,6 +23,4 @@ jobs:
       - uses: actions/checkout@v5
       - name: make-bats
         run: |
-          export TEST_CHART_LOCAL=1
-          make image-build-and-copy-to-nodes
           make bats
