@@ -297,8 +297,8 @@ func (s *DeviceState) prepareDevices(ctx context.Context, claim *resourceapi.Res
 			return nil, fmt.Errorf("requested device is not allocatable: %v", result.Device)
 		}
 		// only proceed with config mapping if device is healthy.
-		if featuregates.Enabled(featuregates.DeviceHealthCheck) {
-			if device.Health == Unhealthy {
+		if featuregates.Enabled(featuregates.NVMLDeviceHealthCheck) {
+			if !device.IsHealthy() {
 				return nil, fmt.Errorf("requested device is not healthy: %v", result.Device)
 			}
 		}

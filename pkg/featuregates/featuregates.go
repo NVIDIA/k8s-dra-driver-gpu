@@ -37,8 +37,8 @@ const (
 	// IMEXDaemonsWithDNSNames allows using DNS names instead of raw IPs for IMEX daemons.
 	IMEXDaemonsWithDNSNames featuregate.Feature = "IMEXDaemonsWithDNSNames"
 
-	// DeviceHealthCheck allows Device Health Checking.
-	DeviceHealthCheck featuregate.Feature = "DeviceHealthCheck"
+	// NVMLDeviceHealthCheck allows Device Health Checking using NVML.
+	NVMLDeviceHealthCheck featuregate.Feature = "NVMLDeviceHealthCheck"
 )
 
 // FeatureGates is a singleton representing the set of all feature gates and their values.
@@ -69,11 +69,11 @@ var defaultFeatureGates = map[featuregate.Feature]featuregate.VersionedSpecs{
 			Version:    version.MajorMinor(25, 8),
 		},
 	},
-	DeviceHealthCheck: {
+	NVMLDeviceHealthCheck: {
 		{
 			Default:    false,
 			PreRelease: featuregate.Alpha,
-			Version:    version.MajorMinor(25, 8),
+			Version:    version.MajorMinor(25, 12),
 		},
 	},
 }
