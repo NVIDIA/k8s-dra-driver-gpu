@@ -65,13 +65,13 @@ func newNvmlDeviceHealthMonitor(config *Config, allocatable AllocatableDevices, 
 	return m, nil
 }
 
-func (m *nvmlDeviceHealthMonitor) Start(ctx context.Context) (err error) {
+func (m *nvmlDeviceHealthMonitor) Start(ctx context.Context) (rerr error) {
 	if ret := m.nvmllib.Init(); ret != nvml.SUCCESS {
 		return fmt.Errorf("failed to initialize NVML: %v", ret)
 	}
 
 	defer func() {
-		if err != nil {
+		if rerr != nil {
 			_ = m.nvmllib.Shutdown()
 		}
 	}()
@@ -172,7 +172,7 @@ func (m *nvmlDeviceHealthMonitor) run(ctx context.Context) {
 				continue
 			}
 
-			// To-do: check why other supported types are not considered?
+			// TODO: check why other supported types are not considered?
 			eType := event.EventType
 			eData := event.EventData
 			eGI := event.GpuInstanceId
@@ -190,7 +190,7 @@ func (m *nvmlDeviceHealthMonitor) run(ctx context.Context) {
 			klog.Infof("Processing event XID=%d event", eData)
 			// this seems an extreme action.
 			// should we just log the error and proceed anyway.
-			// To-do: look into how to properly handle this error.
+			// TODO: look into how to properly handle this error.
 			eventUUID, ret := event.Device.GetUUID()
 			if ret != nvml.SUCCESS {
 				klog.Infof("Failed to determine uuid for event %v: %v; Marking all devices as unhealthy.", event, ret)
@@ -293,7 +293,7 @@ func (p devicePlacementMap) get(uuid string, gi, ci uint32) *AllocatableDevice {
 // getAdditionalXids returns a list of additional Xids to skip from the specified string.
 // The input is treaded as a comma-separated string and all valid uint64 values are considered as Xid values.
 // Invalid values nare ignored.
-// To-do: add list of EXPLICIT XIDs from [https://github.com/NVIDIA/k8s-device-plugin/pull/1443].
+// TODO: add list of EXPLICIT XIDs from [https://github.com/NVIDIA/k8s-device-plugin/pull/1443].
 func getAdditionalXids(input string) []uint64 {
 	if input == "" {
 		return nil

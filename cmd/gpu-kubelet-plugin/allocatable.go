@@ -22,22 +22,11 @@ import (
 	resourceapi "k8s.io/api/resource/v1"
 )
 
-type HealthStatus string
-
-const (
-	// Healthy means that the device is healthy.
-	Healthy HealthStatus = "Healthy"
-	// Unhealthy means that the device is unhealthy.
-	Unhealthy HealthStatus = "Unhealthy"
-)
-
 type AllocatableDevices map[string]*AllocatableDevice
 
 type AllocatableDevice struct {
 	Gpu *GpuInfo
 	Mig *MigDeviceInfo
-	// Defined similarly as https://pkg.go.dev/k8s.io/kubelet/pkg/apis/deviceplugin/v1beta1#Healthy
-	Health HealthStatus
 }
 
 func (d AllocatableDevice) Type() string {
@@ -109,5 +98,11 @@ func (d AllocatableDevices) UUIDs() []string {
 }
 
 func (d *AllocatableDevice) IsHealthy() bool {
-	return d.Health == Healthy
+	switch d.Type() {
+	case GpuDeviceType:
+		return d.Gpu.Health == Healthy
+	case MigDeviceType:
+		return d.Mig.Health == Healthy
+	}
+	panic("unexpected type for AllocatableDevice")
 }

@@ -148,7 +148,7 @@ func newApp() *cli.App {
 			Destination: &flags.healthcheckPort,
 			EnvVars:     []string{"HEALTHCHECK_PORT"},
 		},
-		// To-do: change to StringSliceFlag.
+		// TODO: change to StringSliceFlag.
 		&cli.StringFlag{
 			Name:        "additional-xids-to-ignore",
 			Usage:       "A comma-separated list of additional XIDs to ignore.",

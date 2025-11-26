@@ -129,8 +129,7 @@ func (l deviceLib) enumerateGpusAndMigDevices(config *Config) (AllocatableDevice
 		}
 
 		deviceInfo := &AllocatableDevice{
-			Gpu:    gpuInfo,
-			Health: Healthy,
+			Gpu: gpuInfo,
 		}
 		devices[gpuInfo.CanonicalName()] = deviceInfo
 
@@ -141,8 +140,7 @@ func (l deviceLib) enumerateGpusAndMigDevices(config *Config) (AllocatableDevice
 
 		for _, migDeviceInfo := range migs {
 			deviceInfo := &AllocatableDevice{
-				Mig:    migDeviceInfo,
-				Health: Healthy,
+				Mig: migDeviceInfo,
 			}
 			devices[migDeviceInfo.CanonicalName()] = deviceInfo
 		}
@@ -277,6 +275,7 @@ func (l deviceLib) getGpuInfo(index int, device nvdev.Device) (*GpuInfo, error) 
 		pcieBusID:             pcieBusID,
 		pcieRootAttr:          pcieRootAttr,
 		migProfiles:           migProfiles,
+		Health:                Healthy,
 	}
 
 	return gpuInfo, nil
@@ -370,6 +369,7 @@ func (l deviceLib) getMigDevices(gpuInfo *GpuInfo) (map[string]*MigDeviceInfo, e
 			ciInfo:        &ciInfo,
 			pcieBusID:     gpuInfo.pcieBusID,
 			pcieRootAttr:  gpuInfo.pcieRootAttr,
+			Health:        Healthy,
 		}
 		return nil
 	})

@@ -28,6 +28,15 @@ import (
 	"k8s.io/utils/ptr"
 )
 
+// Defined similarly as https://pkg.go.dev/k8s.io/kubelet/pkg/apis/deviceplugin/v1beta1#Healthy.
+type HealthStatus string
+
+const (
+	Healthy HealthStatus = "Healthy"
+	// With NVMLDeviceHealthCheck, Unhealthy means that there are critcal xid errors on the device
+	Unhealthy HealthStatus = "Unhealthy"
+)
+
 type GpuInfo struct {
 	UUID                  string `json:"uuid"`
 	minor                 int
@@ -42,6 +51,7 @@ type GpuInfo struct {
 	pcieBusID             string
 	pcieRootAttr          *deviceattribute.DeviceAttribute
 	migProfiles           []*MigProfileInfo
+	Health                HealthStatus
 }
 
 type MigDeviceInfo struct {
@@ -55,6 +65,7 @@ type MigDeviceInfo struct {
 	ciInfo        *nvml.ComputeInstanceInfo
 	pcieBusID     string
 	pcieRootAttr  *deviceattribute.DeviceAttribute
+	Health        HealthStatus
 }
 
 type MigProfileInfo struct {

@@ -556,12 +556,20 @@ func GetOpaqueDeviceConfigs(
 	return resultConfigs, nil
 }
 
-func (s *DeviceState) UpdateDeviceHealthStatus(device *AllocatableDevice, hs HealthStatus) {
+func (s *DeviceState) UpdateDeviceHealthStatus(d *AllocatableDevice, hs HealthStatus) {
 	s.Lock()
 	defer s.Unlock()
 
-	device.Health = hs
-	klog.Infof("Updated device: %s health status to %s", device.UUID(), hs)
+	switch d.Type() {
+	case GpuDeviceType:
+		d.Gpu.Health = hs
+	case MigDeviceType:
+		d.Mig.Health = hs
+	default:
+		klog.Warningf("Cannot update health status for unknown device type: %s", d.Type())
+		return
+	}
+	klog.Infof("Updated device: %s health status to %s", d.UUID(), hs)
 }
 
 // TODO: Dynamic MIG is not yet supported with structured parameters.
