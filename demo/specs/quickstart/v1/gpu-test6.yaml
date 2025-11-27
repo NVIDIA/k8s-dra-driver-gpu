@@ -1,0 +1,77 @@
+# One pod, 4 containers
+# Each asking for a different MIG device on a shared mig-enabled GPU
+# Run as deployment with 4 replicas
+
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: gpu-test6
+
+---
+apiVersion: resource.k8s.io/v1
+kind: ResourceClaimTemplate
+metadata:
+  namespace: gpu-test6
+  name: a100
+spec:
+  spec:
+    devices:
+      requests:
+      - name: gpu
+        exactly:
+          deviceClassName: gpu.nvidia.com
+          selectors:
+          - cel:
+              expression: |
+                device.attributes['gpu.nvidia.com'].productName.lowerAscii().matches('^.*a100.*$')
+                &&
+                (device.attributes['gpu.nvidia.com'].index == 0 ||
+                device.attributes['gpu.nvidia.com'].index == 2 ||
+                device.attributes['gpu.nvidia.com'].index == 4 ||
+                device.attributes['gpu.nvidia.com'].index == 6)
+      config:
+      - requests: ["gpu"]
+        opaque:
+          driver: gpu.nvidia.com
+          parameters:
+            apiVersion: resource.nvidia.com/v1beta1
+            kind: GpuConfig
+            sharing:
+              strategy: TimeSlicing
+              timeSlicingConfig:
+                interval: Long
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  namespace: gpu-test6
+  name: pod
+  labels:
+    app: gpu-test6-pod
+spec:
+  replicas: 4
+  selector:
+    matchLabels:
+      app: pod
+  template:
+    metadata:
+      labels:
+        app: pod
+    spec:
+      containers:
+      - name: ctr
+        image: ubuntu:22.04
+        command: ["bash", "-c"]
+        args: ["nvidia-smi -L; trap 'exit 0' TERM; sleep 9999 & wait"]
+        resources:
+          claims:
+          - name: a100
+      resourceClaims:
+      - name: a100
+        resourceClaimTemplateName: a100
+      tolerations:
+      - key: "nvidia.com/gpu"
+        operator: "Exists"
+        effect: "NoSchedule"
