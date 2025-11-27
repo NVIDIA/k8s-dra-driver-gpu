@@ -1,5 +1,5 @@
 # syntax=docker.io/docker/dockerfile:1.7-labs
-# The above enables the COPY --exclude flag, see:
+# The above enables the COPY --exclude flag, and the --parent flag see:
 # https://github.com/moby/buildkit/pull/4561
 
 # Copyright (c) 2019-2025, NVIDIA CORPORATION.  All rights reserved.
@@ -45,7 +45,6 @@ RUN apt-get update && \
         gcc-aarch64-linux-gnu \
         gcc
 
-
 RUN wget -nv -O - https://storage.googleapis.com/golang/go${GOLANG_VERSION}.linux-${BUILDARCH}.tar.gz \
     | tar -C /usr/local -xz
 
@@ -55,7 +54,6 @@ WORKDIR /build
 
 # Copy rather precisely only what is needed for the go build: only invalidate go
 # build artifact layer when required.
-RUN cd /build && ls -ahltr
 COPY --parents cmd api pkg vendor internal ./
 COPY common.mk versions.mk Makefile go.mod go.sum .
 RUN mkdir deployments && mkdir hack
