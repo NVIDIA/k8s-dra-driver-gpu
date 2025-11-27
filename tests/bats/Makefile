@@ -102,8 +102,8 @@ endef
 
 default: tests
 
-.PHONY: image
-image:
+.PHONY: runner-image
+runner-image:
 	docker buildx build . -t $(BATS_IMAGE) -f tests/bats/Dockerfile
 
 # Warning: destructive against currently configured k8s cluster.
@@ -115,14 +115,14 @@ image:
 .PHONY: tests-gpu tests-cd
 
 # Run GPU plugin specific tests
-tests-gpu: image
+tests-gpu: runner-image
 	$(call RUN_BATS, \
 		tests/bats/test_basics.bats \
 		tests/bats/test_gpu_basic.bats \
 		tests/bats/test_gpu_stress.bats)
 
 # Run Compute Domain specific tests
-tests-cd: image
+tests-cd: runner-image
 	$(call RUN_BATS, \
 		tests/bats/test_basics.bats \
 		tests/bats/test_cd_imex_chan_inject.bats \

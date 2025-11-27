@@ -55,12 +55,18 @@ endif
 
 DOCKERFILE = $(CURDIR)/deployments/container/Dockerfile
 
+ifeq ($(GITHUB_ACTIONS), true)
+  DOCKER_BUILD_CACHE_OPTIONS = 	--cache-to type=registry,ref=ghcr.io/nvidia/k8s-dra-driver-gpu:buildcache,mode=max \
+		--cache-from type=registry,ref=ghcr.io/nvidia/k8s-dra-driver-gpu:buildcache
+endif
+
 # Build the container image
 build:
 	DOCKER_BUILDKIT=1 \
 		$(DOCKER) $(BUILDX) build --pull \
 		$(DOCKER_BUILD_OPTIONS) \
 		$(DOCKER_BUILD_PLATFORM_OPTIONS) \
+		$(DOCKER_BUILD_CACHE_OPTIONS) \
 		--tag $(IMAGE) \
 		--build-arg GOLANG_VERSION="$(GOLANG_VERSION)" \
 		--build-arg BASH_STATIC_GIT_REF="$(BASH_STATIC_GIT_REF)" \
