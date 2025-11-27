@@ -53,16 +53,15 @@ ENV GOPATH=/go
 ENV PATH=$GOPATH/bin:/usr/local/go/bin:$PATH
 WORKDIR /build
 
-# Copy everything that is needed for the go build, but do not invalidate go
-# build artifact layer unnecessarily often. Note that --exclude only affects the
-# cache.
-COPY    --exclude=./templates/** \
-        --exclude=./deployments/helm/** \
-        --exclude=./hack/kubelet-plugin-prestart.sh \
-        --exclude=./demo/** \
-        --exclude=./Dockerfile \
-        . .
-
+# Copy rather precisely only what is needed for the go build: only invalidate go
+# build artifact layer when required.
+RUN cd /build && ls -ahltr
+COPY --parents cmd api pkg vendor internal ./
+COPY common.mk versions.mk Makefile go.mod go.sum .
+RUN mkdir deployments && mkdir hack
+COPY deployments/devel deployments/devel
+COPY hack/golang-version.sh hack/golang-version.sh
+COPY hack/toolkit-container-image.sh hack/toolkit-container-image.sh
 RUN mkdir /artifacts
 
 # The VERSION and GIT_COMMIT env vars are consumed by the `make` target below.
@@ -137,9 +136,10 @@ COPY --from=build   /artifacts/compute-domain-kubelet-plugin  /usr/bin/compute-d
 COPY --from=build   /artifacts/compute-domain-daemon          /usr/bin/compute-domain-daemon
 COPY --from=build   /artifacts/gpu-kubelet-plugin             /usr/bin/gpu-kubelet-plugin
 COPY --from=build   /artifacts/webhook                        /usr/bin/webhook
-COPY --from=build   /build/scripts/bind_to_driver.sh          /usr/bin/bind_to_driver.sh
-COPY --from=build   /build/scripts/unbind_from_driver.sh      /usr/bin/unbind_from_driver.sh
-COPY /hack/kubelet-plugin-prestart.sh /usr/bin/kubelet-plugin-prestart.sh
+
+COPY /scripts/bind_to_driver.sh                               /usr/bin/bind_to_driver.sh
+COPY /scripts/unbind_from_driver.sh                           /usr/bin/unbind_from_driver.sh
+COPY /hack/kubelet-plugin-prestart.sh                         /usr/bin/kubelet-plugin-prestart.sh
 COPY /templates /templates
 
 # Use root by default (for example, the init container as of now needs
