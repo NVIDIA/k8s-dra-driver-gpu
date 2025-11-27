@@ -28,6 +28,14 @@ import (
 	"k8s.io/utils/ptr"
 )
 
+const (
+	// SharedDeviceAttributePrefix is the prefix used for shared attributes among NVIDIA devices {NIC, GPU}.
+	SharedDeviceAttributePrefix = "resource.nvidia.com/"
+	// DeviceAttributeNumaNodeID is a device attribute name which describe the NUMA node ID of the device.
+	// This attribute can be used to identify devices that share the same NUMA node.
+	SharedDeviceAttributeNumaNodeID resourceapi.QualifiedName = SharedDeviceAttributePrefix + "numaNodeID"
+)
+
 type GpuInfo struct {
 	UUID                  string `json:"uuid"`
 	minor                 int
@@ -43,6 +51,7 @@ type GpuInfo struct {
 	pcieBusID             string
 	pcieRootAttr          *deviceattribute.DeviceAttribute
 	migProfiles           []*MigProfileInfo
+	numaNodeID            *int
 }
 
 type MigDeviceInfo struct {
@@ -56,6 +65,7 @@ type MigDeviceInfo struct {
 	ciInfo        *nvml.ComputeInstanceInfo
 	pcieBusID     string
 	pcieRootAttr  *deviceattribute.DeviceAttribute
+	numaNodeID    *int
 }
 
 type VfioDeviceInfo struct {
@@ -138,6 +148,9 @@ func (d *GpuInfo) GetDevice() resourceapi.Device {
 	if d.pcieRootAttr != nil {
 		device.Attributes[d.pcieRootAttr.Name] = d.pcieRootAttr.Value
 	}
+	if d.numaNodeID != nil {
+		device.Attributes[SharedDeviceAttributeNumaNodeID] = resourceapi.DeviceAttribute{IntValue: ptr.To(int64(*d.numaNodeID))}
+	}
 	return device
 }
 
@@ -199,6 +212,9 @@ func (d *MigDeviceInfo) GetDevice() resourceapi.Device {
 	}
 	if d.pcieRootAttr != nil {
 		device.Attributes[d.pcieRootAttr.Name] = d.pcieRootAttr.Value
+	}
+	if d.numaNodeID != nil {
+		device.Attributes[SharedDeviceAttributeNumaNodeID] = resourceapi.DeviceAttribute{IntValue: ptr.To(int64(*d.numaNodeID))}
 	}
 	return device
 }
