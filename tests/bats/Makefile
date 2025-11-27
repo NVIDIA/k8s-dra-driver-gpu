@@ -55,17 +55,21 @@ endif
 BATS_IMAGE ?= batstests:$(GIT_COMMIT_SHORT)
 BATS_ARGS ?= --print-output-on-failure --no-tempdir-cleanup --timing --abort
 KUBECONFIG ?= $(HOME)/.kube/config
-RUNDIR_PARENT ?= /tmp/k8s-dra-driver-gpu-tests-out-$(USER)
 
-# Add `docker run` arguments when not running
-# in Github Actions / GitLab CI.
+TMPDIR ?= "/tmp"
+# Add `docker run` arguments when not running in Github Actions / GitLab CI. Set
+# TMPDIR to checkout directory (easier for runner setup).
 DOCKER_RUN_FLAGS :=
 ifeq ($(CI),)
   DOCKER_RUN_FLAGS += -it
+else
+  TMPDIR="."
 endif
 
+RUNDIR_PARENT ?= $(TMPDIR)/k8s-dra-driver-gpu-tests-out-$(USER)
+
 DOCKER_ENVS = \
-	--env KUBECONFIG=$(KUBECONFIG) \
+	--env KUBECONFIG=/kubeconfig \
 	--env TEST_CHART_REPO=$(TEST_CHART_REPO) \
 	--env TEST_CHART_VERSION=$(TEST_CHART_VERSION) \
 	--env TEST_CHART_LASTSTABLE_REPO=$(TEST_CHART_LASTSTABLE_REPO) \
@@ -81,18 +85,19 @@ DOCKER_USER := $(DOCKER_UID):$(DOCKER_GID)
 DOCKER_MOUNTS = \
 	-v /tmp:/tmp \
 	-v $(CURDIR):/cwd \
-	-v $(dir $(abspath $(KUBECONFIG))):$(dir $(abspath $(KUBECONFIG)))
+	-v $(KUBECONFIG):/kubeconfig
 
 # Helper to run bats inside container
 # $(1) = whitespace-separated list of test files
 define RUN_BATS
-	@export _RUNDIR_PARENT="$(RUNDIR_PARENT)"; \
-	mkdir -p "$${_RUNDIR_PARENT}"; \
-	export _RUNDIR="$$(mktemp -p "$${_RUNDIR_PARENT}" -d -t bats-tests-$$(date +%s)-XXXXX)"; \
-	echo "Run dir: $${_RUNDIR}"; \
+	@echo "KUBECONFIG: $(KUBECONFIG)" && \
+	echo "TMPDIR: $(TMPDIR)" && \
+	export _RUNDIR=$(RUNDIR_PARENT)/bats-tests-$$(date +%s) && \
+	mkdir -p "$${_RUNDIR}" && \
+	echo "RUNDIR: $${_RUNDIR}" &&  \
 	docker run --rm $(DOCKER_RUN_FLAGS) $(DOCKER_MOUNTS) $(DOCKER_ENVS) \
 	  -u $(DOCKER_USER) --entrypoint /bin/bash $(BATS_IMAGE) \
-	  -c "set -ex; cd /cwd; \
+	  -c "set -ex; cd /cwd; stat $${_RUNDIR}; cat /kubeconfig | head -n2; kubectl get nodes; \
 	      echo 'Running k8s cluster cleanup (invasive)...'; \
 	      bash tests/bats/cleanup-from-previous-run.sh 2>&1 | tee -a $${_RUNDIR}/cleanup.outerr; \
 	      set +x; echo '--- STARTING TEST SUITE ---'; set -x; \

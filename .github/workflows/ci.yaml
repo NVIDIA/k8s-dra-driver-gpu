@@ -11,27 +11,29 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-name: CI Pipeline
+name: "build-and-push-artifacts"
 
 on:
   push:
-    branches:
-      - "pull-request/[0-9]+"
-      - main
-      - release-*
+  pull_request:
+
+# on:
+#   push:
+#     branches:
+#       - "pull-request/[0-9]+"
+#       - main
+#       - release-*
 
 jobs:
-  basic:
-    uses: ./.github/workflows/basic-checks.yaml
-
   image:
     uses: ./.github/workflows/image.yaml
-    needs:
-    - basic
     secrets: inherit
     with:
       version: ${{ needs.basic.outputs.version }}
       golang_version: ${{ needs.basic.outputs.golang_version }}
+
+  basic:
+    uses: ./.github/workflows/basic-checks.yaml
 
   chart:
     # For faster CI signal, do not wait for `image`.

@@ -22,13 +22,13 @@ on:
       golang_version:
         description: "The golang version for this project"
         value: ${{ jobs.variables.outputs.golang_version }}
-  pull_request:
-    types:
-      - opened
-      - synchronize
-    branches:
-      - main
-      - release-*
+  # pull_request:
+  #   types:
+  #     - opened
+  #     - synchronize
+  #   branches:
+  #     - main
+  #     - release-*
 
 jobs:
   variables:
