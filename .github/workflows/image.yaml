@@ -50,13 +50,12 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build image
+      - name: build-push
         env:
           IMAGE_NAME: ghcr.io/nvidia/k8s-dra-driver-gpu
           PUSH_ON_BUILD: true
           BUILD_MULTI_ARCH_IMAGES: "true"
           CACHE_FROM_GHCR: "true"
-          CACHE_TO_GHCR: "true"
         run: |
           make print-VERSION
           # shape: ghcr.io/nvidia/k8s-dra-driver-gpu:v25.12.0-dev-CCCCCCCC
@@ -68,5 +67,17 @@ jobs:
           # the image from GHCR to elsewhere). See
           # https://github.com/NVIDIA/k8s-dra-driver-gpu/issues/688
           # shape: ghcr.io/nvidia/k8s-dra-driver-gpu:CCCCCCCC
+          export IMAGE_TAG="$(echo $GITHUB_SHA | cut -c1-8)"
+          make -f deployments/container/Makefile build
+
+      - name: push-build-layers-to-ghcr
+        env:
+          IMAGE_NAME: ghcr.io/nvidia/k8s-dra-driver-gpu
+          BUILD_MULTI_ARCH_IMAGES: "true"
+          CACHE_FROM_GHCR: "true"
+          CACHE_TO_GHCR: "true"
+        run: |
+          # Perform a noop build (all layers are still cached locally), but this
+          # time push all intermediate layers to GHCR (CACHE_TO_GHCR: true).
           export IMAGE_TAG="$(echo $GITHUB_SHA | cut -c1-8)"
           make -f deployments/container/Makefile build
