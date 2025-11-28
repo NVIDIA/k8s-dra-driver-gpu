@@ -1,7 +1,6 @@
 # syntax=docker.io/docker/dockerfile:1.7-labs
-# The above enables the COPY --exclude flag, see:
-# https://github.com/moby/buildkit/pull/4561
-
+# The above enables the COPY --exclude + --parent flags
+#
 # Copyright (c) 2019-2025, NVIDIA CORPORATION.  All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -35,45 +34,49 @@ ARG BASH_STATIC_GIT_REF=unknown
 ARG BUILDARCH
 ARG TARGETARCH
 
-# Install dependencies for Go build. Do not clear apt cache (does not
-# leak into prod stage).
-RUN apt-get update && \
-    apt-get install -y \
-        wget \
-        make \
-        git \
+# Install dependencies for Go build. Clear apt cache because we cache this build
+# layer on GHCR in CI, and we should make an effort to keep it small.
+RUN apt-get update && apt-get install -y \
+        wget time make \
+        gcc \
         gcc-aarch64-linux-gnu \
-        gcc
-
+        gcc-x86-64-linux-gnu && \
+        rm -rf /var/cache/apt/archives /var/lib/apt/lists/*.
 
 RUN wget -nv -O - https://storage.googleapis.com/golang/go${GOLANG_VERSION}.linux-${BUILDARCH}.tar.gz \
     | tar -C /usr/local -xz
 
 ENV GOPATH=/go
+ENV GOCACHE=/go/build-cache
+ENV GOMODCACHE=/go/pkg/mod
 ENV PATH=$GOPATH/bin:/usr/local/go/bin:$PATH
+
 WORKDIR /build
 
-# Copy everything that is needed for the go build, but do not invalidate go
-# build artifact layer unnecessarily often. Note that --exclude only affects the
-# cache.
-COPY    --exclude=./templates/** \
-        --exclude=./deployments/helm/** \
-        --exclude=./hack/kubelet-plugin-prestart.sh \
-        --exclude=./demo/** \
-        --exclude=./Dockerfile \
-        . .
+# Perform bulk of the build; only invalidate this layer when `vendor`/`pkg`
+# changes. Goal: retain useful Go build cache and mod cache across image builds,
+# as an image layer.
+COPY vendor ./vendor
+COPY go.mod go.sum ./
+COPY --parents pkg api internal ./
+RUN case "$TARGETARCH" in "$BUILDARCH") cc=gcc;; arm64) cc=aarch64-linux-gnu-gcc;; amd64) cc=x86_64-linux-gnu-gcc;; esac && \
+    CC=${cc} CGO_ENABLED=1 GOARCH=${TARGETARCH} time go build -mod=vendor ./...
 
-RUN mkdir /artifacts
+# Copy only what is required for the go build: only invalidate this layer when
+# absolutely required.
+RUN mkdir deployments && mkdir hack && mkdir /artifacts
+COPY common.mk versions.mk Makefile ./
+COPY deployments/devel deployments/devel
+COPY hack/golang-version.sh hack/golang-version.sh
+COPY hack/toolkit-container-image.sh hack/toolkit-container-image.sh
+COPY cmd ./cmd
 
 # The VERSION and GIT_COMMIT env vars are consumed by the `make` target below.
+# Changing input invalidates the cached image layer.
 ARG VERSION="N/A"
 ARG GIT_COMMIT="unknown"
-RUN if [ "$TARGETARCH" = "amd64" ]; then \
-        cc=gcc; \
-    elif [ "$TARGETARCH" = "arm64" ]; then \
-        cc=aarch64-linux-gnu-gcc; \
-    fi && \
-    make CC=${cc} GOARCH=${TARGETARCH} PREFIX=/artifacts cmds
+RUN case "$TARGETARCH" in "$BUILDARCH") cc=gcc;; arm64) cc=aarch64-linux-gnu-gcc;; amd64) cc=x86_64-linux-gnu-gcc;; esac && \
+    time make CC=${cc} GOARCH=${TARGETARCH} PREFIX=/artifacts cmds
 
 # Build static bash binary (against musl). Notes: cross-compilation isn't
 # robust (see non-deterministic segfaults tracked in issues/502; source code
@@ -137,9 +140,10 @@ COPY --from=build   /artifacts/compute-domain-kubelet-plugin  /usr/bin/compute-d
 COPY --from=build   /artifacts/compute-domain-daemon          /usr/bin/compute-domain-daemon
 COPY --from=build   /artifacts/gpu-kubelet-plugin             /usr/bin/gpu-kubelet-plugin
 COPY --from=build   /artifacts/webhook                        /usr/bin/webhook
-COPY --from=build   /build/scripts/bind_to_driver.sh          /usr/bin/bind_to_driver.sh
-COPY --from=build   /build/scripts/unbind_from_driver.sh      /usr/bin/unbind_from_driver.sh
-COPY /hack/kubelet-plugin-prestart.sh /usr/bin/kubelet-plugin-prestart.sh
+
+COPY /scripts/bind_to_driver.sh                               /usr/bin/bind_to_driver.sh
+COPY /scripts/unbind_from_driver.sh                           /usr/bin/unbind_from_driver.sh
+COPY /hack/kubelet-plugin-prestart.sh                         /usr/bin/kubelet-plugin-prestart.sh
 COPY /templates /templates
 
 # Use root by default (for example, the init container as of now needs
