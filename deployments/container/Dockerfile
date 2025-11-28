@@ -53,7 +53,7 @@ ENV PATH=$GOPATH/bin:/usr/local/go/bin:$PATH
 
 WORKDIR /build
 
-# Perform bulk of the build; only invalidate this layer when `vendor`/`pkg`,
+# Perform bulk of the build; only invalidate this layer when `vendor`/`pkg`
 # changes. Goal: retain useful Go build cache and mod cache across image builds,
 # as an image layer.
 COPY vendor ./vendor
@@ -62,8 +62,8 @@ COPY --parents pkg api internal ./
 RUN case "$TARGETARCH" in "$BUILDARCH") cc=gcc;; arm64) cc=aarch64-linux-gnu-gcc;; amd64) cc=x86_64-linux-gnu-gcc;; esac && \
     CC=${cc} CGO_ENABLED=1 GOARCH=${TARGETARCH} time go build -mod=vendor ./...
 
-# Copy only what is required for the vedor build: only invalidate go build
-# artifact layer when absolutely required.
+# Copy only what is required for the go build: only invalidate this layer when
+# absolutely required.
 RUN mkdir deployments && mkdir hack && mkdir /artifacts
 COPY common.mk versions.mk Makefile ./
 COPY deployments/devel deployments/devel
