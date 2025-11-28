@@ -27,7 +27,7 @@ on:
 
 jobs:
   build:
-    runs-on: linux-amd64-cpu16
+    runs-on: linux-arm64-cpu16
     steps:
       - uses: actions/checkout@v6
         name: Check out code
@@ -40,7 +40,7 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
         with:
-          # use pull-through cache for docker hub
+          # Use pull-through cache for Docker Hub.
           buildkitd-config: /etc/buildkit/buildkitd.toml
 
       - name: Login to GitHub Container Registry
