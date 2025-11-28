@@ -48,39 +48,44 @@ RUN wget -nv -O - https://storage.googleapis.com/golang/go${GOLANG_VERSION}.linu
 
 ENV GOPATH=/go
 ENV GOCACHE=/go/build-cache
+ENV GOMODCACHE=/go/pkg/mod
 ENV PATH=$GOPATH/bin:/usr/local/go/bin:$PATH
 
-RUN mkdir deployments && mkdir hack && mkdir /artifacts
-
-# Copy only what is required for the go build: only invalidate go build artifact
-# layer when absolutely required.
 WORKDIR /build
-COPY --parents cmd api pkg vendor internal ./
-COPY common.mk versions.mk Makefile go.mod go.sum ./
+
+# Perform bulk of the build regardless of GIT_COMMIT, and only invalidate this
+# layer when `vendor` changes. Retain Go build cache across image builds. The
+# cache is backed by a dedicated persistent volume (automatically mounted into
+# the container at the target path when the below RUN instruction is executed).
+# Note that `type=cache` directories are also included when exporting/importing
+# the layer cache using `--cache-to/from`. Without this cache, on my machine,
+# the builds takes 1-2 minutes for a trivial code changes; with the cache the
+# same change compiles in less than 10 seconds. Generally, it makes sense to
+# take advantage here of both, an image layer cache and the GO caches because
+# Copy only what is required for the go vendor build (rarely invalidate layer).
+COPY vendor ./vendor
+COPY go.mod go.sum ./
+RUN --mount=type=cache,target=${GOCACHE},id=gocache \
+    --mount=type=cache,target=${GOMODCACHE},id=gomodcache \
+    case "$TARGETARCH" in "$BUILDARCH") cc=gcc;; arm64) cc=aarch64-linux-gnu-gcc;; amd64) cc=x86_64-linux-gnu-gcc;; esac && \
+    CC=${cc} CGO_ENABLED=1 GOARCH=${TARGETARCH} time go build -mod=vendor ./...
+
+# Copy only what is required for the vedor build: only invalidate go build
+# artifact layer when absolutely required.
+RUN mkdir deployments && mkdir hack && mkdir /artifacts
+COPY common.mk versions.mk Makefile ./
 COPY deployments/devel deployments/devel
 COPY hack/golang-version.sh hack/golang-version.sh
 COPY hack/toolkit-container-image.sh hack/toolkit-container-image.sh
+COPY --parents cmd api pkg internal ./
 
 # The VERSION and GIT_COMMIT env vars are consumed by the `make` target below.
 # Changing input invalidates the cached image layer.
 ARG VERSION="N/A"
 ARG GIT_COMMIT="unknown"
-
-# Retain Go build cache across image builds. The cache is backed by a dedicated
-# persistent volume (automatically mounted into the container at the target path
-# when the below RUN instruction is executed). Note that `type=cache`
-# directories are also included when exporting/importing the layer cache using
-# `--cache-to/from`. Without this cache, on my machine, the builds takes 1-2
-# minutes for a trivial code changes; with the cache the same change compiles in
-# less than 10 seconds.
-RUN --mount=type=cache,target=${GOCACHE} \
-    if [ "$BUILDARCH" = "$TARGETARCH" ]; then \
-        cc=gcc; \
-    elif [ "$TARGETARCH" = "arm64" ]; then \
-        cc=aarch64-linux-gnu-gcc; \
-    elif [ "$TARGETARCH" = "amd64" ]; then \
-        cc=x86_64-linux-gnu-gcc; \
-    fi && \
+RUN --mount=type=cache,target=${GOCACHE},id=gocache \
+    --mount=type=cache,target=${GOMODCACHE},id=gomodcache \
+    case "$TARGETARCH" in "$BUILDARCH") cc=gcc;; arm64) cc=aarch64-linux-gnu-gcc;; amd64) cc=x86_64-linux-gnu-gcc;; esac && \
     time make CC=${cc} GOARCH=${TARGETARCH} PREFIX=/artifacts cmds
 
 # Build static bash binary (against musl). Notes: cross-compilation isn't
