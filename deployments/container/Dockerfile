@@ -58,16 +58,15 @@ WORKDIR /build
 # cache is backed by a dedicated persistent volume (automatically mounted into
 # the container at the target path when the below RUN instruction is executed).
 # Note that `type=cache` directories are also included when exporting/importing
-# the layer cache using `--cache-to/from`. Without this cache, on my machine,
-# the builds takes 1-2 minutes for a trivial code changes; with the cache the
-# same change compiles in less than 10 seconds. Generally, it makes sense to
-# take advantage here of both, an image layer cache and the GO caches because
-# Copy only what is required for the go vendor build (rarely invalidate layer).
+# the layer cache using `--cache-to/from` (EDIT: NOPE, not true). Without this
+# cache, on my machine, the builds takes 1-2 minutes for a trivial code changes;
+# with the cache the same change compiles in less than 10 seconds. Generally, it
+# makes sense to take advantage here of both, an image layer cache and the GO
+# caches because Copy only what is required for the go vendor build (rarely
+# invalidate layer).
 COPY vendor ./vendor
 COPY go.mod go.sum ./
-RUN --mount=type=cache,target=${GOCACHE},id=gocache \
-    --mount=type=cache,target=${GOMODCACHE},id=gomodcache \
-    case "$TARGETARCH" in "$BUILDARCH") cc=gcc;; arm64) cc=aarch64-linux-gnu-gcc;; amd64) cc=x86_64-linux-gnu-gcc;; esac && \
+RUN case "$TARGETARCH" in "$BUILDARCH") cc=gcc;; arm64) cc=aarch64-linux-gnu-gcc;; amd64) cc=x86_64-linux-gnu-gcc;; esac && \
     CC=${cc} CGO_ENABLED=1 GOARCH=${TARGETARCH} time go build -mod=vendor ./...
 
 # Copy only what is required for the vedor build: only invalidate go build
@@ -83,9 +82,7 @@ COPY --parents cmd api pkg internal ./
 # Changing input invalidates the cached image layer.
 ARG VERSION="N/A"
 ARG GIT_COMMIT="unknown"
-RUN --mount=type=cache,target=${GOCACHE},id=gocache \
-    --mount=type=cache,target=${GOMODCACHE},id=gomodcache \
-    case "$TARGETARCH" in "$BUILDARCH") cc=gcc;; arm64) cc=aarch64-linux-gnu-gcc;; amd64) cc=x86_64-linux-gnu-gcc;; esac && \
+RUN case "$TARGETARCH" in "$BUILDARCH") cc=gcc;; arm64) cc=aarch64-linux-gnu-gcc;; amd64) cc=x86_64-linux-gnu-gcc;; esac && \
     time make CC=${cc} GOARCH=${TARGETARCH} PREFIX=/artifacts cmds
 
 # Build static bash binary (against musl). Notes: cross-compilation isn't
