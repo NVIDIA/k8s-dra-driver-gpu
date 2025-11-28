@@ -37,40 +37,50 @@ ARG TARGETARCH
 
 # Install dependencies for Go build. Do not clear apt cache (does not
 # leak into prod stage).
-RUN apt-get update && \
-    apt-get install -y \
-        wget \
-        make \
-        git \
-        gcc-aarch64-linux-gnu \
-        gcc
+RUN apt-get update
+RUN apt-get install -y \
+        wget time make \
+        gcc \
+        gcc-aarch64-linux-gnu
 
 RUN wget -nv -O - https://storage.googleapis.com/golang/go${GOLANG_VERSION}.linux-${BUILDARCH}.tar.gz \
     | tar -C /usr/local -xz
 
 ENV GOPATH=/go
+ENV GOCACHE=/go/build-cache
 ENV PATH=$GOPATH/bin:/usr/local/go/bin:$PATH
-WORKDIR /build
 
-# Copy rather precisely only what is needed for the go build: only invalidate go
-# build artifact layer when required.
-COPY --parents cmd api pkg vendor internal ./
-COPY common.mk versions.mk Makefile go.mod go.sum .
 RUN mkdir deployments && mkdir hack
+RUN mkdir /artifacts
+
+# Copy precisely only what is needed for the go build: only invalidate go
+# build artifact layer when required.
+WORKDIR /build
+COPY --parents cmd api pkg vendor internal ./
+COPY common.mk versions.mk Makefile go.mod go.sum ./
 COPY deployments/devel deployments/devel
 COPY hack/golang-version.sh hack/golang-version.sh
 COPY hack/toolkit-container-image.sh hack/toolkit-container-image.sh
-RUN mkdir /artifacts
 
 # The VERSION and GIT_COMMIT env vars are consumed by the `make` target below.
+# Changing input invalidates the cached image layer.
 ARG VERSION="N/A"
 ARG GIT_COMMIT="unknown"
-RUN if [ "$TARGETARCH" = "amd64" ]; then \
+
+# Use Go build cache across container image builds. Maintained by docker/buildx
+# by using a persistent volume dedicated for this cache (automatically mounted
+# into the container at the specified target path whenever that RUN instruction
+# is executed). Note that `--mount=type=cache` directories are also included
+# when exporting/importing the layer cache cache using `--cache-to/from`.
+# Without this cache, on my machine, the builds takes 1-2 minutes for trivial
+# code changes. With the cache, the build takes less than 10 seconds.
+RUN --mount=type=cache,target=${GOCACHE} \
+    if [ "$TARGETARCH" = "amd64" ]; then \
         cc=gcc; \
     elif [ "$TARGETARCH" = "arm64" ]; then \
         cc=aarch64-linux-gnu-gcc; \
     fi && \
-    make CC=${cc} GOARCH=${TARGETARCH} PREFIX=/artifacts cmds
+    time make CC=${cc} GOARCH=${TARGETARCH} PREFIX=/artifacts cmds
 
 # Build static bash binary (against musl). Notes: cross-compilation isn't
 # robust (see non-deterministic segfaults tracked in issues/502; source code

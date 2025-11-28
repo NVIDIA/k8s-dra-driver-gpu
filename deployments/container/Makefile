@@ -15,7 +15,6 @@
 BUILD_MULTI_ARCH_IMAGES ?= no
 DOCKER ?= docker
 REGCTL ?= regctl
-BUILDX =
 PUSH_ON_BUILD ?= false
 ATTACH_ATTESTATIONS ?= false
 
@@ -63,7 +62,7 @@ endif
 # Build the container image
 build:
 	DOCKER_BUILDKIT=1 \
-		$(DOCKER) $(BUILDX) build --pull \
+		$(DOCKER) buildx build --pull \
 		$(DOCKER_BUILD_OPTIONS) \
 		$(DOCKER_BUILD_PLATFORM_OPTIONS) \
 		$(DOCKER_BUILD_CACHE_OPTIONS) \
