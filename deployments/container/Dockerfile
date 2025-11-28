@@ -53,19 +53,12 @@ ENV PATH=$GOPATH/bin:/usr/local/go/bin:$PATH
 
 WORKDIR /build
 
-# Perform bulk of the build regardless of GIT_COMMIT, and only invalidate this
-# layer when `vendor` changes. Retain Go build cache across image builds. The
-# cache is backed by a dedicated persistent volume (automatically mounted into
-# the container at the target path when the below RUN instruction is executed).
-# Note that `type=cache` directories are also included when exporting/importing
-# the layer cache using `--cache-to/from` (EDIT: NOPE, not true). Without this
-# cache, on my machine, the builds takes 1-2 minutes for a trivial code changes;
-# with the cache the same change compiles in less than 10 seconds. Generally, it
-# makes sense to take advantage here of both, an image layer cache and the GO
-# caches because Copy only what is required for the go vendor build (rarely
-# invalidate layer).
+# Perform bulk of the build; only invalidate this layer when `vendor`/`pkg`,
+# changes. Goal: retain useful Go build cache and mod cache across image builds,
+# as an image layer.
 COPY vendor ./vendor
 COPY go.mod go.sum ./
+COPY --parents pkg api internal ./
 RUN case "$TARGETARCH" in "$BUILDARCH") cc=gcc;; arm64) cc=aarch64-linux-gnu-gcc;; amd64) cc=x86_64-linux-gnu-gcc;; esac && \
     CC=${cc} CGO_ENABLED=1 GOARCH=${TARGETARCH} time go build -mod=vendor ./...
 
@@ -76,7 +69,7 @@ COPY common.mk versions.mk Makefile ./
 COPY deployments/devel deployments/devel
 COPY hack/golang-version.sh hack/golang-version.sh
 COPY hack/toolkit-container-image.sh hack/toolkit-container-image.sh
-COPY --parents cmd api pkg internal ./
+COPY cmd ./cmd
 
 # The VERSION and GIT_COMMIT env vars are consumed by the `make` target below.
 # Changing input invalidates the cached image layer.
