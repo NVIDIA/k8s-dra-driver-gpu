@@ -54,10 +54,18 @@ endif
 
 DOCKERFILE = $(CURDIR)/deployments/container/Dockerfile
 
-ifeq ($(GITHUB_ACTIONS), true)
-  DOCKER_BUILD_CACHE_OPTIONS = 	--cache-to type=registry,ref=ghcr.io/nvidia/k8s-dra-driver-gpu:buildcache,mode=max \
-		--cache-from type=registry,ref=ghcr.io/nvidia/k8s-dra-driver-gpu:buildcache
+DOCKER_BUILD_CACHE_OPTIONS :=
+
+ifeq ($(CACHE_TO_GHCR), true)
+  DOCKER_BUILD_CACHE_OPTIONS +=	\
+	--cache-to type=registry,ref=ghcr.io/nvidia/k8s-dra-driver-gpu:buildcache,mode=max
 endif
+
+ifeq ($(CACHE_FROM_GHCR), true)
+  DOCKER_BUILD_CACHE_OPTIONS +=	\
+	--cache-from type=registry,ref=ghcr.io/nvidia/k8s-dra-driver-gpu:buildcache
+endif
+
 
 # Build the container image
 build:
