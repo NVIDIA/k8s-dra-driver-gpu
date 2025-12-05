@@ -128,11 +128,11 @@ func (l deviceLib) enumerateGpusAndMigDevices(config *Config) (AllocatableDevice
 			return fmt.Errorf("error getting info for GPU %d: %w", i, err)
 		}
 
-		deviceInfo := &AllocatableDevice{
+		parentdev := &AllocatableDevice{
 			Gpu: gpuInfo,
 		}
-		devices[gpuInfo.CanonicalName()] = deviceInfo
 
+<<<<<<< HEAD
 		migs, err := l.getMigDevices(gpuInfo)
 		if err != nil {
 			return fmt.Errorf("error getting MIG devices for GPU %d: %w", i, err)
@@ -143,6 +143,31 @@ func (l deviceLib) enumerateGpusAndMigDevices(config *Config) (AllocatableDevice
 				Mig: migDeviceInfo,
 			}
 			devices[migDeviceInfo.CanonicalName()] = deviceInfo
+=======
+		migdevs, err := l.discoverMigDevicesByGPU(gpuInfo)
+		if err != nil {
+			return fmt.Errorf("error discovering MIG devices for GPU %q: %w", gpuInfo.CanonicalName(), err)
+		}
+		if featuregates.Enabled(featuregates.PassthroughSupport) {
+			// If no MIG devices are found, allow VFIO devices.
+			gpuInfo.vfioEnabled = len(migdevs) == 0
+		}
+
+		if !gpuInfo.migEnabled {
+			klog.Infof("Adding device %s to allocatable devices", gpuInfo.CanonicalName())
+			devices[gpuInfo.CanonicalName()] = parentdev
+			return nil
+		}
+
+		// Likely unintentionally stranded capacity (misconfiguration).
+		if len(migdevs) == 0 {
+			klog.Warningf("Physical GPU %s has MIG mode enabled but no configured MIG devices", gpuInfo.CanonicalName())
+		}
+
+		for _, mdev := range migdevs {
+			klog.Infof("Adding MIG device %s to allocatable devices (parent: %s)", mdev.CanonicalName(), gpuInfo.CanonicalName())
+			devices[mdev.CanonicalName()] = mdev
+>>>>>>> b449d0b7 (gpu plugin: skip announcing parent GPU if MIG-enabled)
 		}
 
 		return nil
