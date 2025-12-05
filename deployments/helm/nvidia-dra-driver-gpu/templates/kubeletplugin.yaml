@@ -108,12 +108,20 @@ spec:
           actually running.
         */}}
         {{- if (gt (int .Values.kubeletPlugin.containers.computeDomains.healthcheckPort) 0) }}
+        startupProbe:
+          grpc:
+            port: {{ .Values.kubeletPlugin.containers.computeDomains.healthcheckPort }}
+            service: liveness
+          failureThreshold: 60
+          periodSeconds: 10
+          timeoutSeconds: 10
         livenessProbe:
           grpc:
             port: {{ .Values.kubeletPlugin.containers.computeDomains.healthcheckPort }}
             service: liveness
           failureThreshold: 3
           periodSeconds: 10
+          timeoutSeconds: 10
         {{- end }}
         env:
         # LOG_VERBOSITY is the source of truth for this program's klog
@@ -199,12 +207,20 @@ spec:
           actually running.
         */}}
         {{- if (gt (int .Values.kubeletPlugin.containers.gpus.healthcheckPort) 0) }}
+        startupProbe:
+          grpc:
+            port: {{ .Values.kubeletPlugin.containers.gpus.healthcheckPort }}
+            service: liveness
+          failureThreshold: 60
+          periodSeconds: 10
+          timeoutSeconds: 10
         livenessProbe:
           grpc:
             port: {{ .Values.kubeletPlugin.containers.gpus.healthcheckPort }}
             service: liveness
           failureThreshold: 3
           periodSeconds: 10
+          timeoutSeconds: 10
         {{- end }}
         env:
         # LOG_VERBOSITY is the source of truth for this program's klog
