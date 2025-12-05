@@ -83,7 +83,7 @@ Now you can install the DRA driver's Helm chart into the Kubernetes cluster:
 Submit workload:
 
 ```console
-kubectl apply -f ./demo/specs/quickstart/gpu-test2.yaml
+kubectl apply -f ./demo/specs/quickstart/v1/gpu-test2.yaml
 ```
 
 If you're curious, have a look at [the `ResourceClaimTemplate`](https://github.com/jgehrcke/k8s-dra-driver-gpu/blob/526130fbaa3c8f5b1f6dcfd9ef01c9bdd5c229fe/demo/specs/quickstart/gpu-test2.yaml#L12) definition in this spec, and how the corresponding _single_ `ResourceClaim` is [being referenced](https://github.com/jgehrcke/k8s-dra-driver-gpu/blob/526130fbaa3c8f5b1f6dcfd9ef01c9bdd5c229fe/demo/specs/quickstart/gpu-test2.yaml#L46) by both containers.
