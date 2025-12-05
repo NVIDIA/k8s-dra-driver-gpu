@@ -28,8 +28,6 @@ bats::on_failure() {
 @test "static MIG: mutual exclusivity with physical GPU" {
   mig_ensure_teardown_on_all_nodes
 
-  skip "expected to fail as of issue 719"
-
   # (Re)install, also to refresh ResourceSlice objects.
   local _iargs=("--set" "logVerbosity=6")
   iupgrade_wait "${TEST_CHART_REPO}" "${TEST_CHART_VERSION}" _iargs
@@ -85,13 +83,17 @@ bats::on_failure() {
   local dev_count_after=$(kubectl get  resourceslices.resource.k8s.io -o yaml "$rsname" | yq '.spec.devices | length')
   echo "devices announced (after): ${dev_count_after}"
 
-  # This detects
+  # The following check detects the bug described in
   # https://github.com/NVIDIA/k8s-dra-driver-gpu/issues/719
   if [ $dev_count_before != $dev_count_after ]; then
     echo "the number of announced devices must stay the same"
     return 1
   fi
 
+  # Success: with one MIG device being announced and the overall number of
+  # devices being the same as before we now understand that one parent GPU is
+  # _not_ announced anymore (we can enhance precision by comparing UUID sets, if
+  # ever necessary).
   mig_ensure_teardown_on_all_nodes
 }
 
