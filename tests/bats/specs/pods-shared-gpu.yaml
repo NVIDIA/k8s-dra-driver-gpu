@@ -1,0 +1,23 @@
+# Pod referencing the shared resource claim from rc-shared-gpu.yaml
+# Test will create multiple pods using the spec below and updated INDEX.
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: stress-pod-__INDEX__
+  labels:
+    env: batssuite
+    test: stress-shared
+spec:
+  restartPolicy: Never
+  containers:
+  - name: ctr
+    image: ubuntu:24.04
+    command: ["bash","-lc"]
+    args: ["nvidia-smi -L; trap 'exit 0' TERM; sleep 9999 & wait"]
+    resources:
+      claims:
+      - name: gpu
+  resourceClaims:
+  - name: gpu
+    resourceClaimName: rc-shared-gpu

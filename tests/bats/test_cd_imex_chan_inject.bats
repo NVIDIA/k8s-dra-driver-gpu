@@ -21,6 +21,7 @@ setup () {
 }
 
 
+# bats test_tags=fastfeedback
 @test "IMEX channel injection (all)" {
   log_objects
   # Example: with TEST_CHART_VERSION="v25.3.2-12390-chart"

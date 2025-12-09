@@ -1,0 +1,136 @@
+#!/usr/bin/env bash
+
+# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+
+# nvmm: run command in nvidia-mig-manager pod(s).
+#
+# The <node-hint> shown below can be the special string "all" or
+# a substring resolving to a specific node.
+#
+# Examples:
+#
+#   nvmm all nvidia-smi -L
+#   nvmm compute08 sh -c 'nvidia-smi mig -dci && nvidia-smi mig -dgi'
+#   nvmm 08 nvidia-smi -i 0 -mig 0
+#
+
+
+set -o errexit
+
+if [ -z "$1" ]; then
+	echo "Usage: nvmm <node-hint> [command...]"
+	exit 1
+fi
+
+set -o nounset
+
+WORKDIR_PATH="${TMPDIR:-/tmp}/migutils-${USER:-defaultuser}"
+mkdir -p "${WORKDIR_PATH}"
+cd "${WORKDIR_PATH}"
+
+NODES_FILE_NAME="nodesnames"
+NODES_WIDE_FILE_NAME="nodes_wide"
+
+
+# Across `nvmm` invocations, memorize the list of nodes for a brief period of
+# time.
+maybe_refresh_node_cache() {
+	local cachefn
+	cachefn="${NODES_FILE_NAME}"
+	if [ ! -f "$cachefn" ] || ! find "$cachefn" -type f -newermt '-120 seconds' -printf . -quit | grep -q .; then
+		# echo "refreshing nodes" >&2
+		kubectl get nodes -o jsonpath='{.items[*].metadata.name}' > "$NODES_FILE_NAME"
+		kubectl get nodes -o wide > "$NODES_WIDE_FILE_NAME"
+	else
+		# echo "nodes cache fresh" >&2
+		echo -n ""
+	fi
+}
+
+
+# Get mig-manager pod name running on a specific node.
+mm_pod_for_nname() {
+	local nodename
+	local cachefn
+	nodename="$1"
+	cachefn="_mmpod_for_${nodename}"
+
+	if [ ! -f "$cachefn" ] || ! find "$cachefn" -type f -newermt '-120 seconds' -printf . -quit | grep -q .; then
+		# echo "refreshing mmpod for $nodename" >&2
+		kubectl get pod -n gpu-operator -l app=nvidia-mig-manager \
+			--field-selector spec.nodeName="$nodename" \
+			--no-headers -o custom-columns=":metadata.name" > "$cachefn"
+		if [ -z "$(cat $cachefn)" ]; then
+			echo "get pod -n gpu-operator -l app=nvidia-mig-manager: no pod found on node $nodename"
+			exit 1
+		fi
+	else
+		# echo "mm_pod_for_nname fresh for $nodename" >&2
+		echo -n ""
+	fi
+
+	cat "$cachefn"
+}
+
+
+run_on_node() {
+	local nodename
+	nodename=$1
+	shift
+	pod=$(mm_pod_for_nname "$nodename")
+	# echo "Executing on pod $pod ..." >&2
+	kubectl -n gpu-operator exec "$pod" -c nvidia-mig-manager -- "$@"
+}
+
+
+nodehint="$1"
+shift  # Remove first argument, leaving remaining args in $@
+maybe_refresh_node_cache
+
+
+if [[ "$nodehint" != "all" ]]; then
+	# Allow for selecting node based on any column in the wide output. It's up
+	# to the user to refine the selection enough to make sure this matches only
+	# one line.
+	nn=$(cat "${NODES_WIDE_FILE_NAME}" | grep "$nodehint" | awk '{print $1}')
+	echo "using node name: $nn"
+	run_on_node "$nn" "$@"
+	exit 0
+fi
+
+# Run command on all nodes. Collect per-node-output, in parallel, into files.
+# When done, emit output(s) on stdout.
+rnd=$(tr -dc a-z0-9 < /dev/urandom | head -c 7)
+outdir="${WORKDIR_PATH}/output_${rnd}"
+mkdir -p "$outdir"
+trap 'rm -rf -- "$outdir"' EXIT
+
+# echo "run on all nodes in parallel ... " >&2
+for nn in $(cat "${NODES_FILE_NAME}"); do
+	outfile="$(mktemp -p "${outdir}" "output-$nn.XXXXXX")" || { printf 'mktemp failed\n' >&2; exit 1; }
+	echo "-- ${nn:11}" > "$outfile"
+	# echo "" > "$outfile"
+	# run in background, collect all output to file
+	run_on_node "$nn" "$@" >> "$outfile" 2>&1 &
+done
+wait
+
+find "$outdir" -maxdepth 1 -type f -print0 | sort -z | \
+while IFS= read -r -d '' f; do
+	cat "$f"
+done
+

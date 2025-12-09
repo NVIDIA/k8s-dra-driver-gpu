@@ -85,7 +85,7 @@ $ make bats
 That's CI-oriented.
 
 
-## Development
+## Resources for development
 
 Bats is a workable solution.
 Developing new tests might however probe your patience.
@@ -95,6 +95,11 @@ Make wise usage of
 * [skipping tests](https://bats-core.readthedocs.io/en/stable/writing-tests.html#skip-easily-skip-tests)
 * [tagging tests with `bats:focus`](https://bats-core.readthedocs.io/en/stable/writing-tests.html#special-tags)
 * [CLI args](https://bats-core.readthedocs.io/en/stable/usage.html) such as `--verbose-run`, `--show-output-of-passing-tests`.
+
+Other references:
+* https://github.com/bats-core/bats-assert
+* https://github.com/bats-core/bats-file
+
 
 Misc notes:
 

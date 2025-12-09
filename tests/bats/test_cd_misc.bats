@@ -36,6 +36,7 @@ bats::on_failure() {
 }
 
 
+# bats test_tags=fastfeedback
 @test "CD daemon shutdown: confirm CD status cleanup" {
   kubectl apply -f demo/specs/imex/channel-injection.yaml
   kubectl wait --for=condition=READY pods imex-channel-injection --timeout=100s
@@ -77,6 +78,8 @@ bats::on_failure() {
   kubectl delete computedomain imex-channel-injection
 }
 
+
+# bats test_tags=fastfeedback
 @test "reject unknown field in opaque cfg in CD chan ResourceClaim" {
   iupgrade_wait "${TEST_CHART_REPO}" "${TEST_CHART_VERSION}" NOARGS
 

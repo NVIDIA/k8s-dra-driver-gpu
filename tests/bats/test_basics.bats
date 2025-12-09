@@ -6,13 +6,24 @@ setup() {
   _common_setup
 }
 
+bats::on_failure() {
+  echo -e "\n\nFAILURE HOOK START"
+  kubectl get pods -A | grep dra
+  echo -e "FAILURE HOOK END\n\n"
+}
 
+# bats file_tags=fastfeedback
 @test "confirm no kubelet plugin pods running" {
   run kubectl get pods -A -l nvidia-dra-driver-gpu-component=kubelet-plugin
   [ "$status" -eq 0 ]
   refute_output --partial 'Running'
 }
 
+# Make it explicit when major dependency is missing
+@test "GPU Operator installed" {
+  run helm list -A
+  assert_output --partial 'gpu-operator'
+}
 
 @test "helm-install ${TEST_CHART_REPO}/${TEST_CHART_VERSION}" {
   iupgrade_wait "${TEST_CHART_REPO}" "${TEST_CHART_VERSION}" NOARGS

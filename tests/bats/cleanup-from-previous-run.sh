@@ -34,7 +34,7 @@ set -x
 
 # If a previous run leaves e.g. the controller behind in CrashLoopBackOff then
 # the next installation with --wait won't succeed.
-timeout -v 5 helm uninstall nvidia-dra-driver-gpu-batssuite -n nvidia-dra-driver-gpu
+timeout -v 15 helm uninstall nvidia-dra-driver-gpu-batssuite -n nvidia-dra-driver-gpu
 
 # When the CRD has been left behind deleted by a partially performed
 # test then the deletions below cannot succeed. Apply a CRD version that
@@ -58,18 +58,27 @@ timeout -v 5 kubectl delete computedomain nickelpie-test-compute-domain 2> /dev/
 timeout -v 5 kubectl delete -f demo/specs/imex/nvbandwidth-test-job-1.yaml 2> /dev/null
 timeout -v 5 kubectl delete -f demo/specs/imex/nvbandwidth-test-job-2.yaml 2> /dev/null
 timeout -v 5 kubectl delete -f tests/bats/specs/nvb2.yaml 2> /dev/null
-timeout -v 5 kubectl delete pods -l env=batssuite 2> /dev/null
 timeout -v 2 kubectl delete resourceclaim batssuite-rc-bad-opaque-config --force 2> /dev/null
+timeout -v 2 kubectl delete -f demo/specs/imex/simple-mig-test 2> /dev/null
+timeout -v 10 kubectl delete pods -l 'env=batssuite' 2> /dev/null
 
-# TODO: maybe more brute-forcing/best-effort: it might make sense to submit all
-# workload in this test suite into a special namespace (not `default`), and to
-# then use `kubectl delete pods -n <testnamespace]> --all`.
+# Cleanup any GPU stress test pods left behind
+timeout -v 30 kubectl delete pods -l 'env=batssuite,test=stress-shared' 2> /dev/null
+timeout -v 5 kubectl delete -f tests/bats/specs/rc-shared-gpu.yaml 2> /dev/null
+kubectl wait --for=delete pods -l 'env=batssuite,test=stress-shared' \
+    --timeout=60s \
+    || echo "wait-for-delete failed"
+
+# TODO: make more use of that (currently used for cleanup pods).
+timeout -v 5 kubectl delete --all pods --namespace=batssuite 2> /dev/null
 
 # Delete any previous remainder of `clean-state-dirs-all-nodes.sh` invocation.
 kubectl delete pods privpod-rm-plugindirs 2> /dev/null
 
-timeout -v 5 helm uninstall nvidia-dra-driver-gpu-batssuite -n nvidia-dra-driver-gpu
+# Make sure to wait till the chart is completely removed
+helm uninstall nvidia-dra-driver-gpu-batssuite --wait -n nvidia-dra-driver-gpu
 
+# Double check that the pods are deleted
 kubectl wait \
     --for=delete pods -A \
     -l app.kubernetes.io/name=nvidia-dra-driver-gpu \
@@ -86,4 +95,6 @@ timeout -v 10 kubectl delete crds computedomains.resource.nvidia.com || echo "CR
 # cleanup, fail hard if this does not succeed).
 set -e
 bash tests/bats/clean-state-dirs-all-nodes.sh
+
 set +x
+echo "cleanup: done"

@@ -1,0 +1,14 @@
+# Shared GPU resource claim
+apiVersion: resource.k8s.io/v1
+kind: ResourceClaim
+metadata:
+  name: rc-shared-gpu
+  labels:
+    env: batssuite
+    test: stress-shared
+spec:
+  devices:
+    requests:
+    - name: gpu
+      exactly:
+        deviceClassName: gpu.nvidia.com

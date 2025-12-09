@@ -14,6 +14,7 @@ setup () {
 }
 
 
+# bats test_tags=fastfeedback
 @test "CD controller/plugin: startup config / detail in logs on level 0" {
   local _iargs=("--set" "logVerbosity=0")
   iupgrade_wait "${TEST_CHART_REPO}" "${TEST_CHART_VERSION}" _iargs
@@ -29,6 +30,7 @@ setup () {
   assert_output --partial "identified fabric clique"
   assert_output --partial "driver version validation"
 }
+
 
 @test "CD controller: test log verbosity levels" {
   iupgrade_wait "${TEST_CHART_REPO}" "${TEST_CHART_VERSION}" NOARGS
