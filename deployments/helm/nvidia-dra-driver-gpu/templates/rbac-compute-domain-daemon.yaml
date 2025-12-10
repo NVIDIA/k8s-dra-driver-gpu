@@ -1,3 +1,4 @@
+{{- $namespaces := splitList "," (include "nvidia-dra-driver-gpu.namespaces" .) -}}
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
@@ -11,24 +12,43 @@ rules:
   resources: ["pods"]
   verbs: ["get", "list", "watch"]
 
-{{- range $namespace := splitList "," (include "nvidia-dra-driver-gpu.namespaces" .) }}
+{{- range $namespace := $namespaces }}
 ---
 apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: compute-domain-daemon-service-account
   namespace: {{ $namespace }}
+{{- end }}
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: compute-domain-daemon-role-binding-{{ $namespace }}
+  name: compute-domain-daemon-role-binding
 subjects:
+{{- range $namespace := $namespaces }}
 - kind: ServiceAccount
   name: compute-domain-daemon-service-account
   namespace: {{ $namespace }}
+{{- end }}
 roleRef:
   kind: ClusterRole
   name: compute-domain-daemon-role
   apiGroup: rbac.authorization.k8s.io
-{{- end }} 
+{{- if .Capabilities.APIVersions.Has "security.openshift.io/v1/SecurityContextConstraints" }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: compute-domain-daemon-openshift-anyuid-role-binding
+subjects:
+{{- range $namespace := $namespaces }}
+- kind: ServiceAccount
+  name: compute-domain-daemon-service-account
+  namespace: {{ $namespace }}
+{{- end }}
+roleRef:
+  kind: ClusterRole
+  name: system:openshift:scc:anyuid
+  apiGroup: rbac.authorization.k8s.io
+{{- end }}
