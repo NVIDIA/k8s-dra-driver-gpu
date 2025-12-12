@@ -1,4 +1,6 @@
 #### Apply the half-balanced mig-parted config
+
+To enable MIG mode on your GPUs, you can use [nvidia-mig-parted](https://github.com/NVIDIA/mig-parted).
 ```console
 sudo -E nvidia-mig-parted apply -f mig-parted-config.yaml -c half-balanced
 ```
@@ -11,6 +13,21 @@ nvidia-smi -L
 #### Show current state of the cluster
 ```console
 kubectl get pod -A
+```
+
+#### Choose the appropriate API version directory
+The example manifests are provided in two directories:
+
+- `v1` — for clusters that support **resource.k8s.io/v1**
+- `v1beta1` — for clusters that support **resource.k8s.io/v1beta1**
+
+Choose the directory that matches your cluster’s supported DRA API version:
+```console
+# for resource.k8s.io/v1
+cd v1
+
+# for resource.k8s.io/v1beta1
+cd v1beta1
 ```
 
 #### Deploy the 4 example apps discussed in the slides
