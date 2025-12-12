@@ -7,6 +7,8 @@ Enables
 
 For Kubernetes 1.32 or newer, with Dynamic Resource Allocation (DRA) [enabled](https://kubernetes.io/docs/concepts/scheduling-eviction/dynamic-resource-allocation/#enabling-dynamic-resource-allocation).
 
+**Note:** For Red Hat OpenShift deployment instructions, refer to [running the NVIDIA DRA driver on OpenShift](demo/clusters/openshift/README.md).
+
 ## Overview
 
 DRA is a novel concept in Kubernetes for flexibly requesting, configuring, and sharing specialized devices like GPUs.
