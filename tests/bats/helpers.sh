@@ -87,6 +87,7 @@ iupgrade_wait() {
   # consuming tests.
   kubectl wait --for=condition=READY pods -A -l nvidia-dra-driver-gpu-component=controller --timeout=10s
   # maybe: check version on labels (to confirm that we set labels correctly)
+  log "iupgrade_wait: done"
 }
 
 
@@ -125,6 +126,7 @@ wait_for_pod_event() {
   done
 }
 
+
 get_all_cd_daemon_logs_for_cd_name() {
   CD_NAME="$1"
   CD_UID=$(kubectl describe computedomains.resource.nvidia.com "${CD_NAME}" | grep UID | awk '{print $2}')
@@ -137,6 +139,7 @@ get_all_cd_daemon_logs_for_cd_name() {
     --prefix \
     --all-containers
 }
+
 
 show_kubelet_plugin_error_logs() {
   echo -e "\nKUBELET PLUGIN ERROR LOGS START"
@@ -165,7 +168,6 @@ get_current_controller_pod_name() {
       | grep -iv 'terminating' \
       | awk '{print $1}'
 }
-
 
 
 get_one_kubelet_plugin_pod_name() {
@@ -199,13 +201,25 @@ mig_confirm_disabled_on_all_nodes() {
 }
 
 
+# Enable MIG mode on the selected node on GPU 0, and create a MIG device. Pick
+# the first listed 1g profile (available on all MIG-capable GPUs).
+mig_create_1g0_on_node() {
+  local nodename="$1"
+  local mprofile=$(nvmm "$nodename" nvidia-smi mig -lgip -i 0 | grep -m 1 -oE '1g\.[1-9]+gb')
+  echo "selected MIG profile: $mprofile"
+  nvmm "$nodename" nvidia-smi -i 0 -mig 1
+  nvmm "$nodename" nvidia-smi mig -cgi "$mprofile" -C
+  log "created mig dev"
+}
+
+
 # On all nodes, attempt ot destroy all MIG devices and disable MIG mode for all
 # physical GPUs. Fail the consuming test if any GPU in any of the nodes still
 # has MIG mode enabled. This can serve as 1) an explicit assertion about current
 # state when entering a test, and 2) a convenient cleanup routine during test
 # development, and 3) a regular cleanup when leaving a test.
 mig_ensure_teardown_on_all_nodes() {
-  nvmm all sh -c 'nvidia-smi mig -dci;  nvidia-smi mig -dgi; nvidia-smi -i 0 -mig 0'
+  nvmm all sh -c 'nvidia-smi mig -dci; nvidia-smi mig -dgi; nvidia-smi -i 0 -mig 0'
   mig_confirm_disabled_on_all_nodes
 }
 
@@ -224,6 +238,7 @@ restart_kubelet_on_node() {
   ssh "${USER}@${NODEIP}" 'sudo systemctl restart kubelet.service'
 }
 
+
 restart_kubelet_all_nodes() {
   for nodeip in $(kubectl get nodes -o jsonpath='{range .items[*]}{.status.addresses[?(@.type=="InternalIP")].address}{"\n"}{end}'); do
     restart_kubelet_on_node "$nodeip"
@@ -231,6 +246,7 @@ restart_kubelet_all_nodes() {
   #wait
   echo "restart kubelets: done"
 }
+
 
 kplog () {
   if [[ -z "$1" || -z "$2" ]]; then
@@ -257,4 +273,17 @@ kplog () {
 
   echo "Executing on pod $pod (node: $node)..."
   kubectl logs -n nvidia-dra-driver-gpu "$pod" -c "$cont" "$@"
+}
+
+
+_log_ts_no_newline() {
+    echo -n "$(date -u +'%Y-%m-%dT%H:%M:%S.%3NZ ')"
+}
+
+
+log() {
+  _TNOW=$(awk '{print $1}' /proc/uptime)
+  _DUR=$(echo "$_TNOW - $_T0" | bc)
+  _log_ts_no_newline
+  printf "[%6.1fs] $1\n" "$_DUR"
 }

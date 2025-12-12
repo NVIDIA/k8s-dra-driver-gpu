@@ -17,14 +17,10 @@
 package main
 
 import (
-	"bufio"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"regexp"
-	"strconv"
-	"strings"
 
 	"k8s.io/apimachinery/pkg/util/version"
 	"k8s.io/klog/v2"
@@ -34,12 +30,12 @@ import (
 
 	nvdev "github.com/NVIDIA/go-nvlib/pkg/nvlib/device"
 	"github.com/NVIDIA/go-nvml/pkg/nvml"
+
+	"github.com/NVIDIA/k8s-dra-driver-gpu/internal/common"
 )
 
 const (
-	procDevicesPath                  = "/proc/devices"
 	procDriverNvidiaPath             = "/proc/driver/nvidia"
-	nvidiaCapsDeviceName             = "nvidia-caps"
 	nvidiaCapsImexChannelsDeviceName = "nvidia-caps-imex-channels"
 	nvidiaCapFabricImexMgmtPath      = "/proc/driver/nvidia/capabilities/fabric-imex-mgmt"
 )
@@ -51,15 +47,7 @@ type deviceLib struct {
 	devRoot               string
 	nvidiaSMIPath         string
 	maxImexChannelCount   int
-	nvCapImexChanDevInfos []*nvcapDeviceInfo
-}
-
-type nvcapDeviceInfo struct {
-	major  int
-	minor  int
-	mode   int
-	modify int
-	path   string
+	nvCapImexChanDevInfos []*common.NVcapDeviceInfo
 }
 
 func newDeviceLib(driverRoot root) (*deviceLib, error) {
@@ -274,106 +262,18 @@ func (l deviceLib) getImexChannelCount() (int, error) {
 	return 2048, nil
 }
 
-// getDeviceMajor searches for one "<integer> <name>" occurrence in the
-// "Character devices" section of the /proc/devices file, and returns the
-// integer.
-func (l deviceLib) getDeviceMajor(name string) (int, error) {
-
-	re := regexp.MustCompile(
-		// The `(?s)` flag makes `.` match newlines. The greedy modifier in
-		// `.*?` ensures to pick the first match after "Character devices".
-		// Extract the number as capture group (the first and only group).
-		"(?s)Character devices:.*?" +
-			"([0-9]+) " + regexp.QuoteMeta(name) +
-			// Require `name` to be newline-terminated (to not match on a device
-			// that has `name` as prefix).
-			"\n.*Block devices:",
-	)
-
-	data, err := os.ReadFile(procDevicesPath)
-	if err != nil {
-		return -1, fmt.Errorf("error reading '%s': %w", procDevicesPath, err)
-	}
-
-	// Expect precisely one match: first element is the total match, second
-	// element corresponds to first capture group within that match (i.e., the
-	// number of interest).
-	matches := re.FindStringSubmatch(string(data))
-	if len(matches) != 2 {
-		return -1, fmt.Errorf("error parsing '%s': unexpected regex match: %v", procDevicesPath, matches)
-	}
-
-	// Convert capture group content to integer. Perform upper bound check:
-	// value must fit into 32-bit integer (it's then also guaranteed to fit into
-	// a 32-bit unsigned integer, which is the type that must be passed to
-	// unix.Mkdev()).
-	major, err := strconv.ParseInt(matches[1], 10, 32)
-	if err != nil {
-		return -1, fmt.Errorf("int conversion failed for '%v': %w", matches[1], err)
-	}
-
-	// ParseInt() always returns an integer of explicit type `int64`. We have
-	// performed an upper bound check so it's safe to convert this to `int`
-	// (which is documented as "int is a signed integer type that is at least 32
-	// bits in size", so in theory it could be smaller than int64).
-	return int(major), nil
-}
-
-func (l deviceLib) parseNVCapDeviceInfo(nvcapsFilePath string) (*nvcapDeviceInfo, error) {
-	file, err := os.Open(nvcapsFilePath)
-	if err != nil {
-		return nil, err
-	}
-	defer file.Close()
-
-	info := &nvcapDeviceInfo{}
-
-	major, err := l.getDeviceMajor(nvidiaCapsDeviceName)
-	if err != nil {
-		return nil, fmt.Errorf("error getting device major: %w", err)
-	}
-	info.major = major
-
-	scanner := bufio.NewScanner(file)
-	for scanner.Scan() {
-		line := scanner.Text()
-		parts := strings.SplitN(line, ":", 2)
-		if len(parts) != 2 {
-			continue
-		}
-		key := strings.TrimSpace(parts[0])
-		value := strings.TrimSpace(parts[1])
-
-		switch key {
-		case "DeviceFileMinor":
-			_, _ = fmt.Sscanf(value, "%d", &info.minor)
-		case "DeviceFileMode":
-			_, _ = fmt.Sscanf(value, "%d", &info.mode)
-		case "DeviceFileModify":
-			_, _ = fmt.Sscanf(value, "%d", &info.modify)
-		}
-	}
-	info.path = fmt.Sprintf("/dev/nvidia-caps/nvidia-cap%d", info.minor)
-
-	if err := scanner.Err(); err != nil {
-		return nil, err
-	}
-
-	return info, nil
-}
-
-func (l deviceLib) getNVCapIMEXChannelDeviceInfo(channelID int) (*nvcapDeviceInfo, error) {
-	major, err := l.getDeviceMajor(nvidiaCapsImexChannelsDeviceName)
+func (l deviceLib) getNVCapIMEXChannelDeviceInfo(channelID int) (*common.NVcapDeviceInfo, error) {
+	major, err := common.GetDeviceMajor(nvidiaCapsImexChannelsDeviceName)
 	if err != nil {
 		return nil, fmt.Errorf("error getting device major: %w", err)
 	}
 
-	info := &nvcapDeviceInfo{
-		major:  major,
-		minor:  channelID,
-		mode:   0666,
-		modify: 0,
-		path:   fmt.Sprintf("/dev/nvidia-caps-imex-channels/channel%d", channelID),
+	info := &common.NVcapDeviceInfo{
+		Major:  major,
+		Minor:  channelID,
+		Mode:   0666,
+		Modify: 0,
+		Path:   fmt.Sprintf("/dev/nvidia-caps-imex-channels/channel%d", channelID),
 	}
 
 	return info, nil

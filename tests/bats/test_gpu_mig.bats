@@ -1,20 +1,34 @@
 # shellcheck disable=SC2148
 # shellcheck disable=SC2329
 
-setup_file () {
-  load 'helpers.sh'
-  _common_setup
-}
-
+# bats file_tags=gpu,mig
 
 # Executed before entering each test in this file.
 setup() {
   load 'helpers.sh'
   _common_setup
   log_objects
+
+  # Try to establish rather precise state right before entering test. Any
+  # previous partial cleanup or partial test might leave an exotic resource
+  # slice state behind. Delete those. Delete DRA driver before, if it exists.
+  helm uninstall -n nvidia-dra-driver-gpu nvidia-dra-driver-gpu-batssuite --wait || true
+  mig_ensure_teardown_on_all_nodes
+  kubectl delete resourceslices.resource.k8s.io --all
+
+  # For measuring duration with sub-second precision since start of the test.
+  # Used in `log()`
+  export _T0=$(awk '{print $1}' /proc/uptime)
 }
 
 
+# Run after each test in this file.
+teardown() {
+  mig_ensure_teardown_on_all_nodes
+}
+
+
+# bats::on_failure will be called before teardown.
 bats::on_failure() {
   echo -e "\n\nFAILURE HOOK START"
   log_objects
@@ -25,30 +39,44 @@ bats::on_failure() {
 
 
 # bats test_tags=fastfeedback
+@test "static MIG: allocate (1 cnt)" {
+  # Pick a node to work on for the remainder of the test.
+  local node=$(kubectl get nodes | grep worker | head -n1 | awk '{print $1}')
+  log "selected node: $node"
+
+  # Create MIG device via mig-manager pod, start DRA driver (announce fresh slices)
+  mig_create_1g0_on_node "$node"
+
+  # Note(JP): this takes ~15 seconds, and dominates the test execution time. It
+  # will be worth investigating that at some point, might have a huge impact on
+  # the test suite snappiness.
+  iupgrade_wait "${TEST_CHART_REPO}" "${TEST_CHART_VERSION}" NOARGS
+
+  # Run workload, validate `nvidia-smi -L` output in container.
+  kubectl apply -f tests/bats/specs/gpu-anymig.yaml
+  kubectl wait --for=condition=READY pods pod-anymig --timeout=10s
+  log "workload READY"
+
+  run kubectl logs pod-anymig
+  assert_output --partial "UUID: MIG-"
+  assert_output --partial "UUID: GPU-"
+}
+
+
+# bats test_tags=fastfeedback
 @test "static MIG: mutual exclusivity with physical GPU" {
-  mig_ensure_teardown_on_all_nodes
+  # Pick a node to work on for the remainder of the test.
+  local node=$(kubectl get nodes | grep worker | head -n1 | awk '{print $1}')
+  echo "selected node: $node"
 
   # (Re)install, also to refresh ResourceSlice objects.
   local _iargs=("--set" "logVerbosity=6")
   iupgrade_wait "${TEST_CHART_REPO}" "${TEST_CHART_VERSION}" _iargs
 
-  # Pick a node to work on for the remainder of the test.
-  local node=$(kubectl get nodes | grep worker | head -n1 | awk '{print $1}')
-  echo "selected: $node"
-
-  # Try to clean up after us even in case of failure
-  bats::on_failure() {
-    nvmm "$node" sh -c 'nvidia-smi mig -dci && nvidia-smi mig -dgi'
-    nvmm "$node" nvidia-smi -i 0 -mig 0
-  }
-
-  # Get name of the resource slice corresponding to the node selected above.
+  # Show RS content for debugging. Confirm no MIG device announced.
   local rsname=$(kubectl get resourceslices.resource.k8s.io | grep "$node" | grep gpu | awk '{print $1}')
-
-  # Show slice content for debugging.
+  echo "rsname: $rsname"
   kubectl get resourceslices.resource.k8s.io -o yaml "$rsname" | grep -e 'GPU-' -e 'MIG-'
-
-  # Confirm no MIG device announced.
   run kubectl get resourceslices.resource.k8s.io -o yaml "$rsname"
   refute_output --partial "MIG-"
 
@@ -61,14 +89,7 @@ bats::on_failure() {
   helm uninstall -n nvidia-dra-driver-gpu nvidia-dra-driver-gpu-batssuite --wait
   kubectl delete resourceslices.resource.k8s.io "$rsname"
 
-  # Pick a 1g profile (available on all MIG-capable GPUs). Run twice, first time
-  # for debuggability
-  nvmm "$node" nvidia-smi mig -lgip -i 0 | grep -m 1 -oE '1g\.[1-9]+gb'
-  local mprofile=$(nvmm "$node" nvidia-smi mig -lgip -i 0 | grep -m 1 -oE '1g\.[1-9]+gb')
-
-  # Enable MIG mode on the selected node on GPU 0, and create a MIG device
-  nvmm "$node" nvidia-smi -i 0 -mig 1
-  nvmm "$node" nvidia-smi mig -cgi "$mprofile" -C
+  mig_create_1g0_on_node "$node"
 
   # Install DRA driver again, and inspect the newly created resource slice.
   # Confirm that at least one MIG device is announced in that slice.
@@ -94,6 +115,5 @@ bats::on_failure() {
   # devices being the same as before we now understand that one parent GPU is
   # _not_ announced anymore (we can enhance precision by comparing UUID sets, if
   # ever necessary).
-  mig_ensure_teardown_on_all_nodes
 }
 

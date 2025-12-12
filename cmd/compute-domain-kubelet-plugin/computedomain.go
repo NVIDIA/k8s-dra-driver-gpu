@@ -27,12 +27,12 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
-	"k8s.io/utils/ptr"
 
 	cdiapi "tags.cncf.io/container-device-interface/pkg/cdi"
 	cdispec "tags.cncf.io/container-device-interface/specs-go"
 
 	nvapi "github.com/NVIDIA/k8s-dra-driver-gpu/api/nvidia.com/resource/v1beta1"
+	"github.com/NVIDIA/k8s-dra-driver-gpu/internal/common"
 	nvinformers "github.com/NVIDIA/k8s-dra-driver-gpu/pkg/nvidia.com/informers/externalversions"
 )
 
@@ -138,18 +138,10 @@ func (m *ComputeDomainManager) NewSettings(domainID string) *ComputeDomainDaemon
 	}
 }
 
-func (m *ComputeDomainManager) GetComputeDomainChannelContainerEdits(devRoot string, info *nvcapDeviceInfo) *cdiapi.ContainerEdits {
+func (m *ComputeDomainManager) GetComputeDomainChannelContainerEdits(devRoot string, info *common.NVcapDeviceInfo) *cdiapi.ContainerEdits {
 	return &cdiapi.ContainerEdits{
 		ContainerEdits: &cdispec.ContainerEdits{
-			DeviceNodes: []*cdispec.DeviceNode{
-				{
-					Path:     info.path,
-					Type:     "c",
-					FileMode: ptr.To(os.FileMode(info.mode)),
-					Major:    int64(info.major),
-					Minor:    int64(info.minor),
-				},
-			},
+			DeviceNodes: []*cdispec.DeviceNode{info.CDICharDevNode()},
 		},
 	}
 }
@@ -193,18 +185,10 @@ func (s *ComputeDomainDaemonSettings) GetDomainID() string {
 
 // GetCDIContainerEditsForImex() returns the CDI spec edits only required for
 // launching the CD daemon when it actually wraps an IMEX daemon.
-func (s *ComputeDomainDaemonSettings) GetCDIContainerEditsForImex(ctx context.Context, devRoot string, info *nvcapDeviceInfo) *cdiapi.ContainerEdits {
+func (s *ComputeDomainDaemonSettings) GetCDIContainerEditsForImex(ctx context.Context, devRoot string, info *common.NVcapDeviceInfo) *cdiapi.ContainerEdits {
 	edits := &cdiapi.ContainerEdits{
 		ContainerEdits: &cdispec.ContainerEdits{
-			DeviceNodes: []*cdispec.DeviceNode{
-				{
-					Path:     info.path,
-					Type:     "c",
-					FileMode: ptr.To(os.FileMode(info.mode)),
-					Major:    int64(info.major),
-					Minor:    int64(info.minor),
-				},
-			},
+			DeviceNodes: []*cdispec.DeviceNode{info.CDICharDevNode()},
 		},
 	}
 	return edits

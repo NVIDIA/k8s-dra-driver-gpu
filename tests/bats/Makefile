@@ -52,6 +52,9 @@ TEST_CHART_REPO = "deployments/helm/nvidia-dra-driver-gpu"
 TEST_CHART_VERSION = $(VERSION:v%=%)
 endif
 
+# Note: at times, it may be valuable to use
+# 	--show-output-of-passing-tests
+# in the argument list below.
 BATS_IMAGE ?= batstests:$(GIT_COMMIT_SHORT)
 BATS_ARGS ?= \
 	--print-output-on-failure \

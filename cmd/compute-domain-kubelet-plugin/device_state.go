@@ -32,6 +32,7 @@ import (
 	cdiapi "tags.cncf.io/container-device-interface/pkg/cdi"
 
 	configapi "github.com/NVIDIA/k8s-dra-driver-gpu/api/nvidia.com/resource/v1beta1"
+	"github.com/NVIDIA/k8s-dra-driver-gpu/internal/common"
 	"github.com/NVIDIA/k8s-dra-driver-gpu/pkg/featuregates"
 )
 
@@ -550,7 +551,7 @@ func (s *DeviceState) applyComputeDomainDaemonConfig(ctx context.Context, config
 	// (if we want to start the IMEX daemon process in the CD daemon pod).
 	if s.computeDomainManager.cliqueID != "" {
 		// Parse the device node info for the fabric-imex-mgmt nvcap.
-		nvcapDeviceInfo, err := s.nvdevlib.parseNVCapDeviceInfo(nvidiaCapFabricImexMgmtPath)
+		nvcapDeviceInfo, err := common.ParseNVCapDeviceInfo(nvidiaCapFabricImexMgmtPath)
 		if err != nil {
 			return nil, fmt.Errorf("error parsing nvcap device info for fabric-imex-mgmt: %w", err)
 		}

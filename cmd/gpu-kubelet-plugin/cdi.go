@@ -32,6 +32,7 @@ import (
 	cdiparser "tags.cncf.io/container-device-interface/pkg/parser"
 	cdispec "tags.cncf.io/container-device-interface/specs-go"
 
+	"github.com/NVIDIA/k8s-dra-driver-gpu/internal/common"
 	"github.com/NVIDIA/k8s-dra-driver-gpu/pkg/featuregates"
 )
 
@@ -47,6 +48,7 @@ const (
 	cdiVfioSpecIdentifier = "vfio"
 
 	defaultCDIRoot = "/var/run/cdi"
+	procNvCapsPath = "/proc/driver/nvidia/capabilities"
 )
 
 type CDIHandler struct {
@@ -245,11 +247,33 @@ func (cdi *CDIHandler) createStandardNvidiaDeviceSpecFile(allocatable Allocatabl
 			continue
 		}
 
-		dspecs, err := cdi.nvcdiDevice.GetDeviceSpecsByID(device.UUID())
+		uuid := device.UUID()
+		if device.Type() == MigDeviceType {
+			// Goal: inject parent dev node. Other dev nodes specific to this
+			// MIG device are injected 'manually' further below. That is because
+			// currently `nvcdiDevice.GetDeviceSpecsByID()` may yield an
+			// incomplete spec for MIG devices, see
+			// https://github.com/NVIDIA/k8s-dra-driver-gpu/issues/787. Instead,
+			// manually create the required dev node spec for the consuming
+			// container via GetDevNodesForMigDevice() below.
+			uuid = device.Mig.parent.UUID
+		}
+
+		dspecs, err := cdi.nvcdiDevice.GetDeviceSpecsByID(uuid)
 		if err != nil {
 			return fmt.Errorf("unable to get device spec for %s: %w", device.CanonicalName(), err)
 		}
 		dspecs[0].Name = device.CanonicalName()
+
+		if device.Type() == MigDeviceType {
+			devnodesForMig, err := cdi.GetDevNodesForMigDevice(device.Mig.parent.minor, int(device.Mig.giInfo.Id), int(device.Mig.ciInfo.Id))
+			if err != nil {
+				return fmt.Errorf("failed to construct MIG device DeviceNode edits: %w", err)
+			}
+			klog.V(7).Infof("CDI spec: appending MIG device nodes")
+			dspecs[0].ContainerEdits.DeviceNodes = append(dspecs[0].ContainerEdits.DeviceNodes, devnodesForMig...)
+		}
+
 		deviceSpecs = append(deviceSpecs, dspecs[0])
 	}
 
@@ -324,4 +348,39 @@ func (cdi *CDIHandler) GetClaimDevice(claimUID string, device *AllocatableDevice
 		return ""
 	}
 	return cdiparser.QualifiedName(cdiVendor, cdiClaimClass, fmt.Sprintf("%s-%s", claimUID, device.CanonicalName()))
+}
+
+// Construct and return the CDI `deviceNodes` specification for the two
+// character devices `/dev/nvidia-caps/nvidia-cap<CIm>` and
+// `/dev/nvidia-caps/nvidia-cap<GIm>` for a specific MIG device.
+//
+// Context: for containerized workload to see and use a specific MIG device, it
+// needs to be able to open three character device nodes:
+//
+// 1) `/dev/nvidia<Pm>`, with <Pm> referring to the parent's minor. This exists
+// on the host.
+//
+// 2) /dev/nvidia-caps/nvidia-cap<CIm> and /dev/nvidia-caps/nvidia-cap<GIm>,
+// with <GIm> and <CIm> referring to the MIG GPU instance's and Compute
+// instance's minor, respectively. For the the latter two device nodes it is
+// sufficient to create them in the container (with proper cgroups permissions),
+// without actually requiring the same device nodes to be explicitly created on
+// the host. That is what is achieved below with the structure created in
+// cdiDevNodeFromNVCapDevInfo().
+func (cdi *CDIHandler) GetDevNodesForMigDevice(parentMinor int, giId int, ciId int) ([]*cdispec.DeviceNode, error) {
+	gipath := fmt.Sprintf("%s/gpu%d/mig/gi%d/access", procNvCapsPath, parentMinor, giId)
+	cipath := fmt.Sprintf("%s/gpu%d/mig/gi%d/ci%d/access", procNvCapsPath, parentMinor, giId, ciId)
+
+	giCapsInfo, err := common.ParseNVCapDeviceInfo(gipath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse GI capabilities file %s: %w", gipath, err)
+	}
+
+	ciCapsInfo, err := common.ParseNVCapDeviceInfo(cipath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse CI capabilities file %s: %w", cipath, err)
+	}
+
+	devnodes := []*cdispec.DeviceNode{giCapsInfo.CDICharDevNode(), ciCapsInfo.CDICharDevNode()}
+	return devnodes, nil
 }

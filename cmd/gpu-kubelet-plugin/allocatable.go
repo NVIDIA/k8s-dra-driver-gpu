@@ -65,6 +65,8 @@ func (d *AllocatableDevice) GetDevice() resourceapi.Device {
 	panic("unexpected type for AllocatableDevice")
 }
 
+// This concept will have to change for abstract allocatable devices that do not
+// have a UUID before actualization.
 func (d AllocatableDevice) UUID() string {
 	if d.Gpu != nil {
 		return d.Gpu.UUID
