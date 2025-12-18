@@ -234,19 +234,11 @@ func (m *ComputeDomainManager) onAddOrUpdate(ctx context.Context, obj any) error
 func (m *ComputeDomainManager) EnsureNodeInfoInCD(ctx context.Context, cd *nvapi.ComputeDomain) (rerr error) {
 	var nodeInfo *nvapi.ComputeDomainNode
 
-	// Create a deep copy of the ComputeDomain to avoid modifying the original
-	newCD := cd.DeepCopy()
-
-	defer func() {
-		if rerr == nil {
-			m.MaybePushNodesUpdate(newCD)
-		}
-	}()
-
 	// Try to find an existing entry for the current k8s node
-	for _, node := range newCD.Status.Nodes {
+	for _, node := range cd.Status.Nodes {
 		if node.Name == m.config.nodeName {
-			nodeInfo = node
+			// Create copy because we may mutate it below.
+			nodeInfo = node.DeepCopy()
 			break
 		}
 	}
@@ -256,6 +248,15 @@ func (m *ComputeDomainManager) EnsureNodeInfoInCD(ctx context.Context, cd *nvapi
 		klog.V(6).Infof("EnsureNodeInfoInCD noop: pod IP unchanged (%s)", m.config.podIP)
 		return nil
 	}
+
+	// Create a deep copy of the ComputeDomain to avoid modifying the original
+	newCD := cd.DeepCopy()
+
+	defer func() {
+		if rerr == nil {
+			m.MaybePushNodesUpdate(newCD)
+		}
+	}()
 
 	// If there isn't one, create one and append it to the list
 	if nodeInfo == nil {
