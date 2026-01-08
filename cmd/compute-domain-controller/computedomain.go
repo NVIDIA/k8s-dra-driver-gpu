@@ -234,6 +234,17 @@ func (m *ComputeDomainManager) onAddOrUpdate(ctx context.Context, obj any) error
 
 	klog.V(2).Infof("Processing added or updated ComputeDomain: %s/%s/%s", cd.Namespace, cd.Name, cd.UID)
 
+	// Check if the ComputeDomain still exists in the cache.
+	// This prevents constantly requeuing requests for non-existent ComputeDomains.
+	cachedCD, err := m.Get(string(cd.UID))
+	if err != nil {
+		return fmt.Errorf("error checking ComputeDomain in cache: %w", err)
+	}
+	if cachedCD == nil {
+		klog.V(2).Infof("ComputeDomain %s/%s/%s no longer exists in cache, skipping", cd.Namespace, cd.Name, cd.UID)
+		return nil
+	}
+
 	if cd.GetDeletionTimestamp() != nil {
 		if err := m.resourceClaimTemplateManager.Delete(ctx, string(cd.UID)); err != nil {
 			return fmt.Errorf("error deleting ResourceClaimTemplate: %w", err)
