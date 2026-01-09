@@ -46,8 +46,8 @@ if [ -z "${TOOLKIT_VERSION}" ]; then
     exit 0
 fi
 
-# Handle format vX.Y.Z-time-commit
-if [[ "${TOOLKIT_VERSION}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-[0-9]{14}-([a-f0-9]{12})$ ]]; then
+# Handle any of vX.Y.Z-time-commit, vX.Y.Z-rc.A.B-time-commit, vX.Y.Z-A.B-time-commit
+if [[ "${TOOLKIT_VERSION}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+.*-([a-f0-9]{12,})$ ]]; then
     TOOLKIT_VERSION_SHA="${BASH_REMATCH[1]}"
     SHORT_SHA="${TOOLKIT_VERSION_SHA:0:8}"
     IMAGE_URL="ghcr.io/nvidia/container-toolkit:${SHORT_SHA}"
