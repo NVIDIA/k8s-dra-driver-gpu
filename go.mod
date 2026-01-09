@@ -6,7 +6,7 @@ require (
 	github.com/Masterminds/semver v1.5.0
 	github.com/NVIDIA/go-nvlib v0.9.0
 	github.com/NVIDIA/go-nvml v0.13.0-1
-	github.com/NVIDIA/nvidia-container-toolkit v1.18.1
+	github.com/NVIDIA/nvidia-container-toolkit v1.18.2
 	github.com/google/uuid v1.6.0
 	github.com/prometheus/client_golang v1.23.2
 	github.com/sirupsen/logrus v1.9.4
@@ -25,8 +25,8 @@ require (
 	k8s.io/kubernetes v1.34.2
 	k8s.io/mount-utils v0.34.0
 	k8s.io/utils v0.0.0-20250604170112-4c0f3b243397
-	tags.cncf.io/container-device-interface v1.0.2-0.20251114135136-1b24d969689f
-	tags.cncf.io/container-device-interface/specs-go v1.0.0
+	tags.cncf.io/container-device-interface v1.1.0
+	tags.cncf.io/container-device-interface/specs-go v1.1.0
 )
 
 require (
