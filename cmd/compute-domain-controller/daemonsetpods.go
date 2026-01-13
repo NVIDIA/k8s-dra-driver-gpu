@@ -40,10 +40,11 @@ type DaemonSetPodManager struct {
 	informer cache.SharedIndexInformer
 	lister   corev1listers.PodLister
 
-	getComputeDomain GetComputeDomainFunc
+	getComputeDomain          GetComputeDomainFunc
+	updateComputeDomainStatus UpdateComputeDomainStatusFunc
 }
 
-func NewDaemonSetPodManager(config *ManagerConfig, getComputeDomain GetComputeDomainFunc) *DaemonSetPodManager {
+func NewDaemonSetPodManager(config *ManagerConfig, getComputeDomain GetComputeDomainFunc, updateComputeDomainStatus UpdateComputeDomainStatusFunc) *DaemonSetPodManager {
 	labelSelector := &metav1.LabelSelector{
 		MatchExpressions: []metav1.LabelSelectorRequirement{
 			{
@@ -66,11 +67,12 @@ func NewDaemonSetPodManager(config *ManagerConfig, getComputeDomain GetComputeDo
 	lister := factory.Core().V1().Pods().Lister()
 
 	m := &DaemonSetPodManager{
-		config:           config,
-		factory:          factory,
-		informer:         informer,
-		lister:           lister,
-		getComputeDomain: getComputeDomain,
+		config:                    config,
+		factory:                   factory,
+		informer:                  informer,
+		lister:                    lister,
+		getComputeDomain:          getComputeDomain,
+		updateComputeDomainStatus: updateComputeDomainStatus,
 	}
 
 	return m
