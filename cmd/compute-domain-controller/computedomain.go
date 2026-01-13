@@ -31,6 +31,7 @@ import (
 )
 
 type GetComputeDomainFunc func(uid string) (*nvapi.ComputeDomain, error)
+type UpdateComputeDomainStatusFunc func(ctx context.Context, cd *nvapi.ComputeDomain) (*nvapi.ComputeDomain, error)
 
 const (
 	// informerResyncPeriod defines how often the informer will resync its cache
@@ -60,8 +61,9 @@ type ComputeDomainManager struct {
 	waitGroup     sync.WaitGroup
 	cancelContext context.CancelFunc
 
-	factory  nvinformers.SharedInformerFactory
-	informer cache.SharedIndexInformer
+	factory       nvinformers.SharedInformerFactory
+	informer      cache.SharedIndexInformer
+	mutationCache cache.MutationCache
 
 	daemonSetManager             *MultiNamespaceDaemonSetManager
 	resourceClaimTemplateManager *WorkloadResourceClaimTemplateManager
@@ -105,6 +107,16 @@ func (m *ComputeDomainManager) Start(ctx context.Context) (rerr error) {
 	if err != nil {
 		return fmt.Errorf("error adding indexer for UIDs: %w", err)
 	}
+
+	// Create mutation cache to track ComputeDomain updates
+	// This reduces conflicts when multiple managers update the same ComputeDomain concurrently
+	m.mutationCache = cache.NewIntegerResourceVersionMutationCache(
+		klog.Background(),
+		m.informer.GetStore(),
+		m.informer.GetIndexer(),
+		mutationCacheTTL,
+		true,
+	)
 
 	_, err = m.informer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj any) {
@@ -160,9 +172,9 @@ func (m *ComputeDomainManager) Stop() error {
 	return nil
 }
 
-// Get gets a ComputeDomain with a specific UID.
+// Get gets a ComputeDomain with a specific UID from the mutation cache.
 func (m *ComputeDomainManager) Get(uid string) (*nvapi.ComputeDomain, error) {
-	cds, err := m.informer.GetIndexer().ByIndex("uid", uid)
+	cds, err := m.mutationCache.ByIndex("uid", uid)
 	if err != nil {
 		return nil, fmt.Errorf("error retrieving ComputeDomain by UID: %w", err)
 	}
@@ -177,6 +189,16 @@ func (m *ComputeDomainManager) Get(uid string) (*nvapi.ComputeDomain, error) {
 		return nil, fmt.Errorf("failed to cast to ComputeDomain")
 	}
 	return cd, nil
+}
+
+// UpdateStatus updates a ComputeDomain's status and caches the result in the mutation cache.
+func (m *ComputeDomainManager) UpdateStatus(ctx context.Context, cd *nvapi.ComputeDomain) (*nvapi.ComputeDomain, error) {
+	updatedCD, err := m.config.clientsets.Nvidia.ResourceV1beta1().ComputeDomains(cd.Namespace).UpdateStatus(ctx, cd, metav1.UpdateOptions{})
+	if err != nil {
+		return nil, err
+	}
+	m.mutationCache.Mutation(updatedCD)
+	return updatedCD, nil
 }
 
 // RemoveFinalizer removes the finalizer from a ComputeDomain.
