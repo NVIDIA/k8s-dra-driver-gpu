@@ -58,7 +58,6 @@ type ComputeDomainManager struct {
 	previousNodes    []*nvapi.ComputeDomainNode
 	updatedNodesChan chan []*nvapi.ComputeDomainNode
 
-	podManager    *PodManager
 	mutationCache cache.MutationCache
 }
 
@@ -114,8 +113,6 @@ func (m *ComputeDomainManager) Start(ctx context.Context) (rerr error) {
 		true,
 	)
 
-	m.podManager = NewPodManager(m.config, m.Get, m.mutationCache)
-
 	// Use `WithKey` with hard-coded key, to cancel any previous update task (we
 	// want to make sure that the latest CD status update wins).
 	_, err = m.informer.AddEventHandler(cache.ResourceEventHandlerFuncs{
@@ -140,10 +137,6 @@ func (m *ComputeDomainManager) Start(ctx context.Context) (rerr error) {
 		return fmt.Errorf("informer cache sync for ComputeDomains failed")
 	}
 
-	if err := m.podManager.Start(ctx); err != nil {
-		return fmt.Errorf("failed to start pod manager: %w", err)
-	}
-
 	return nil
 }
 
@@ -151,11 +144,6 @@ func (m *ComputeDomainManager) Start(ctx context.Context) (rerr error) {
 //
 //nolint:contextcheck
 func (m *ComputeDomainManager) Stop() error {
-	// Stop the pod manager first
-	if err := m.podManager.Stop(); err != nil {
-		klog.Errorf("Failed to stop pod manager: %v", err)
-	}
-
 	// Create a new context for cleanup operations since the original context might be cancelled
 	cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cleanupCancel()
