@@ -390,7 +390,7 @@ func (l deviceLib) getGpuInfo(index int, device nvdev.Device) (*GpuInfo, error) 
 		pcieRootAttr:          pcieRootAttr,
 		migProfiles:           migProfiles,
 		Health:                Healthy,
-		addressingMode:        addressingMode,
+		addressingMode:        &addressingMode,
 	}
 
 	return gpuInfo, nil
