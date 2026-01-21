@@ -310,9 +310,11 @@ func (l deviceLib) getGpuInfo(index int, device nvdev.Device) (*GpuInfo, error) 
 	//   - ATS  (Address Translation Service)
 	//   - None (Supported by the platform but currently inactive)
 	//   - ""   (Not supported by the platform)
-	addressingMode, err := device.GetAddressingModeAsString()
-	if err != nil {
-		return nil, fmt.Errorf("error getting addressing mode for device %d: %w", index, err)
+	var addressingMode *string
+	if mode, err := device.GetAddressingModeAsString(); err != nil {
+			return nil, fmt.Errorf("error getting addressing mode for device %d: %w", index, err)
+	} else if mode != "" {
+		addressingMode = &mode
 	}
 
 	var pcieRootAttr *deviceattribute.DeviceAttribute
@@ -390,7 +392,7 @@ func (l deviceLib) getGpuInfo(index int, device nvdev.Device) (*GpuInfo, error) 
 		pcieRootAttr:          pcieRootAttr,
 		migProfiles:           migProfiles,
 		Health:                Healthy,
-		addressingMode:        &addressingMode,
+		addressingMode:        addressingMode,
 	}
 
 	return gpuInfo, nil
