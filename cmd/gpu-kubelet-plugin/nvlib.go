@@ -312,7 +312,7 @@ func (l deviceLib) getGpuInfo(index int, device nvdev.Device) (*GpuInfo, error) 
 	//   - ""   (Not supported by the platform)
 	var addressingMode *string
 	if mode, err := device.GetAddressingModeAsString(); err != nil {
-			return nil, fmt.Errorf("error getting addressing mode for device %d: %w", index, err)
+		return nil, fmt.Errorf("error getting addressing mode for device %d: %w", index, err)
 	} else if mode != "" {
 		addressingMode = &mode
 	}
