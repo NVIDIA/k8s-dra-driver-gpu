@@ -132,9 +132,10 @@ func (m *NodeManager) RemoveComputeDomainLabels(ctx context.Context, cdUID strin
 	var names []string
 	for _, node := range nodes.Items {
 		// Rely on above's List() API call to only return node objects that
-		// really have this label set. Remove it.
+		// really have these labels set. Remove them.
 		newNode := node.DeepCopy()
 		delete(newNode.Labels, computeDomainLabelKey)
+		delete(newNode.Labels, computeDomainCliqueIDLabelKey)
 		if _, err := m.config.clientsets.Core.CoreV1().Nodes().Update(ctx, newNode, metav1.UpdateOptions{}); err != nil {
 			return fmt.Errorf("error updating node %s: %w", newNode.Name, err)
 		}

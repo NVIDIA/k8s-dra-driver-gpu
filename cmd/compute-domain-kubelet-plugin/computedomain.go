@@ -37,7 +37,8 @@ import (
 )
 
 const (
-	computeDomainLabelKey = "resource.nvidia.com/computeDomain"
+	computeDomainLabelKey         = "resource.nvidia.com/computeDomain"
+	computeDomainCliqueIDLabelKey = "resource.nvidia.com/computeDomain.cliqueID"
 
 	informerResyncPeriod = 10 * time.Minute
 	cleanupInterval      = 10 * time.Minute
@@ -277,18 +278,23 @@ func (m *ComputeDomainManager) AssertComputeDomainNamespace(ctx context.Context,
 	return nil
 }
 
-func (m *ComputeDomainManager) AddNodeLabel(ctx context.Context, cdUID string) error {
+func (m *ComputeDomainManager) AddNodeLabels(ctx context.Context, cdUID string) error {
 	node, err := m.config.clientsets.Core.CoreV1().Nodes().Get(ctx, m.config.flags.nodeName, metav1.GetOptions{})
 	if err != nil {
 		return fmt.Errorf("error retrieving Node: %w", err)
 	}
 
-	currentValue, exists := node.Labels[computeDomainLabelKey]
-	if exists && currentValue != cdUID {
+	computeDomainValue, computeDomainExists := node.Labels[computeDomainLabelKey]
+	if computeDomainExists && computeDomainValue != cdUID {
 		return fmt.Errorf("label already exists for a different ComputeDomain")
 	}
 
-	if exists && currentValue == cdUID {
+	cliqueIDValue, cliqueIDExists := node.Labels[computeDomainCliqueIDLabelKey]
+	if cliqueIDExists && cliqueIDValue != m.cliqueID {
+		return fmt.Errorf("label already exists with a different cliqueID")
+	}
+
+	if computeDomainExists && computeDomainValue == cdUID && cliqueIDExists && cliqueIDValue == m.cliqueID {
 		return nil
 	}
 
@@ -297,6 +303,7 @@ func (m *ComputeDomainManager) AddNodeLabel(ctx context.Context, cdUID string) e
 		newNode.Labels = make(map[string]string)
 	}
 	newNode.Labels[computeDomainLabelKey] = cdUID
+	newNode.Labels[computeDomainCliqueIDLabelKey] = m.cliqueID
 
 	if _, err = m.config.clientsets.Core.CoreV1().Nodes().Update(ctx, newNode, metav1.UpdateOptions{}); err != nil {
 		return fmt.Errorf("error updating Node with label: %w", err)
@@ -305,9 +312,9 @@ func (m *ComputeDomainManager) AddNodeLabel(ctx context.Context, cdUID string) e
 	return nil
 }
 
-// RemoveNodeLabel() attempts removal and returns no error if the label was
+// RemoveNodeLabels() attempts removal and returns no error if the label was
 // removed or didn't exist in the first place.
-func (m *ComputeDomainManager) RemoveNodeLabel(ctx context.Context, cdUID string) error {
+func (m *ComputeDomainManager) RemoveNodeLabels(ctx context.Context, cdUID string) error {
 	node, err := m.config.clientsets.Core.CoreV1().Nodes().Get(ctx, m.config.flags.nodeName, metav1.GetOptions{})
 	if err != nil {
 		return fmt.Errorf("error retrieving Node: %w", err)
@@ -323,6 +330,7 @@ func (m *ComputeDomainManager) RemoveNodeLabel(ctx context.Context, cdUID string
 
 	newNode := node.DeepCopy()
 	delete(newNode.Labels, computeDomainLabelKey)
+	delete(newNode.Labels, computeDomainCliqueIDLabelKey)
 
 	if _, err := m.config.clientsets.Core.CoreV1().Nodes().Update(ctx, newNode, metav1.UpdateOptions{}); err != nil {
 		return fmt.Errorf("error updating Node to remove label: %w", err)

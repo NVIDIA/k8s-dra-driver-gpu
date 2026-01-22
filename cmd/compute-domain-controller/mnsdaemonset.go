@@ -33,7 +33,7 @@ type MultiNamespaceDaemonSetManager struct {
 
 // NewMultiNamespaceDaemonSetManager creates a new multi-namespace DaemonSet manager
 // It creates individual DaemonSet managers for the driver namespace and all additional namespaces.
-func NewMultiNamespaceDaemonSetManager(config *ManagerConfig, getComputeDomain GetComputeDomainFunc) *MultiNamespaceDaemonSetManager {
+func NewMultiNamespaceDaemonSetManager(config *ManagerConfig, getComputeDomain GetComputeDomainFunc, updateComputeDomainStatus UpdateComputeDomainStatusFunc) *MultiNamespaceDaemonSetManager {
 	m := &MultiNamespaceDaemonSetManager{
 		config:   config,
 		managers: make(map[string]*DaemonSetManager),
@@ -51,7 +51,7 @@ func NewMultiNamespaceDaemonSetManager(config *ManagerConfig, getComputeDomain G
 		configNew := *config
 		configNew.driverNamespace = ns
 		configNew.additionalNamespaces = nil
-		m.managers[ns] = NewDaemonSetManager(&configNew, getComputeDomain)
+		m.managers[ns] = NewDaemonSetManager(&configNew, getComputeDomain, updateComputeDomainStatus)
 	}
 
 	return m

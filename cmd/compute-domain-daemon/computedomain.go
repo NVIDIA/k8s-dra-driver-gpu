@@ -58,7 +58,6 @@ type ComputeDomainManager struct {
 	previousNodes    []*nvapi.ComputeDomainNode
 	updatedNodesChan chan []*nvapi.ComputeDomainNode
 
-	podManager    *PodManager
 	mutationCache cache.MutationCache
 }
 
@@ -114,8 +113,6 @@ func (m *ComputeDomainManager) Start(ctx context.Context) (rerr error) {
 		true,
 	)
 
-	m.podManager = NewPodManager(m.config, m.Get, m.mutationCache)
-
 	// Use `WithKey` with hard-coded key, to cancel any previous update task (we
 	// want to make sure that the latest CD status update wins).
 	_, err = m.informer.AddEventHandler(cache.ResourceEventHandlerFuncs{
@@ -140,10 +137,6 @@ func (m *ComputeDomainManager) Start(ctx context.Context) (rerr error) {
 		return fmt.Errorf("informer cache sync for ComputeDomains failed")
 	}
 
-	if err := m.podManager.Start(ctx); err != nil {
-		return fmt.Errorf("failed to start pod manager: %w", err)
-	}
-
 	return nil
 }
 
@@ -151,11 +144,6 @@ func (m *ComputeDomainManager) Start(ctx context.Context) (rerr error) {
 //
 //nolint:contextcheck
 func (m *ComputeDomainManager) Stop() error {
-	// Stop the pod manager first
-	if err := m.podManager.Stop(); err != nil {
-		klog.Errorf("Failed to stop pod manager: %v", err)
-	}
-
 	// Create a new context for cleanup operations since the original context might be cancelled
 	cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cleanupCancel()
@@ -218,137 +206,11 @@ func (m *ComputeDomainManager) onAddOrUpdate(ctx context.Context, obj any) error
 		return nil
 	}
 
-	// Update node info in ComputeDomain, if required.
-	if err := m.EnsureNodeInfoInCD(ctx, cd); err != nil {
-		return fmt.Errorf("CD update: failed to insert/update node info in CD: %w", err)
-	}
+	// Node info is now managed by the controller, so we just push updates
+	// for the hosts file generation
+	m.MaybePushNodesUpdate(cd)
 
 	return nil
-}
-
-// EnsureNodeInfoInCD makes sure that the current node (by node name) is
-// represented in the `Nodes` field in the ComputeDomain object, and that it
-// reports the IP address of this current pod running the CD daemon. If mutation
-// is needed (first insertion, or IP address update) and successful, it reflects
-// the mutation in `m.mutationCache`.
-func (m *ComputeDomainManager) EnsureNodeInfoInCD(ctx context.Context, cd *nvapi.ComputeDomain) (rerr error) {
-	var nodeInfo *nvapi.ComputeDomainNode
-
-	// Create a deep copy of the ComputeDomain to avoid modifying the original
-	newCD := cd.DeepCopy()
-
-	defer func() {
-		if rerr == nil {
-			m.MaybePushNodesUpdate(newCD)
-		}
-	}()
-
-	// Try to find an existing entry for the current k8s node
-	for _, node := range newCD.Status.Nodes {
-		if node.Name == m.config.nodeName {
-			nodeInfo = node
-			break
-		}
-	}
-
-	// If there is one and its IP is the same as this one, we are done
-	if nodeInfo != nil && nodeInfo.IPAddress == m.config.podIP {
-		klog.V(6).Infof("EnsureNodeInfoInCD noop: pod IP unchanged (%s)", m.config.podIP)
-		return nil
-	}
-
-	// If there isn't one, create one and append it to the list
-	if nodeInfo == nil {
-		// Get the next available index for this new node
-		nextIndex, err := getNextAvailableIndex(m.config.cliqueID, newCD.Status.Nodes, m.config.maxNodesPerIMEXDomain)
-		if err != nil {
-			return fmt.Errorf("error getting next available index: %w", err)
-		}
-
-		nodeInfo = &nvapi.ComputeDomainNode{
-			Name:     m.config.nodeName,
-			CliqueID: m.config.cliqueID,
-			Index:    nextIndex,
-			// This is going to be switched to Ready by podmanager.
-			Status: nvapi.ComputeDomainStatusNotReady,
-		}
-
-		klog.Infof("CD status does not contain node name '%s' yet, try to insert myself: %v", m.config.nodeName, nodeInfo)
-		newCD.Status.Nodes = append(newCD.Status.Nodes, nodeInfo)
-	}
-
-	// Unconditionally update its IP address. Note that the nodeInfo.IPAddress
-	// as of now translates into a pod IP address and may therefore change
-	// across pod restarts.
-	nodeInfo.IPAddress = m.config.podIP
-
-	// Conditionally update global CD status if it's still in its initial status
-	if newCD.Status.Status == "" {
-		newCD.Status.Status = nvapi.ComputeDomainStatusNotReady
-	}
-
-	// Update status and (upon success) store the latest version of the object
-	// (as returned by the API server) in the mutation cache.
-	newCD, err := m.config.clientsets.Nvidia.ResourceV1beta1().ComputeDomains(newCD.Namespace).UpdateStatus(ctx, newCD, metav1.UpdateOptions{})
-	if err != nil {
-		return fmt.Errorf("error updating ComputeDomain status: %w", err)
-	}
-	m.mutationCache.Mutation(newCD)
-
-	klog.Infof("Successfully inserted/updated node in CD (nodeinfo: %v)", nodeInfo)
-	return nil
-}
-
-// The Index field in the Nodes section of the ComputeDomain status ensures a
-// consistent IP-to-DNS name mapping across all machines within a given IMEX
-// domain. Each node's index directly determines its DNS name using the format
-// "compute-domain-daemon-{index}".
-//
-// getNextAvailableIndex finds the next available index for the current node by
-// seeing which ones are already taken by other nodes in the ComputeDomain
-// status that have the same cliqueID. It fills in gaps where it can, and returns
-// an error if no index is available within maxNodesPerIMEXDomain.
-//
-// By filling gaps in the index sequence (rather than always appending), we
-// maintain stable DNS names for existing nodes even when intermediate nodes
-// are removed from the compute domain and new ones are added.
-func getNextAvailableIndex(currentCliqueID string, nodes []*nvapi.ComputeDomainNode, maxNodesPerIMEXDomain int) (int, error) {
-	// Filter nodes to only consider those with the same cliqueID
-	var cliqueNodes []*nvapi.ComputeDomainNode
-	for _, node := range nodes {
-		if node.CliqueID == currentCliqueID {
-			cliqueNodes = append(cliqueNodes, node)
-		}
-	}
-
-	// Create a map to track used indices
-	usedIndices := make(map[int]bool)
-
-	// Collect all currently used indices from nodes with the same cliqueID
-	for _, node := range cliqueNodes {
-		usedIndices[node.Index] = true
-	}
-
-	// Find the next available index, starting from 0 and filling gaps
-	nextIndex := 0
-	for usedIndices[nextIndex] {
-		nextIndex++
-	}
-
-	// Skip `maxNodesPerIMEXDomain` check in the special case of no clique ID
-	// being set: this means that this node does not actually run an IMEX daemon
-	// managed by us and the set of nodes in this "noop" mode in this CD is
-	// allowed to grow larger than maxNodesPerIMEXDomain.
-	if currentCliqueID == "" {
-		return nextIndex, nil
-	}
-
-	// Ensure nextIndex is within the range 0..maxNodesPerIMEXDomain
-	if nextIndex < 0 || nextIndex >= maxNodesPerIMEXDomain {
-		return -1, fmt.Errorf("no available indices within maxNodesPerIMEXDomain (%d) for cliqueID %s", maxNodesPerIMEXDomain, currentCliqueID)
-	}
-
-	return nextIndex, nil
 }
 
 // If there was actually a change compared to the previously known set of

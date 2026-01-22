@@ -427,7 +427,7 @@ func (s *DeviceState) unprepareDevices(ctx context.Context, cs *resourceapi.Reso
 		switch config := c.(type) {
 		case *configapi.ComputeDomainChannelConfig:
 			// If a channel type, remove the ComputeDomain label from the node
-			if err := s.computeDomainManager.RemoveNodeLabel(ctx, config.DomainID); err != nil {
+			if err := s.computeDomainManager.RemoveNodeLabels(ctx, config.DomainID); err != nil {
 				return fmt.Errorf("error removing Node label for ComputeDomain: %w", err)
 			}
 		case *configapi.ComputeDomainDaemonConfig:
@@ -482,7 +482,7 @@ func (s *DeviceState) applyComputeDomainChannelConfig(ctx context.Context, confi
 		return nil, permanentError{fmt.Errorf("error asserting ComputeDomain's namespace: %w", err)}
 	}
 
-	if err := s.computeDomainManager.AddNodeLabel(ctx, config.DomainID); err != nil {
+	if err := s.computeDomainManager.AddNodeLabels(ctx, config.DomainID); err != nil {
 		return nil, fmt.Errorf("error adding Node label for ComputeDomain: %w", err)
 	}
 

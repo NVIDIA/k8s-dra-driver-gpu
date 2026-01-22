@@ -63,16 +63,18 @@ bats::on_failure() {
   kubectl wait --for=delete pods imex-channel-injection --timeout=10s
 
   # Expect `nodes` key to not be be present (single-node CD).
-  run bats_pipe kubectl get computedomain imex-channel-injection -o json \| jq '.status'
+  # Retry up to 20 times with 0.5 second backoff.
+  for i in {1..20}; do
+    run bats_pipe kubectl get computedomain imex-channel-injection -o json \| jq '.status'
+    if ! [[ "$output" =~ nodes ]]; then
+      break
+    fi
+    sleep 0.5
+  done
   refute_output --partial 'nodes'
 
   # Inspect CD daemon log, dump tail for easier debug-on-failure.
   cat "$LOGPATH" | tail -n 50
-
-  # Explicitly confirm cleanup-on-shutdown behavior by inspecting CD log.
-  cat "$LOGPATH" | tail -n 50 | grep -e "updated node status in CD (new nodeinfo: .* NotReady"
-  cat "$LOGPATH" | grep "Successfully removed node" | \
-    grep "from ComputeDomain default/imex-channel-injection"
 
   # Delete CD.
   kubectl delete computedomain imex-channel-injection
