@@ -28,6 +28,7 @@ import (
 
 	nvapi "github.com/NVIDIA/k8s-dra-driver-gpu/api/nvidia.com/resource/v1beta1"
 	nvinformers "github.com/NVIDIA/k8s-dra-driver-gpu/pkg/nvidia.com/informers/externalversions"
+	"github.com/NVIDIA/k8s-dra-driver-gpu/pkg/workqueue"
 )
 
 type GetComputeDomainFunc func(uid string) (*nvapi.ComputeDomain, error)
@@ -58,6 +59,7 @@ const (
 
 type ComputeDomainManager struct {
 	config        *ManagerConfig
+	workQueue     *workqueue.WorkQueue
 	waitGroup     sync.WaitGroup
 	cancelContext context.CancelFunc
 
@@ -74,14 +76,16 @@ type ComputeDomainManager struct {
 func NewComputeDomainManager(config *ManagerConfig) *ComputeDomainManager {
 	factory := nvinformers.NewSharedInformerFactory(config.clientsets.Nvidia, informerResyncPeriod)
 	informer := factory.Resource().V1beta1().ComputeDomains().Informer()
+	workQueue := workqueue.New(workqueue.DefaultControllerRateLimiter())
 
 	m := &ComputeDomainManager{
-		config:   config,
-		factory:  factory,
-		informer: informer,
+		config:    config,
+		workQueue: workQueue,
+		factory:   factory,
+		informer:  informer,
 	}
 
-	m.daemonSetManager = NewMultiNamespaceDaemonSetManager(config, m.Get, m.UpdateStatus)
+	m.daemonSetManager = NewMultiNamespaceDaemonSetManager(config, workQueue, m.Get, m.UpdateStatus)
 	m.resourceClaimTemplateManager = NewWorkloadResourceClaimTemplateManager(config, m.Get)
 	m.nodeManager = NewNodeManager(config, m.Get)
 
@@ -120,10 +124,10 @@ func (m *ComputeDomainManager) Start(ctx context.Context) (rerr error) {
 
 	_, err = m.informer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj any) {
-			m.config.workQueue.Enqueue(obj, m.onAddOrUpdate)
+			m.workQueue.Enqueue(obj, m.onAddOrUpdate)
 		},
 		UpdateFunc: func(oldObj, newObj any) {
-			m.config.workQueue.Enqueue(newObj, m.onAddOrUpdate)
+			m.workQueue.Enqueue(newObj, m.onAddOrUpdate)
 		},
 	})
 	if err != nil {
@@ -151,6 +155,12 @@ func (m *ComputeDomainManager) Start(ctx context.Context) (rerr error) {
 	if err := m.nodeManager.Start(ctx); err != nil {
 		return fmt.Errorf("error starting Node manager: %w", err)
 	}
+
+	m.waitGroup.Add(1)
+	go func() {
+		defer m.waitGroup.Done()
+		m.workQueue.Run(ctx)
+	}()
 
 	return nil
 }

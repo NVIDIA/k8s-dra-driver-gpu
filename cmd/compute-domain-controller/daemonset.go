@@ -36,6 +36,7 @@ import (
 
 	nvapi "github.com/NVIDIA/k8s-dra-driver-gpu/api/nvidia.com/resource/v1beta1"
 	"github.com/NVIDIA/k8s-dra-driver-gpu/pkg/featuregates"
+	"github.com/NVIDIA/k8s-dra-driver-gpu/pkg/workqueue"
 )
 
 const (
@@ -72,7 +73,7 @@ type DaemonSetManager struct {
 	cleanupManager               *CleanupManager[*appsv1.DaemonSet]
 }
 
-func NewDaemonSetManager(config *ManagerConfig, getComputeDomain GetComputeDomainFunc, updateComputeDomainStatus UpdateComputeDomainStatusFunc) *DaemonSetManager {
+func NewDaemonSetManager(config *ManagerConfig, workQueue *workqueue.WorkQueue, getComputeDomain GetComputeDomainFunc, updateComputeDomainStatus UpdateComputeDomainStatusFunc) *DaemonSetManager {
 	labelSelector := &metav1.LabelSelector{
 		MatchExpressions: []metav1.LabelSelectorRequirement{
 			{
@@ -99,7 +100,7 @@ func NewDaemonSetManager(config *ManagerConfig, getComputeDomain GetComputeDomai
 		factory:          factory,
 		informer:         informer,
 	}
-	m.daemonsetPodManager = NewDaemonSetPodManager(config, getComputeDomain, updateComputeDomainStatus)
+	m.daemonsetPodManager = NewDaemonSetPodManager(config, workQueue, getComputeDomain, updateComputeDomainStatus)
 	m.resourceClaimTemplateManager = NewDaemonSetResourceClaimTemplateManager(config, getComputeDomain)
 	m.cleanupManager = NewCleanupManager[*appsv1.DaemonSet](informer, getComputeDomain, m.cleanup)
 

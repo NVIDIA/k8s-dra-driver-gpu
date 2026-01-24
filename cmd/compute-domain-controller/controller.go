@@ -24,7 +24,6 @@ import (
 	"k8s.io/klog/v2"
 
 	"github.com/NVIDIA/k8s-dra-driver-gpu/pkg/flags"
-	"github.com/NVIDIA/k8s-dra-driver-gpu/pkg/workqueue"
 )
 
 // ManagerConfig defines the common configuration options shared across all managers.
@@ -45,9 +44,6 @@ type ManagerConfig struct {
 
 	// clientsets provides access to various Kubernetes API client interfaces
 	clientsets flags.ClientSets
-
-	// workQueue manages the asynchronous processing of tasks
-	workQueue *workqueue.WorkQueue
 
 	// additionalNamespaces is a list of additional namespaces
 	// where the driver can manage resources
@@ -70,11 +66,8 @@ func NewController(config *Config) *Controller {
 }
 
 // Run starts the controller's main loop and manages the lifecycle of its components.
-// It initializes the work queue, starts the ComputeDomain manager, and handles
-// graceful shutdown when the context is cancelled.
+// It starts the managers and handles graceful shutdown when the context is cancelled.
 func (c *Controller) Run(ctx context.Context) error {
-	workQueue := workqueue.New(workqueue.DefaultControllerRateLimiter())
-
 	managerConfig := &ManagerConfig{
 		driverName:            c.config.driverName,
 		driverNamespace:       c.config.flags.namespace,
@@ -82,7 +75,6 @@ func (c *Controller) Run(ctx context.Context) error {
 		imageName:             c.config.flags.imageName,
 		maxNodesPerIMEXDomain: c.config.flags.maxNodesPerIMEXDomain,
 		clientsets:            c.config.clientsets,
-		workQueue:             workQueue,
 		logVerbosityCDDaemon:  c.config.flags.logVerbosityCDDaemon,
 	}
 
@@ -100,7 +92,8 @@ func (c *Controller) Run(ctx context.Context) error {
 		return fmt.Errorf("error starting CliqueConfigMap manager: %w", err)
 	}
 
-	workQueue.Run(ctx)
+	// Wait for context cancellation
+	<-ctx.Done()
 
 	if err := cliqueConfigMapManager.Stop(); err != nil {
 		return fmt.Errorf("error stopping CliqueConfigMap manager: %w", err)

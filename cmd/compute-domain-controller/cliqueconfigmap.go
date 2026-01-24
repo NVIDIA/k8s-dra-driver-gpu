@@ -31,6 +31,8 @@ import (
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
+
+	"github.com/NVIDIA/k8s-dra-driver-gpu/pkg/workqueue"
 )
 
 const (
@@ -42,6 +44,7 @@ const (
 // with node-name to index mappings for each clique.
 type CliqueConfigMapManager struct {
 	config        *ManagerConfig
+	workQueue     *workqueue.WorkQueue
 	waitGroup     sync.WaitGroup
 	cancelContext context.CancelFunc
 
@@ -71,11 +74,13 @@ func NewCliqueConfigMapManager(config *ManagerConfig) *CliqueConfigMapManager {
 	)
 
 	informer := factory.Core().V1().Pods().Informer()
+	workQueue := workqueue.New(workqueue.DefaultControllerRateLimiter())
 
 	m := &CliqueConfigMapManager{
-		config:   config,
-		factory:  factory,
-		informer: informer,
+		config:    config,
+		workQueue: workQueue,
+		factory:   factory,
+		informer:  informer,
 	}
 
 	return m
@@ -96,10 +101,10 @@ func (m *CliqueConfigMapManager) Start(ctx context.Context) (rerr error) {
 
 	_, err := m.informer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {
-			m.config.workQueue.Enqueue(obj, m.onPodAddOrUpdate)
+			m.workQueue.Enqueue(obj, m.onPodAddOrUpdate)
 		},
 		UpdateFunc: func(oldObj, newObj interface{}) {
-			m.config.workQueue.Enqueue(newObj, m.onPodAddOrUpdate)
+			m.workQueue.Enqueue(newObj, m.onPodAddOrUpdate)
 		},
 	})
 	if err != nil {
@@ -121,6 +126,12 @@ func (m *CliqueConfigMapManager) Start(ctx context.Context) (rerr error) {
 	go func() {
 		defer m.waitGroup.Done()
 		m.periodicCleanup(ctx)
+	}()
+
+	m.waitGroup.Add(1)
+	go func() {
+		defer m.waitGroup.Done()
+		m.workQueue.Run(ctx)
 	}()
 
 	return nil
