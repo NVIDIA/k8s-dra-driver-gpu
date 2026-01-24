@@ -122,6 +122,11 @@ func NewDriver(ctx context.Context, config *Config) (*driver, error) {
 		return nil, fmt.Errorf("error starting ComputeDomain manager: %w", err)
 	}
 
+	// Set the clique label on the pod when the plugin comes online
+	if err := state.computeDomainManager.SetPodCliqueLabel(ctx); err != nil {
+		return nil, fmt.Errorf("error setting pod clique label: %w", err)
+	}
+
 	// Pass `nodeUnprepareResource` function in the cleanup manager.
 	if err := state.checkpointCleanupManager.Start(ctx, driver.nodeUnprepareResource); err != nil {
 		return nil, fmt.Errorf("error starting CheckpointCleanupManager: %w", err)

@@ -37,7 +37,8 @@ import (
 )
 
 const (
-	computeDomainLabelKey = "resource.nvidia.com/computeDomain"
+	computeDomainLabelKey       = "resource.nvidia.com/computeDomain"
+	computeDomainCliqueLabelKey = "resource.nvidia.com/computeDomain.cliqueID"
 
 	informerResyncPeriod = 10 * time.Minute
 	cleanupInterval      = 10 * time.Minute
@@ -347,6 +348,40 @@ func (m *ComputeDomainManager) GetComputeDomain(ctx context.Context, cdUID strin
 		return nil, fmt.Errorf("failed to cast to ComputeDomain")
 	}
 	return cd, nil
+}
+
+// SetPodCliqueLabel sets the computeDomain.clique label on the kubelet plugin pod
+// with the cliqueID. This label is set when the plugin first comes online,
+// overwriting any existing label with the same key. The label is automatically
+// cleaned up when the pod is deleted.
+func (m *ComputeDomainManager) SetPodCliqueLabel(ctx context.Context) error {
+	if m.cliqueID == "" {
+		klog.V(4).Infof("Skipping setting clique label: no cliqueID available")
+		return nil
+	}
+
+	if m.config.flags.podName == "" {
+		klog.V(4).Infof("Skipping setting clique label: no podName available")
+		return nil
+	}
+
+	pod, err := m.config.clientsets.Core.CoreV1().Pods(m.config.flags.namespace).Get(ctx, m.config.flags.podName, metav1.GetOptions{})
+	if err != nil {
+		return fmt.Errorf("error retrieving Pod: %w", err)
+	}
+
+	newPod := pod.DeepCopy()
+	if newPod.Labels == nil {
+		newPod.Labels = make(map[string]string)
+	}
+	newPod.Labels[computeDomainCliqueLabelKey] = m.cliqueID
+
+	if _, err = m.config.clientsets.Core.CoreV1().Pods(m.config.flags.namespace).Update(ctx, newPod, metav1.UpdateOptions{}); err != nil {
+		return fmt.Errorf("error updating Pod with clique label: %w", err)
+	}
+
+	klog.Infof("Set pod label %s=%s on pod %s/%s", computeDomainCliqueLabelKey, m.cliqueID, m.config.flags.namespace, m.config.flags.podName)
+	return nil
 }
 
 func (m *ComputeDomainManager) periodicCleanup(ctx context.Context) {

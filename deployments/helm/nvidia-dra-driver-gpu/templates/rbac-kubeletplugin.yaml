@@ -54,6 +54,9 @@ metadata:
   name: {{ include "nvidia-dra-driver-gpu.name" $ }}-role-kubeletplugin
   namespace: {{ $namespace }}
 rules:
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["update"]
 {{- if (and $.Values.resources.gpus.enabled $.Values.featureGates.MPSSupport) }}
 - apiGroups: ["apps"]
   resources: ["deployments"]

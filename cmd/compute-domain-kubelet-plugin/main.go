@@ -48,6 +48,7 @@ type Flags struct {
 
 	nodeName                      string
 	namespace                     string
+	podName                       string
 	cdiRoot                       string
 	containerDriverRoot           string
 	hostDriverRoot                string
@@ -92,6 +93,12 @@ func newApp() *cli.App {
 			Value:       "default",
 			Destination: &flags.namespace,
 			EnvVars:     []string{"NAMESPACE"},
+		},
+		&cli.StringFlag{
+			Name:        "pod-name",
+			Usage:       "The name of the pod running this plugin.",
+			Destination: &flags.podName,
+			EnvVars:     []string{"POD_NAME"},
 		},
 		&cli.StringFlag{
 			Name:        "cdi-root",
