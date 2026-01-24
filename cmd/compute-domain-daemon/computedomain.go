@@ -237,7 +237,6 @@ func (m *ComputeDomainManager) onAddOrUpdate(ctx context.Context, obj any) error
 // reports the IP address of this current pod running the CD daemon. If mutation
 // is needed (first insertion, or IP address update) and successful, it reflects
 // the mutation in `m.mutationCache`.
-// TODO: rename function?
 func (m *ComputeDomainManager) EnsureNodeInfoInCD(ctx context.Context, cd *nvapi.ComputeDomain) (*nvapi.ComputeDomain, error) {
 	var myNode, myNodePrevious *nvapi.ComputeDomainNode
 
@@ -255,17 +254,10 @@ func (m *ComputeDomainManager) EnsureNodeInfoInCD(ctx context.Context, cd *nvapi
 
 	// Create new ComputeDomainNode object representing myself, and insert it into the nodes list.
 	if myNode == nil {
-		// Get the next available index for this new node (local point of view,
-		// API server may tell us later that this index was chosen poorly).
-		nextIndex, err := getNextAvailableIndex(m.config.cliqueID, newCD.Status.Nodes, m.config.maxNodesPerIMEXDomain)
-		if err != nil {
-			return nil, fmt.Errorf("error getting next available index: %w", err)
-		}
-
 		myNode = &nvapi.ComputeDomainNode{
 			Name:     m.config.nodeName,
 			CliqueID: m.config.cliqueID,
-			Index:    nextIndex,
+			Index:    m.config.cliqueNodeIndex,
 			// This is going to be switched to Ready by podmanager.
 			Status: nvapi.ComputeDomainStatusNotReady,
 		}
@@ -277,30 +269,6 @@ func (m *ComputeDomainManager) EnsureNodeInfoInCD(ctx context.Context, cd *nvapi
 	// as of now translates into a pod IP address and may therefore changes
 	// across pod restarts.
 	myNode.IPAddress = m.config.podIP
-
-	// Detect and handle DNS index collision where my self-chosen DNS index
-	// appears elsewhere (among the nodes with the same cliqueID). If
-	// `m.previousNodes` is empty, we haven't started the IMEX daemon yet and
-	// hence can change our previous choice safely.
-	if len(m.previousNodes) == 0 {
-		for _, other := range newCD.Status.Nodes {
-			// Skip items in different cliques, and also myself.
-			if other.CliqueID != m.config.cliqueID {
-				continue
-			}
-			if other.Name == m.config.nodeName {
-				continue
-			}
-			if other.Index == myNode.Index {
-				idx, err := getNextAvailableIndex(m.config.cliqueID, newCD.Status.Nodes, m.config.maxNodesPerIMEXDomain)
-				if err != nil {
-					return nil, fmt.Errorf("error getting next available index: %w", err)
-				}
-				myNode.Index = idx
-				klog.V(4).Infof("EnsureNodeInfoInCD: IMEX daemon not started yet, DNS index collision with %v, picked new index: %d", other, idx)
-			}
-		}
-	}
 
 	if myNodePrevious != nil && *myNodePrevious == *myNode {
 		klog.V(6).Infof("EnsureNodeInfoInCD noop: no change (%v)", *myNode)
@@ -326,58 +294,6 @@ func (m *ComputeDomainManager) EnsureNodeInfoInCD(ctx context.Context, cd *nvapi
 	return updatedCD, nil
 }
 
-// The Index field in the Nodes section of the ComputeDomain status ensures a
-// consistent IP-to-DNS name mapping across all machines within a given IMEX
-// domain. Each node's index directly determines its DNS name using the format
-// "compute-domain-daemon-{index}".
-//
-// getNextAvailableIndex finds the next available index for the current node by
-// seeing which ones are already taken by other nodes in the ComputeDomain
-// status that have the same cliqueID. It fills in gaps where it can, and returns
-// an error if no index is available within maxNodesPerIMEXDomain.
-//
-// By filling gaps in the index sequence (rather than always appending), we
-// maintain stable DNS names for existing nodes even when intermediate nodes
-// are removed from the compute domain and new ones are added.
-func getNextAvailableIndex(currentCliqueID string, nodes []*nvapi.ComputeDomainNode, maxNodesPerIMEXDomain int) (int, error) {
-	// Filter nodes to only consider those with the same cliqueID
-	var cliqueNodes []*nvapi.ComputeDomainNode
-	for _, node := range nodes {
-		if node.CliqueID == currentCliqueID {
-			cliqueNodes = append(cliqueNodes, node)
-		}
-	}
-
-	// Create a map to track used indices
-	usedIndices := make(map[int]bool)
-
-	// Collect all currently used indices from nodes with the same cliqueID
-	for _, node := range cliqueNodes {
-		usedIndices[node.Index] = true
-	}
-
-	// Find the next available index, starting from 0 and filling gaps
-	nextIndex := 0
-	for usedIndices[nextIndex] {
-		nextIndex++
-	}
-
-	// Skip `maxNodesPerIMEXDomain` check in the special case of no clique ID
-	// being set: this means that this node does not actually run an IMEX daemon
-	// managed by us and the set of nodes in this "noop" mode in this CD is
-	// allowed to grow larger than maxNodesPerIMEXDomain.
-	if currentCliqueID == "" {
-		return nextIndex, nil
-	}
-
-	// Ensure nextIndex is within the range 0..maxNodesPerIMEXDomain
-	if nextIndex < 0 || nextIndex >= maxNodesPerIMEXDomain {
-		return -1, fmt.Errorf("no available indices within maxNodesPerIMEXDomain (%d) for cliqueID %s", maxNodesPerIMEXDomain, currentCliqueID)
-	}
-
-	return nextIndex, nil
-}
-
 // If there was actually a change compared to the previously known set of
 // nodes: pass info to IMEX daemon controller.
 func (m *ComputeDomainManager) MaybePushNodesUpdate(cd *nvapi.ComputeDomain) {
@@ -388,12 +304,6 @@ func (m *ComputeDomainManager) MaybePushNodesUpdate(cd *nvapi.ComputeDomain) {
 			klog.Infof("numNodes: %d, nodes seen: %d", cd.Spec.NumNodes, len(cd.Status.Nodes))
 			return
 		}
-	}
-
-	// Do not update the IMEX daemon config if the current nodes list
-	// contains any duplicate DNS index (within our clique).
-	if m.HasDuplicateIndex(cd.Status.Nodes, m.config.cliqueID) {
-		return
 	}
 
 	newIPs := getIPSet(cd.Status.Nodes)
@@ -500,27 +410,4 @@ func generatePatchForNodeInfo(nodes []*nvapi.ComputeDomainNode) ([]byte, error) 
 	}
 	patchBytes, err := json.Marshal(patch)
 	return patchBytes, err
-}
-
-// HasDuplicateIndex iterates over the list of ComputeDomainNodes (in this CD,
-// and in this clique), and returns true if any Index appears more than once.
-func (m *ComputeDomainManager) HasDuplicateIndex(nodeInfos []*nvapi.ComputeDomainNode, cliqueID string) bool {
-	seen := make(map[int]struct{})
-
-	for _, node := range nodeInfos {
-		// Ignore nodes in a different clique.
-		if node.CliqueID != cliqueID {
-			continue
-		}
-
-		if _, exists := seen[node.Index]; exists {
-			klog.V(4).Infof("DNS index collision detected: %v uses an index seen before (we are node %v)", node, m.config.nodeName)
-			return true
-		}
-
-		// Mark as seen.
-		seen[node.Index] = struct{}{}
-	}
-
-	return false
 }

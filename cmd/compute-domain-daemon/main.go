@@ -49,6 +49,7 @@ const (
 
 type Flags struct {
 	cliqueID               string
+	cliqueNodeIndex        int
 	computeDomainUUID      string
 	computeDomainName      string
 	computeDomainNamespace string
@@ -100,6 +101,12 @@ func newApp() *cli.App {
 			Usage:       "The clique ID for this node.",
 			EnvVars:     []string{"CLIQUE_ID"},
 			Destination: &flags.cliqueID,
+		},
+		&cli.IntFlag{
+			Name:        "clique-node-index",
+			Usage:       "The node index within the clique (assigned by controller).",
+			EnvVars:     []string{"CLIQUE_NODE_INDEX"},
+			Destination: &flags.cliqueNodeIndex,
 		},
 		&cli.StringFlag{
 			Name:        "compute-domain-uuid",
@@ -192,6 +199,7 @@ func run(ctx context.Context, cancel context.CancelFunc, flags *Flags) error {
 
 	config := &ControllerConfig{
 		cliqueID:               flags.cliqueID,
+		cliqueNodeIndex:        flags.cliqueNodeIndex,
 		computeDomainUUID:      flags.computeDomainUUID,
 		computeDomainName:      flags.computeDomainName,
 		computeDomainNamespace: flags.computeDomainNamespace,
