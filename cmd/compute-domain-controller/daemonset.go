@@ -130,18 +130,6 @@ func (m *DaemonSetManager) Start(ctx context.Context) (rerr error) {
 		true,
 	)
 
-	_, err := m.informer.AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc: func(obj any) {
-			m.config.workQueue.Enqueue(obj, m.onAddOrUpdate)
-		},
-		UpdateFunc: func(objOld, objNew any) {
-			m.config.workQueue.Enqueue(objNew, m.onAddOrUpdate)
-		},
-	})
-	if err != nil {
-		return fmt.Errorf("error adding event handlers for DaemonSet informer: %w", err)
-	}
-
 	m.waitGroup.Add(1)
 	go func() {
 		defer m.waitGroup.Done()
@@ -356,35 +344,6 @@ func (m *DaemonSetManager) assertRemoved(ctx context.Context, cdUID string) erro
 	if len(ds) != 0 {
 		return fmt.Errorf("still exists")
 	}
-	return nil
-}
-
-func (m *DaemonSetManager) onAddOrUpdate(ctx context.Context, obj any) error {
-	d, ok := obj.(*appsv1.DaemonSet)
-	if !ok {
-		return fmt.Errorf("failed to cast to DaemonSet")
-	}
-
-	klog.V(2).Infof("Processing added or updated DaemonSet: %s/%s", d.Namespace, d.Name)
-
-	cd, err := m.getComputeDomain(d.Labels[computeDomainLabelKey])
-	if err != nil {
-		return fmt.Errorf("error getting ComputeDomain: %w", err)
-	}
-	if cd == nil {
-		return nil
-	}
-
-	if int(d.Status.NumberReady) != cd.Spec.NumNodes {
-		return nil
-	}
-
-	newCD := cd.DeepCopy()
-	newCD.Status.Status = nvapi.ComputeDomainStatusReady
-	if _, err = m.config.clientsets.Nvidia.ResourceV1beta1().ComputeDomains(newCD.Namespace).UpdateStatus(ctx, newCD, metav1.UpdateOptions{}); err != nil {
-		return fmt.Errorf("error updating nodes in ComputeDomain status: %w", err)
-	}
-
 	return nil
 }
 
