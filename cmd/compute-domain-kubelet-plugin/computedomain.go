@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"sync"
 	"time"
 
@@ -37,6 +38,9 @@ import (
 )
 
 const (
+	// cliqueConfigMapPrefix is the prefix for ConfigMaps that store clique node-to-index mappings.
+	cliqueConfigMapPrefix = "clique-"
+
 	computeDomainLabelKey       = "resource.nvidia.com/computeDomain"
 	computeDomainCliqueLabelKey = "resource.nvidia.com/computeDomain.cliqueID"
 
@@ -57,6 +61,7 @@ type ComputeDomainManager struct {
 
 	configFilesRoot string
 	cliqueID        string
+	cliqueNodeIndex *int
 }
 
 type ComputeDomainDaemonSettings struct {
@@ -159,10 +164,18 @@ func (s *ComputeDomainDaemonSettings) GetCDIContainerEditsCommon(ctx context.Con
 		return nil, fmt.Errorf("compute domain not found: %s", s.domainID)
 	}
 
+	// Get the clique node index from the ConfigMap (managed by the controller).
+	// This will error if not available yet, causing a retry.
+	cliqueNodeIndex, err := s.manager.GetCliqueNodeIndex(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("error getting clique node index: %w", err)
+	}
+
 	edits := &cdiapi.ContainerEdits{
 		ContainerEdits: &cdispec.ContainerEdits{
 			Env: []string{
 				fmt.Sprintf("CLIQUE_ID=%s", s.manager.cliqueID),
+				fmt.Sprintf("CLIQUE_NODE_INDEX=%d", cliqueNodeIndex),
 				fmt.Sprintf("COMPUTE_DOMAIN_UUID=%s", cd.UID),
 				fmt.Sprintf("COMPUTE_DOMAIN_NAME=%s", cd.Name),
 				fmt.Sprintf("COMPUTE_DOMAIN_NAMESPACE=%s", cd.Namespace),
@@ -382,6 +395,39 @@ func (m *ComputeDomainManager) SetPodCliqueLabel(ctx context.Context) error {
 
 	klog.Infof("Set pod label %s=%s on pod %s/%s", computeDomainCliqueLabelKey, m.cliqueID, m.config.flags.namespace, m.config.flags.podName)
 	return nil
+}
+
+// GetCliqueNodeIndex retrieves this node's index from the clique ConfigMap.
+// The result is cached after the first successful lookup since it never changes
+// for the lifetime of the kubelet plugin pod.
+// Returns an error if the ConfigMap doesn't exist or the node isn't in it yet.
+func (m *ComputeDomainManager) GetCliqueNodeIndex(ctx context.Context) (int, error) {
+	if m.cliqueID == "" {
+		return 0, nil
+	}
+
+	if m.cliqueNodeIndex != nil {
+		return *m.cliqueNodeIndex, nil
+	}
+
+	cmName := cliqueConfigMapPrefix + m.cliqueID
+	cm, err := m.config.clientsets.Core.CoreV1().ConfigMaps(m.config.flags.namespace).Get(ctx, cmName, metav1.GetOptions{})
+	if err != nil {
+		return -1, fmt.Errorf("get ConfigMap %s: %w", cmName, err)
+	}
+
+	indexStr, exists := cm.Data[m.config.flags.nodeName]
+	if !exists {
+		return -1, fmt.Errorf("node %s not found in ConfigMap %s", m.config.flags.nodeName, cmName)
+	}
+
+	index, err := strconv.Atoi(indexStr)
+	if err != nil {
+		return -1, fmt.Errorf("invalid index value %q for node %s in ConfigMap %s: %w", indexStr, m.config.flags.nodeName, cmName, err)
+	}
+
+	m.cliqueNodeIndex = &index
+	return index, nil
 }
 
 func (m *ComputeDomainManager) periodicCleanup(ctx context.Context) {
