@@ -43,8 +43,9 @@ const (
 	// not so long that stale entries cause issues.
 	mutationCacheTTL = time.Hour
 
-	computeDomainLabelKey  = "resource.nvidia.com/computeDomain"
-	computeDomainFinalizer = computeDomainLabelKey
+	computeDomainLabelKey       = "resource.nvidia.com/computeDomain"
+	computeDomainCliqueLabelKey = "resource.nvidia.com/computeDomain.cliqueID"
+	computeDomainFinalizer      = computeDomainLabelKey
 
 	computeDomainDefaultChannelDeviceClass = "compute-domain-default-channel.nvidia.com"
 	computeDomainChannelDeviceClass        = "compute-domain-channel.nvidia.com"

@@ -90,12 +90,21 @@ func (c *Controller) Run(ctx context.Context) error {
 	klog.Infof("controller manager config: %+v", managerConfig)
 
 	cdManager := NewComputeDomainManager(managerConfig)
+	cliqueConfigMapManager := NewCliqueConfigMapManager(managerConfig)
 
 	if err := cdManager.Start(ctx); err != nil {
 		return fmt.Errorf("error starting ComputeDomain manager: %w", err)
 	}
 
+	if err := cliqueConfigMapManager.Start(ctx); err != nil {
+		return fmt.Errorf("error starting CliqueConfigMap manager: %w", err)
+	}
+
 	workQueue.Run(ctx)
+
+	if err := cliqueConfigMapManager.Stop(); err != nil {
+		return fmt.Errorf("error stopping CliqueConfigMap manager: %w", err)
+	}
 
 	if err := cdManager.Stop(); err != nil {
 		return fmt.Errorf("error stopping ComputeDomain manager: %w", err)
