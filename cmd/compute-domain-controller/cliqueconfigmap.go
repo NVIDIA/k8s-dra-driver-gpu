@@ -20,11 +20,14 @@ import (
 	"context"
 	"fmt"
 	"strconv"
+	"strings"
 	"sync"
+	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
@@ -112,6 +115,13 @@ func (m *CliqueConfigMapManager) Start(ctx context.Context) (rerr error) {
 	if !cache.WaitForCacheSync(ctx.Done(), m.informer.HasSynced) {
 		return fmt.Errorf("error syncing pod informer cache")
 	}
+
+	// Start periodic cleanup goroutine
+	m.waitGroup.Add(1)
+	go func() {
+		defer m.waitGroup.Done()
+		m.periodicCleanup(ctx)
+	}()
 
 	return nil
 }
@@ -230,4 +240,146 @@ func (m *CliqueConfigMapManager) getNextAvailableIndex(data map[string]string) (
 	}
 
 	return nextIndex, nil
+}
+
+// periodicCleanup periodically removes stale entries from clique ConfigMaps.
+func (m *CliqueConfigMapManager) periodicCleanup(ctx context.Context) {
+	ticker := time.NewTicker(cleanupInterval)
+	defer ticker.Stop()
+
+	// Run cleanup immediately on startup
+	m.cleanupStaleEntries(ctx)
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			m.cleanupStaleEntries(ctx)
+		}
+	}
+}
+
+// cleanupStaleEntries removes entries for nodes that no longer exist in the cluster
+// or have a kubelet plugin pod with a different clique label,
+// and deletes ConfigMaps that become empty.
+func (m *CliqueConfigMapManager) cleanupStaleEntries(ctx context.Context) {
+	klog.V(6).Infof("Cleanup: checking for stale clique ConfigMap entries")
+
+	// Get the set of nodes that exist in the cluster
+	nodes, err := m.getNodes(ctx)
+	if err != nil {
+		klog.Errorf("error getting nodes for cleanup: %v", err)
+		return
+	}
+
+	// List all ConfigMaps in the driver namespace
+	cmList, err := m.config.clientsets.Core.CoreV1().ConfigMaps(m.config.driverNamespace).List(ctx, metav1.ListOptions{})
+	if err != nil {
+		klog.Errorf("error listing ConfigMaps for cleanup: %v", err)
+		return
+	}
+
+	for _, cm := range cmList.Items {
+		// Only consider ConfigMaps with the clique prefix
+		if !strings.HasPrefix(cm.Name, cliqueConfigMapPrefix) {
+			continue
+		}
+
+		m.cleanupConfigMap(ctx, &cm, nodes)
+	}
+}
+
+// cleanupConfigMap removes entries for nodes that no longer exist or have a kubelet
+// plugin pod with a different clique label value.
+func (m *CliqueConfigMapManager) cleanupConfigMap(ctx context.Context, cm *corev1.ConfigMap, nodes sets.Set[string]) {
+	cliqueID := strings.TrimPrefix(cm.Name, cliqueConfigMapPrefix)
+	cliqueLabels := m.getCliqueLabels()
+
+	var nodesToRemove []string
+	for nodeName := range cm.Data {
+		if m.shouldRemoveNode(nodeName, cliqueID, nodes, cliqueLabels) {
+			nodesToRemove = append(nodesToRemove, nodeName)
+		}
+	}
+
+	if len(nodesToRemove) == 0 {
+		return
+	}
+
+	newCM := cm.DeepCopy()
+	for _, nodeName := range nodesToRemove {
+		klog.Infof("Cleanup: removing node %s from ConfigMap %s", nodeName, cm.Name)
+		delete(newCM.Data, nodeName)
+	}
+
+	// If ConfigMap is now empty, delete it
+	if len(newCM.Data) == 0 {
+		klog.Infof("Cleanup: deleting empty ConfigMap %s", cm.Name)
+		if err := m.config.clientsets.Core.CoreV1().ConfigMaps(m.config.driverNamespace).Delete(ctx, cm.Name, metav1.DeleteOptions{}); err != nil && !apierrors.IsNotFound(err) {
+			klog.Errorf("error deleting empty ConfigMap %s: %v", cm.Name, err)
+		}
+		return
+	}
+
+	// Update the ConfigMap with removed entries
+	if _, err := m.config.clientsets.Core.CoreV1().ConfigMaps(m.config.driverNamespace).Update(ctx, newCM, metav1.UpdateOptions{}); err != nil {
+		klog.Errorf("error updating ConfigMap %s after cleanup: %v", cm.Name, err)
+	}
+}
+
+// shouldRemoveNode returns true if a node entry should be removed from a clique ConfigMap.
+// A node should be removed if:
+// - The node no longer exists in the cluster.
+// - The node has a kubelet plugin pod with a different clique label (no label is OK).
+func (m *CliqueConfigMapManager) shouldRemoveNode(nodeName, cliqueID string, nodes sets.Set[string], cliqueLabels map[string]string) bool {
+	if !nodes.Has(nodeName) {
+		return true
+	}
+	if _, exists := cliqueLabels[nodeName]; !exists {
+		return false
+	}
+	if cliqueLabels[nodeName] != cliqueID {
+		return true
+	}
+	return false
+}
+
+// getNodes returns a set of node names that exist in the cluster.
+func (m *CliqueConfigMapManager) getNodes(ctx context.Context) (sets.Set[string], error) {
+	nodeList, err := m.config.clientsets.Core.CoreV1().Nodes().List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("list nodes: %w", err)
+	}
+
+	nodes := sets.New[string]()
+	for _, node := range nodeList.Items {
+		nodes.Insert(node.Name)
+	}
+
+	return nodes, nil
+}
+
+// getCliqueLabels returns a mapping of node name to cliqueID for nodes that have
+// kubelet plugin pods with the clique label, using the informer cache.
+func (m *CliqueConfigMapManager) getCliqueLabels() map[string]string {
+	cliqueLabels := make(map[string]string)
+
+	for _, obj := range m.informer.GetStore().List() {
+		pod, ok := obj.(*corev1.Pod)
+		if !ok {
+			continue
+		}
+		cliqueID := pod.Labels[computeDomainCliqueLabelKey]
+		if cliqueID == "" {
+			continue
+		}
+		nodeName := pod.Spec.NodeName
+		if nodeName == "" {
+			continue
+		}
+		cliqueLabels[nodeName] = cliqueID
+	}
+
+	return cliqueLabels
 }
