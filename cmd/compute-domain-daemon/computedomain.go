@@ -21,6 +21,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"maps"
+	"sort"
 	"sync"
 	"time"
 
@@ -396,24 +397,17 @@ func (m *ComputeDomainManager) MaybePushNodesUpdate(cd *nvapi.ComputeDomain) {
 		return
 	}
 
-	newIPs := getIPSet(cd.Status.Nodes)
-	previousIPs := getIPSet(m.previousNodes)
+	newIPs := getIPSetForClique(cd.Status.Nodes, m.config.cliqueID)
+	previousIPs := getIPSetForClique(m.previousNodes, m.config.cliqueID)
+	added, removed := previousIPs.Diff(newIPs)
 
-	// Compare sets (i.e., without paying attention to order). Note: the order
-	// of IP addresses written to the IMEX daemon's config file might matter (in
-	// the sense that if across config files the set is equal but the order is
-	// not: that may lead to an IMEX daemon startup error). Maybe we should
-	// perform a stable sort of IP addresses before writing them to the nodes
-	// config file. Note/TODO: we probably want to limit this check to IP
-	// addresses relevant to _this_ clique.
+	// Compare sets (without paying attention to order).
 	if !maps.Equal(newIPs, previousIPs) {
-		klog.V(2).Infof("IP set changed")
-		// This log message gets large for large node numbers
-		klog.V(6).Infof("previous: %v; new: %v", previousIPs, newIPs)
+		klog.V(2).Infof("IP set for clique changed.\nAdded: %v\nRemoved: %v", added, removed)
 		m.previousNodes = cd.Status.Nodes
 		m.updatedNodesChan <- cd.Status.Nodes
 	} else {
-		klog.V(6).Infof("IP set did not change")
+		klog.V(6).Infof("IP set for clique did not change")
 	}
 }
 
@@ -482,10 +476,12 @@ func (m *ComputeDomainManager) patchCD(ctx context.Context, patch []byte) (*nvap
 	return updatedCD, err
 }
 
-func getIPSet(nodeInfos []*nvapi.ComputeDomainNode) IPSet {
+func getIPSetForClique(nodeInfos []*nvapi.ComputeDomainNode, cliqueID string) IPSet {
 	set := make(IPSet)
 	for _, n := range nodeInfos {
-		set[n.IPAddress] = struct{}{}
+		if n.CliqueID == cliqueID {
+			set[n.IPAddress] = struct{}{}
+		}
 	}
 	return set
 }
@@ -514,7 +510,7 @@ func (m *ComputeDomainManager) HasDuplicateIndex(nodeInfos []*nvapi.ComputeDomai
 		}
 
 		if _, exists := seen[node.Index]; exists {
-			klog.V(4).Infof("DNS index collision detected: %v uses an index seen before (we are node %v)", node, m.config.nodeName)
+			klog.V(6).Infof("DNS index collision detected: %v uses an index seen before (we are node %v)", node, m.config.nodeName)
 			return true
 		}
 
@@ -523,4 +519,30 @@ func (m *ComputeDomainManager) HasDuplicateIndex(nodeInfos []*nvapi.ComputeDomai
 	}
 
 	return false
+}
+
+// Diff compares two IP sets. It returns a list of IPs that were added and a
+// list of IPs that were removed. `s` is the reference set.
+func (s IPSet) Diff(cmp IPSet) ([]string, []string) {
+	var added []string
+	var removed []string
+
+	// Find IPs in `s` (reference) that are not in `cmp` (removed).
+	for ip := range s {
+		if _, exists := cmp[ip]; !exists {
+			removed = append(removed, ip)
+		}
+	}
+
+	// Find IPs in `cmp` that are not in `s` (added).
+	for ip := range cmp {
+		if _, exists := s[ip]; !exists {
+			added = append(added, ip)
+		}
+	}
+
+	// Sort, for logging purposes.
+	sort.Strings(added)
+	sort.Strings(removed)
+	return added, removed
 }
