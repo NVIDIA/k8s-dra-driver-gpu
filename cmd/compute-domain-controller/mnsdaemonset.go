@@ -78,7 +78,7 @@ func (m *MultiNamespaceDaemonSetManager) Stop() error {
 }
 
 // Create creates a DaemonSet in the provided namespace.
-func (m *MultiNamespaceDaemonSetManager) Create(ctx context.Context, cd *nvapi.ComputeDomain) (*appsv1.DaemonSet, error) {
+func (m *MultiNamespaceDaemonSetManager) Create(ctx context.Context, cd *nvapi.ComputeDomain) (*appsv1.Deployment, error) {
 	for ns, manager := range m.managers {
 		ds, err := manager.Get(ctx, string(cd.UID))
 		if err != nil {

@@ -20,13 +20,15 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"hash/fnv"
 	"os"
-	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"strconv"
 	"sync"
 	"syscall"
 	"text/template"
+	"time"
 
 	"k8s.io/klog/v2"
 
@@ -52,6 +54,7 @@ type Flags struct {
 	computeDomainUUID      string
 	computeDomainName      string
 	computeDomainNamespace string
+	computeDomainNumNodes  int
 	nodeName               string
 	podIP                  string
 	podName                string
@@ -119,6 +122,12 @@ func newApp() *cli.App {
 			Value:       "default",
 			EnvVars:     []string{"COMPUTE_DOMAIN_NAMESPACE"},
 			Destination: &flags.computeDomainNamespace,
+		},
+		&cli.IntFlag{
+			Name:        "compute-domain-num-nodes",
+			Usage:       "",
+			EnvVars:     []string{"COMPUTE_DOMAIN_NUM_NODES"},
+			Destination: &flags.computeDomainNumNodes,
 		},
 		&cli.StringFlag{
 			Name:        "node-name",
@@ -195,6 +204,7 @@ func run(ctx context.Context, cancel context.CancelFunc, flags *Flags) error {
 		computeDomainUUID:      flags.computeDomainUUID,
 		computeDomainName:      flags.computeDomainName,
 		computeDomainNamespace: flags.computeDomainNamespace,
+		computeDomainNumNodes:  flags.computeDomainNumNodes,
 		nodeName:               flags.nodeName,
 		podIP:                  flags.podIP,
 		podName:                flags.podName,
@@ -212,10 +222,15 @@ func run(ctx context.Context, cancel context.CancelFunc, flags *Flags) error {
 		klog.Infof("no cliqueID: register with ComputeDomain, but do not run IMEX daemon")
 	}
 
-	// Render and write the IMEX daemon config with the current pod IP
-	if err := writeIMEXConfig(flags.podIP); err != nil {
-		return fmt.Errorf("writeIMEXConfig failed: %w", err)
+	// large-N-simulation hack
+	if config.cliqueID == "none" {
+		config.cliqueID = calcCliqueID(config.nodeName, config.computeDomainNumNodes)
 	}
+
+	// Render and write the IMEX daemon config with the current pod IP
+	// if err := writeIMEXConfig(flags.podIP); err != nil {
+	// 	return fmt.Errorf("writeIMEXConfig failed: %w", err)
+	// }
 
 	// Prepare IMEX daemon process manager (not invoking the process yet).
 	var dnsNameManager *DNSNameManager
@@ -230,7 +245,12 @@ func run(ctx context.Context, cancel context.CancelFunc, flags *Flags) error {
 	}
 
 	// Prepare IMEX daemon process manager.
-	daemonCommandLine := []string{imexDaemonBinaryName, "-c", imexDaemonConfigPath}
+	//daemonCommandLine := []string{imexDaemonBinaryName, "-c", imexDaemonConfigPath}
+	daemonCommandLine := []string{
+		"bash",
+		"-c",
+		"trap 'echo \"Received SIGUSR1\"' SIGUSR1; echo; echo; echo START; while true; touch /running; echo running; do sleep 5; done",
+	}
 	processManager := NewProcessManager(daemonCommandLine)
 
 	// Prepare controller with CD manager (not invoking the controller yet).
@@ -329,6 +349,9 @@ func IMEXDaemonUpdateLoopWithIPs(ctx context.Context, controller *Controller, cl
 // connections. We only restart the IMEX daemon if it crashes (both
 // unexpectedly and expectedly).
 func IMEXDaemonUpdateLoopWithDNSNames(ctx context.Context, controller *Controller, processManager *ProcessManager, dnsNameManager *DNSNameManager) error {
+	t0 := time.Now()
+	firstupdate := true
+
 	for {
 		klog.V(1).Infof("wait for nodes update")
 
@@ -337,12 +360,17 @@ func IMEXDaemonUpdateLoopWithDNSNames(ctx context.Context, controller *Controlle
 			klog.Infof("shutdown: stop IMEXDaemonUpdateLoopWithDNSNames")
 			return nil
 		case nodes := <-controller.GetNodesUpdateChan():
-			updated, err := dnsNameManager.UpdateDNSNameMappings(nodes)
+			if firstupdate {
+				klog.V(6).Infof("t_process_start %.3f s", time.Since(t0).Seconds())
+				firstupdate = false
+			}
+
+			updated, err := dnsNameManager.UpdateDNSNameMappings(nodes, controller.computeDomainManager.config.cliqueID)
 			if err != nil {
 				return fmt.Errorf("failed to update DNS name => IP mappings: %w", err)
 			}
 
-			if dnsNameManager.cliqueID == "" {
+			if controller.computeDomainManager.config.cliqueID == "" {
 				klog.V(1).Infof("empty cliqueID: do not start IMEX daemon")
 				break
 			}
@@ -380,29 +408,13 @@ func IMEXDaemonUpdateLoopWithDNSNames(ctx context.Context, controller *Controlle
 // check verifies if the node is IMEX capable and if so, checks if the IMEX daemon is ready.
 // It returns an error if any step fails.
 func check(ctx context.Context, cancel context.CancelFunc, flags *Flags) error {
-	if flags.cliqueID == "" {
-		fmt.Println("check succeeded (noop, clique ID is empty)")
+	if _, err := os.Stat("/running"); err == nil {
+		fmt.Println("/running found")
 		return nil
 	}
 
-	// -q is documented with "Query the status of the IMEX daemon once and
-	// return". This probes if the local IMEX daemon is ready (not the entire
-	// domain). Reference:
-	// https://docs.nvidia.com/multi-node-nvlink-systems/imex-guide/cmdservice.html
-	cmd := exec.CommandContext(ctx, imexCtlBinaryName, "-c", imexDaemonConfigPath, "-q")
-
-	// Spawn child, collect standard streams.
-	outerr, err := cmd.CombinedOutput()
-	if err != nil {
-		klog.Errorf("%s failed (%s), stdout/err: %s", imexCtlBinaryName, err, outerr)
-		return fmt.Errorf("IMEX daemon check failed: error running %s: %w", imexCtlBinaryName, err)
-	}
-
-	if string(outerr) != "READY\n" {
-		return fmt.Errorf("IMEX daemon not ready: %s", string(outerr))
-	}
-
-	return nil
+	fmt.Println("/running not found yet")
+	return fmt.Errorf("/running not found yet")
 }
 
 // writeIMEXConfig renders the config template with the pod IP and writes it to the final config file.
@@ -478,4 +490,36 @@ func logNodesConfig() error {
 	}
 	klog.Infof("Current %s:\n%s", imexDaemonNodesConfigPath, string(content))
 	return nil
+}
+
+func calcCliqueID(nodename string, numnodes int) string {
+	// 1. Determine number of cliques
+	// To round up NUMNODES / 18, we use integer math: (n + divisor - 1) / divisor
+	// Example: 19 nodes / 18 = 2 cliques
+	ccount := (numnodes + 17) / 18
+	if ccount == 0 {
+		ccount = 1
+	}
+
+	// 2. Calculate clique assignment
+	// We hash the node name and map it to one of the clique indices
+	cliqueIndex := getCliqueAssignment(nodename, ccount)
+	// overwrite assigned clique ID (so far, it was noop)
+	cliqueID := strconv.Itoa(cliqueIndex)
+	klog.Infof("identified clique count: %d, picked cliqueID %s", ccount, cliqueID)
+	return cliqueID
+}
+
+// Each node (simulated in a pod) must independently self-assign a clique using
+// only its name and the total node count -- the most robust "uniform" strategy
+// is Modulo Hashing. getCliqueAssignment hashes a string to a range [0, max-1]
+func getCliqueAssignment(key string, max int) int {
+	// FNV-1a is a non-cryptographic hash function that is fast
+	// and has excellent distribution properties for short strings.
+	h := fnv.New32a()
+	h.Write([]byte(key))
+	hashValue := h.Sum32()
+
+	// Modulo operation maps the massive hash value to our specific range
+	return int(hashValue % uint32(max))
 }

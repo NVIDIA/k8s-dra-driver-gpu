@@ -53,6 +53,12 @@ type DaemonSetTemplateData struct {
 	MaxNodesPerIMEXDomain     int
 	FeatureGates              map[string]bool
 	LogVerbosity              int
+	// hack for big-N-simulation
+	CDUUID      string
+	CDName      string
+	CDNamespace string
+	CliqueID    string
+	NumNodes    int
 }
 
 type DaemonSetManager struct {
@@ -69,7 +75,7 @@ type DaemonSetManager struct {
 
 	daemonsetPodManager          *DaemonSetPodManager
 	resourceClaimTemplateManager *DaemonSetResourceClaimTemplateManager
-	cleanupManager               *CleanupManager[*appsv1.DaemonSet]
+	cleanupManager               *CleanupManager[*appsv1.Deployment]
 }
 
 func NewDaemonSetManager(config *ManagerConfig, getComputeDomain GetComputeDomainFunc, updateComputeDomainStatus UpdateComputeDomainStatusFunc) *DaemonSetManager {
@@ -91,7 +97,7 @@ func NewDaemonSetManager(config *ManagerConfig, getComputeDomain GetComputeDomai
 		}),
 	)
 
-	informer := factory.Apps().V1().DaemonSets().Informer()
+	informer := factory.Apps().V1().Deployments().Informer()
 
 	m := &DaemonSetManager{
 		config:           config,
@@ -101,7 +107,7 @@ func NewDaemonSetManager(config *ManagerConfig, getComputeDomain GetComputeDomai
 	}
 	m.daemonsetPodManager = NewDaemonSetPodManager(config, getComputeDomain, updateComputeDomainStatus)
 	m.resourceClaimTemplateManager = NewDaemonSetResourceClaimTemplateManager(config, getComputeDomain)
-	m.cleanupManager = NewCleanupManager[*appsv1.DaemonSet](informer, getComputeDomain, m.cleanup)
+	m.cleanupManager = NewCleanupManager[*appsv1.Deployment](informer, getComputeDomain, m.cleanup)
 
 	return m
 }
@@ -118,7 +124,7 @@ func (m *DaemonSetManager) Start(ctx context.Context) (rerr error) {
 		}
 	}()
 
-	if err := addComputeDomainLabelIndexer[*appsv1.DaemonSet](m.informer); err != nil {
+	if err := addComputeDomainLabelIndexer[*appsv1.Deployment](m.informer); err != nil {
 		return fmt.Errorf("error adding indexer for MultiNodeEnvironment label: %w", err)
 	}
 
@@ -181,8 +187,8 @@ func (m *DaemonSetManager) Stop() error {
 	return nil
 }
 
-func (m *DaemonSetManager) Create(ctx context.Context, cd *nvapi.ComputeDomain) (*appsv1.DaemonSet, error) {
-	ds, err := getByComputeDomainUID[*appsv1.DaemonSet](ctx, m.mutationCache, string(cd.UID))
+func (m *DaemonSetManager) Create(ctx context.Context, cd *nvapi.ComputeDomain) (*appsv1.Deployment, error) {
+	ds, err := getByComputeDomainUID[*appsv1.Deployment](ctx, m.mutationCache, string(cd.UID))
 	if err != nil {
 		return nil, fmt.Errorf("error retrieving DaemonSet: %w", err)
 	}
@@ -193,22 +199,28 @@ func (m *DaemonSetManager) Create(ctx context.Context, cd *nvapi.ComputeDomain) 
 		return ds[0], nil
 	}
 
-	rct, err := m.resourceClaimTemplateManager.Create(ctx, cd)
-	if err != nil {
-		return nil, fmt.Errorf("error creating ResourceClaimTemplate: %w", err)
-	}
+	// rct, err := m.resourceClaimTemplateManager.Create(ctx, cd)
+	// if err != nil {
+	// 	return nil, fmt.Errorf("error creating ResourceClaimTemplate: %w", err)
+	// }
 
 	templateData := DaemonSetTemplateData{
-		Namespace:                 m.config.driverNamespace,
-		GenerateName:              fmt.Sprintf("%s-", cd.Name),
-		Finalizer:                 computeDomainFinalizer,
-		ComputeDomainLabelKey:     computeDomainLabelKey,
-		ComputeDomainLabelValue:   cd.UID,
-		ResourceClaimTemplateName: rct.Name,
-		ImageName:                 m.config.imageName,
-		MaxNodesPerIMEXDomain:     m.config.maxNodesPerIMEXDomain,
-		FeatureGates:              featuregates.ToMap(),
-		LogVerbosity:              m.config.logVerbosityCDDaemon,
+		Namespace:               m.config.driverNamespace,
+		GenerateName:            fmt.Sprintf("%s-", cd.Name),
+		Finalizer:               computeDomainFinalizer,
+		ComputeDomainLabelKey:   computeDomainLabelKey,
+		ComputeDomainLabelValue: cd.UID,
+		//ResourceClaimTemplateName: rct.Name,
+		ImageName:             m.config.imageName,
+		MaxNodesPerIMEXDomain: m.config.maxNodesPerIMEXDomain,
+		FeatureGates:          featuregates.ToMap(),
+		LogVerbosity:          m.config.logVerbosityCDDaemon,
+		// hack details into the deployment which would otherwise be injected via CDI during claim alloc
+		CDUUID:      string(cd.UID),
+		CDName:      cd.Name,
+		CDNamespace: cd.Namespace,
+		CliqueID:    "none",
+		NumNodes:    cd.Spec.NumNodes,
 	}
 
 	tmpl, err := template.ParseFiles(DaemonSetTemplatePath)
@@ -227,15 +239,15 @@ func (m *DaemonSetManager) Create(ctx context.Context, cd *nvapi.ComputeDomain) 
 		return nil, fmt.Errorf("failed to unmarshal yaml: %w", err)
 	}
 
-	var daemonSet appsv1.DaemonSet
+	var daemonSet appsv1.Deployment //DaemonSet
 	err = runtime.DefaultUnstructuredConverter.FromUnstructured(unstructuredObj.UnstructuredContent(), &daemonSet)
 	if err != nil {
 		return nil, fmt.Errorf("failed to convert unstructured data to typed object: %w", err)
 	}
 
-	d, err := m.config.clientsets.Core.AppsV1().DaemonSets(daemonSet.Namespace).Create(ctx, &daemonSet, metav1.CreateOptions{})
+	d, err := m.config.clientsets.Core.AppsV1().Deployments(daemonSet.Namespace).Create(ctx, &daemonSet, metav1.CreateOptions{})
 	if err != nil {
-		return nil, fmt.Errorf("error creating DaemonSet: %w", err)
+		return nil, fmt.Errorf("error creating Depl: %w", err)
 	}
 
 	// Add the newly created DaemonSet to the mutation cache
@@ -245,8 +257,8 @@ func (m *DaemonSetManager) Create(ctx context.Context, cd *nvapi.ComputeDomain) 
 	return d, nil
 }
 
-func (m *DaemonSetManager) Get(ctx context.Context, cdUID string) (*appsv1.DaemonSet, error) {
-	ds, err := getByComputeDomainUID[*appsv1.DaemonSet](ctx, m.mutationCache, cdUID)
+func (m *DaemonSetManager) Get(ctx context.Context, cdUID string) (*appsv1.Deployment, error) {
+	ds, err := getByComputeDomainUID[*appsv1.Deployment](ctx, m.mutationCache, cdUID)
 	if err != nil {
 		return nil, fmt.Errorf("error retrieving DaemonSet: %w", err)
 	}
@@ -260,13 +272,13 @@ func (m *DaemonSetManager) Get(ctx context.Context, cdUID string) (*appsv1.Daemo
 }
 
 func (m *DaemonSetManager) Delete(ctx context.Context, cdUID string) error {
-	ds, err := getByComputeDomainUID[*appsv1.DaemonSet](ctx, m.mutationCache, cdUID)
+	ds, err := getByComputeDomainUID[*appsv1.Deployment](ctx, m.mutationCache, cdUID)
 	if err != nil {
 		return fmt.Errorf("error retrieving DaemonSet: %w", err)
 	}
-	if len(ds) > 1 {
-		return fmt.Errorf("more than one DaemonSet found with same ComputeDomain UID")
-	}
+	// if len(ds) > 1 {
+	// 	return fmt.Errorf("more than one DaemonSet found with same ComputeDomain UID")
+	// }
 	if len(ds) == 0 {
 		return nil
 	}
@@ -281,7 +293,7 @@ func (m *DaemonSetManager) Delete(ctx context.Context, cdUID string) error {
 		return nil
 	}
 
-	err = m.config.clientsets.Core.AppsV1().DaemonSets(d.Namespace).Delete(ctx, d.Name, metav1.DeleteOptions{})
+	err = m.config.clientsets.Core.AppsV1().Deployments(d.Namespace).Delete(ctx, d.Name, metav1.DeleteOptions{})
 	if err != nil && !errors.IsNotFound(err) {
 		return fmt.Errorf("erroring deleting DaemonSet: %w", err)
 	}
@@ -290,8 +302,10 @@ func (m *DaemonSetManager) Delete(ctx context.Context, cdUID string) error {
 }
 
 func (m *DaemonSetManager) RemoveFinalizer(ctx context.Context, cdUID string) error {
+	// not consumed anymore
 	if err := m.resourceClaimTemplateManager.RemoveFinalizer(ctx, cdUID); err != nil {
-		return fmt.Errorf("error removing finalizer on ResourceClaimTemplate: %w", err)
+		//return fmt.Errorf("error removing finalizer on ResourceClaimTemplate: %w", err)
+		klog.Infof("ignore: error removing finalizer on ResourceClaimTemplate: %s", err)
 	}
 	if err := m.removeFinalizer(ctx, cdUID); err != nil {
 		return fmt.Errorf("error removing finalizer on DaemonSet: %w", err)
@@ -310,13 +324,13 @@ func (m *DaemonSetManager) AssertRemoved(ctx context.Context, cdUID string) erro
 }
 
 func (m *DaemonSetManager) removeFinalizer(ctx context.Context, cdUID string) error {
-	ds, err := getByComputeDomainUID[*appsv1.DaemonSet](ctx, m.mutationCache, cdUID)
+	ds, err := getByComputeDomainUID[*appsv1.Deployment](ctx, m.mutationCache, cdUID)
 	if err != nil {
 		return fmt.Errorf("error retrieving DaemonSet: %w", err)
 	}
-	if len(ds) > 1 {
-		return fmt.Errorf("more than one DaemonSet found with same ComputeDomain UID")
-	}
+	// if len(ds) > 1 {
+	// 	return fmt.Errorf("more than one DaemonSet found with same ComputeDomain UID")
+	// }
 	if len(ds) == 0 {
 		return nil
 	}
@@ -338,7 +352,7 @@ func (m *DaemonSetManager) removeFinalizer(ctx context.Context, cdUID string) er
 		return nil
 	}
 
-	if _, err := m.config.clientsets.Core.AppsV1().DaemonSets(d.Namespace).Update(ctx, newD, metav1.UpdateOptions{}); err != nil {
+	if _, err := m.config.clientsets.Core.AppsV1().Deployments(d.Namespace).Update(ctx, newD, metav1.UpdateOptions{}); err != nil {
 		return fmt.Errorf("error updating DaemonSet: %w", err)
 	}
 
@@ -360,30 +374,30 @@ func (m *DaemonSetManager) assertRemoved(ctx context.Context, cdUID string) erro
 }
 
 func (m *DaemonSetManager) onAddOrUpdate(ctx context.Context, obj any) error {
-	d, ok := obj.(*appsv1.DaemonSet)
-	if !ok {
-		return fmt.Errorf("failed to cast to DaemonSet")
-	}
+	// d, ok := obj.(*appsv1.DaemonSet)
+	// if !ok {
+	// 	return fmt.Errorf("failed to cast to DaemonSet")
+	// }
 
-	klog.V(2).Infof("Processing added or updated DaemonSet: %s/%s", d.Namespace, d.Name)
+	// klog.V(2).Infof("Processing added or updated DaemonSet: %s/%s", d.Namespace, d.Name)
 
-	cd, err := m.getComputeDomain(d.Labels[computeDomainLabelKey])
-	if err != nil {
-		return fmt.Errorf("error getting ComputeDomain: %w", err)
-	}
-	if cd == nil {
-		return nil
-	}
+	// cd, err := m.getComputeDomain(d.Labels[computeDomainLabelKey])
+	// if err != nil {
+	// 	return fmt.Errorf("error getting ComputeDomain: %w", err)
+	// }
+	// if cd == nil {
+	// 	return nil
+	// }
 
-	if int(d.Status.NumberReady) != cd.Spec.NumNodes {
-		return nil
-	}
+	// if int(d.Status.NumberReady) != cd.Spec.NumNodes {
+	// 	return nil
+	// }
 
-	newCD := cd.DeepCopy()
-	newCD.Status.Status = nvapi.ComputeDomainStatusReady
-	if _, err = m.config.clientsets.Nvidia.ResourceV1beta1().ComputeDomains(newCD.Namespace).UpdateStatus(ctx, newCD, metav1.UpdateOptions{}); err != nil {
-		return fmt.Errorf("error updating nodes in ComputeDomain status: %w", err)
-	}
+	// newCD := cd.DeepCopy()
+	// newCD.Status.Status = nvapi.ComputeDomainStatusReady
+	// if _, err = m.config.clientsets.Nvidia.ResourceV1beta1().ComputeDomains(newCD.Namespace).UpdateStatus(ctx, newCD, metav1.UpdateOptions{}); err != nil {
+	// 	return fmt.Errorf("error updating nodes in ComputeDomain status: %w", err)
+	// }
 
 	return nil
 }

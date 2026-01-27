@@ -51,7 +51,11 @@ const (
 	// a given IMEX Domain. On GB200 and GB300 the limit is 18, so we pick
 	// this for now. It can be overridden as an environment variable or
 	// command line argument as required.
-	defaultMaxNodesPerIMEXDomain = 18
+
+	// big-N-simulation: nodes self-assign a clique based on node name hashing
+	// and the target clique size of 18 is only an approximate target. do not
+	// error out for slightly larger cliques.
+	defaultMaxNodesPerIMEXDomain = 30
 )
 
 type Flags struct {

@@ -43,8 +43,8 @@ type IPToDNSNameMap map[string]string
 // DNSNameManager manages the allocation of static DNS names to IP addresses.
 type DNSNameManager struct {
 	sync.Mutex
-	ipToDNSName           IPToDNSNameMap
-	cliqueID              string
+	ipToDNSName IPToDNSNameMap
+	//cliqueID              string
 	maxNodesPerIMEXDomain int
 	nodesConfigPath       string
 }
@@ -52,8 +52,8 @@ type DNSNameManager struct {
 // NewDNSNameManager creates a new DNS name manager.
 func NewDNSNameManager(cliqueID string, maxNodesPerIMEXDomain int, nodesConfigPath string) *DNSNameManager {
 	return &DNSNameManager{
-		ipToDNSName:           make(IPToDNSNameMap),
-		cliqueID:              cliqueID,
+		ipToDNSName: make(IPToDNSNameMap),
+		//cliqueID:              cliqueID,
 		maxNodesPerIMEXDomain: maxNodesPerIMEXDomain,
 		nodesConfigPath:       nodesConfigPath,
 	}
@@ -62,7 +62,7 @@ func NewDNSNameManager(cliqueID string, maxNodesPerIMEXDomain int, nodesConfigPa
 // UpdateDNSNameMappings updates the /etc/hosts file with any new IP to DNS name
 // mappings. The boolean return value indicates whether the hosts file was
 // updated or not (it must be ignored when the returned error is non-nil).
-func (m *DNSNameManager) UpdateDNSNameMappings(nodes []*nvapi.ComputeDomainNode) (bool, error) {
+func (m *DNSNameManager) UpdateDNSNameMappings(nodes []*nvapi.ComputeDomainNode, cliqueID string) (bool, error) {
 	m.Lock()
 	defer m.Unlock()
 
@@ -72,7 +72,7 @@ func (m *DNSNameManager) UpdateDNSNameMappings(nodes []*nvapi.ComputeDomainNode)
 	// Prefilter nodes to only consider those with the matching cliqueID
 	var cliqueNodes []*nvapi.ComputeDomainNode
 	for _, node := range nodes {
-		if node.CliqueID == m.cliqueID {
+		if node.CliqueID == cliqueID {
 			cliqueNodes = append(cliqueNodes, node)
 		}
 	}

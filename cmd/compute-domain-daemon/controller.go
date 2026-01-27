@@ -46,6 +46,7 @@ type ControllerConfig struct {
 	computeDomainUUID      string
 	computeDomainName      string
 	computeDomainNamespace string
+	computeDomainNumNodes  int
 	cliqueID               string
 	podIP                  string
 	podName                string

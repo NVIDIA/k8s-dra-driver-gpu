@@ -1,6 +1,6 @@
 ---
 apiVersion: apps/v1
-kind: DaemonSet
+kind: Deployment
 metadata:
   namespace: {{ .Namespace }}
   generateName: {{ .GenerateName }}
@@ -9,6 +9,7 @@ metadata:
   labels:
     {{ .ComputeDomainLabelKey }}: {{ .ComputeDomainLabelValue }}
 spec:
+  replicas: {{ .NumNodes }}
   selector:
     matchLabels:
       {{ .ComputeDomainLabelKey }}: {{ .ComputeDomainLabelValue }}
@@ -18,8 +19,17 @@ spec:
         {{ .ComputeDomainLabelKey }}: {{ .ComputeDomainLabelValue }}
     spec:
       serviceAccountName: compute-domain-daemon-service-account
+      topologySpreadConstraints:
+      - maxSkew: 1
+        topologyKey: kubernetes.io/hostname
+        whenUnsatisfiable: ScheduleAnyway
+        labelSelector:
+          matchLabels:
+            {{ .ComputeDomainLabelKey }}: {{ .ComputeDomainLabelValue }}
+      # nodeSelector:
+      #   {{ .ComputeDomainLabelKey }}: {{ .ComputeDomainLabelValue }}
       nodeSelector:
-        {{ .ComputeDomainLabelKey }}: {{ .ComputeDomainLabelValue }}
+        node-role.kubernetes.io/worker: ""
       containers:
       # Run the compute domain daemon
       - name: compute-domain-daemon
@@ -32,7 +42,7 @@ spec:
           value: "{{ .LogVerbosity }}"
         - name: MAX_NODES_PER_IMEX_DOMAIN
           value: "{{ .MaxNodesPerIMEXDomain }}"
-        - name: NODE_NAME
+        - name: RAW_NODE_NAME
           valueFrom:
             fieldRef:
               fieldPath: spec.nodeName
@@ -40,6 +50,9 @@ spec:
           valueFrom:
             fieldRef:
               fieldPath: status.podIP
+        # 'virtual' node name, allowing for more than one pod per node
+        - name: NODE_NAME
+          value: "$(RAW_NODE_NAME)-$(POD_IP)"
         - name: POD_NAME
           valueFrom:
             fieldRef:
@@ -48,6 +61,16 @@ spec:
           valueFrom:
             fieldRef:
               fieldPath: metadata.namespace
+        - name: COMPUTE_DOMAIN_UUID
+          value: "{{ .CDUUID }}"
+        - name: COMPUTE_DOMAIN_NAME
+          value: "{{ .CDName }}"
+        - name: COMPUTE_DOMAIN_NAMESPACE
+          value: "{{ .CDNamespace }}"
+        - name: COMPUTE_DOMAIN_NUM_NODES
+          value: "{{ .NumNodes }}"
+        - name: CLIQUE_ID
+          value: "{{ .CliqueID }}"
         # Use runc: explicit "void"; otherwise we inherit "all".
         - name: NVIDIA_VISIBLE_DEVICES
           value: void
@@ -56,9 +79,13 @@ spec:
         - name: FEATURE_GATES
           value: "{{ range $key, $value := .FeatureGates }}{{ $key }}={{ $value }},{{ end }}"
         {{- end }}
+        # resources:
+        #   claims:
+        #   - name: compute-domain-daemon
         resources:
-          claims:
-          - name: compute-domain-daemon
+          requests:
+            memory: "10Mi"
+            cpu: "1m"
         # The startup probe aggressively checks every second to see if the pod
         # is healthy. We set a large failureThreshold to avoid having the
         # startup probe kill the pod if it fails (we just don't want it to go
@@ -96,6 +123,6 @@ spec:
           effect: "NoExecute"
         - operator: "Exists"
           effect: "PreferNoSchedule"
-      resourceClaims:
-      - name: compute-domain-daemon
-        resourceClaimTemplateName: {{ .ResourceClaimTemplateName }}
+      # resourceClaims:
+      # - name: compute-domain-daemon
+      #   resourceClaimTemplateName: {{ .ResourceClaimTemplateName }}

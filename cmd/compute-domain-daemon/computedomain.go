@@ -19,19 +19,20 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"maps"
+	"math/rand"
+	"sort"
 	"sync"
 	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
 
 	nvapi "github.com/NVIDIA/k8s-dra-driver-gpu/api/nvidia.com/resource/v1beta1"
 	"github.com/NVIDIA/k8s-dra-driver-gpu/pkg/featuregates"
-	nvinformers "github.com/NVIDIA/k8s-dra-driver-gpu/pkg/nvidia.com/informers/externalversions"
 )
 
 const (
@@ -43,7 +44,7 @@ const (
 )
 
 // GetComputeDomainFunc is a function type for getting a ComputeDomain by UID.
-type GetComputeDomainFunc func(uid string) (*nvapi.ComputeDomain, error)
+type GetComputeDomainFunc func() (*nvapi.ComputeDomain, error)
 
 type IPSet map[string]struct{}
 
@@ -54,34 +55,39 @@ type ComputeDomainManager struct {
 	waitGroup     sync.WaitGroup
 	cancelContext context.CancelFunc
 
-	factory  nvinformers.SharedInformerFactory
-	informer cache.SharedIndexInformer
+	// factory  nvinformers.SharedInformerFactory
+	// informer cache.SharedIndexInformer
 
 	// Note: if `previousNodes` is empty it means we're early in the daemon's
 	// lifecycle and the IMEX daemon child process wasn't started yet.
 	previousNodes    []*nvapi.ComputeDomainNode
 	updatedNodesChan chan []*nvapi.ComputeDomainNode
 
-	podManager    *PodManager
-	mutationCache cache.MutationCache
+	podManager     *PodManager
+	latestCD       *nvapi.ComputeDomain
+	latestCDupdate time.Time
+	//mutationCache cache.MutationCache
 }
 
 // NewComputeDomainManager creates a new ComputeDomainManager instance.
 func NewComputeDomainManager(config *ManagerConfig) *ComputeDomainManager {
-	factory := nvinformers.NewSharedInformerFactoryWithOptions(
-		config.clientsets.Nvidia,
-		informerResyncPeriod,
-		nvinformers.WithNamespace(config.computeDomainNamespace),
-		nvinformers.WithTweakListOptions(func(opts *metav1.ListOptions) {
-			opts.FieldSelector = fmt.Sprintf("metadata.name=%s", config.computeDomainName)
-		}),
-	)
-	informer := factory.Resource().V1beta1().ComputeDomains().Informer()
+	// factory := nvinformers.NewSharedInformerFactoryWithOptions(
+	// 	config.clientsets.Nvidia,
+	// 	informerResyncPeriod,
+	// 	nvinformers.WithNamespace(config.computeDomainNamespace),
+	// 	nvinformers.WithTweakListOptions(func(opts *metav1.ListOptions) {
+	// 		opts.FieldSelector = fmt.Sprintf("metadata.name=%s", config.computeDomainName)
+	// 		// Forces the initial List to be served from the API Server's memory (Watch Cache)
+	// 		// rather than making a "Quorum Read" to etcd.
+	// 		opts.ResourceVersion = "0"
+	// 	}),
+	// )
+	// informer := factory.Resource().V1beta1().ComputeDomains().Informer()
 
 	m := &ComputeDomainManager{
-		config:           config,
-		factory:          factory,
-		informer:         informer,
+		config: config,
+		// factory:          factory,
+		// informer:         informer,
 		previousNodes:    []*nvapi.ComputeDomainNode{},
 		updatedNodesChan: make(chan []*nvapi.ComputeDomainNode),
 	}
@@ -102,53 +108,137 @@ func (m *ComputeDomainManager) Start(ctx context.Context) (rerr error) {
 		}
 	}()
 
-	err := m.informer.AddIndexers(cache.Indexers{
-		"uid": uidIndexer[*nvapi.ComputeDomain],
-	})
-	if err != nil {
-		return fmt.Errorf("error adding indexer for ComputeDomain UID: %w", err)
-	}
+	// For large CDs, smear the first contact to the API server slightly out
+	// over time.
+	// startupJitter := time.Duration(rand.Intn(35000)) * time.Millisecond
+	// klog.V(6).Infof("Delay startup by %s ms", startupJitter)
+	// time.Sleep(startupJitter)
+
+	// err := m.informer.AddIndexers(cache.Indexers{
+	// 	"uid": uidIndexer[*nvapi.ComputeDomain],
+	// })
+	// if err != nil {
+	// 	return fmt.Errorf("error adding indexer for ComputeDomain UID: %w", err)
+	// }
 
 	// Create mutation cache to track our own updates
-	m.mutationCache = cache.NewIntegerResourceVersionMutationCache(
-		klog.Background(),
-		m.informer.GetStore(),
-		m.informer.GetIndexer(),
-		mutationCacheTTL,
-		true,
-	)
+	// m.mutationCache = cache.NewIntegerResourceVersionMutationCache(
+	// 	klog.Background(),
+	// 	m.informer.GetStore(),
+	// 	m.informer.GetIndexer(),
+	// 	mutationCacheTTL,
+	// 	true,
+	// )
 
-	m.podManager = NewPodManager(m.config, m.Get, m.mutationCache)
+	m.podManager = NewPodManager(m.config, m.Get)
 
 	// Use `WithKey` with hard-coded key, to cancel any previous update task (we
 	// want to make sure that the latest CD status update wins).
-	_, err = m.informer.AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc: func(obj any) {
-			m.config.workQueue.EnqueueWithKey(obj, "cd", m.onAddOrUpdate)
-		},
-		UpdateFunc: func(objOld, objNew any) {
-			m.config.workQueue.EnqueueWithKey(objNew, "cd", m.onAddOrUpdate)
-		},
-	})
-	if err != nil {
-		return fmt.Errorf("error adding event handlers for ComputeDomain informer: %w", err)
-	}
+	// _, err = m.informer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+	// 	AddFunc: func(obj any) {
+	// 		m.config.workQueue.EnqueueWithKey(obj, "cd", m.onAddOrUpdate)
+	// 	},
+	// 	UpdateFunc: func(objOld, objNew any) {
+	// 		m.config.workQueue.EnqueueWithKey(objNew, "cd", m.onAddOrUpdate)
+	// 	},
+	// })
+	// if err != nil {
+	// 	return fmt.Errorf("error adding event handlers for ComputeDomain informer: %w", err)
+	// }
+
+	// m.waitGroup.Add(1)
+	// go func() {
+	// 	defer m.waitGroup.Done()
+	// 	m.factory.Start(ctx.Done())
+	// }()
+
+	// if !cache.WaitForCacheSync(ctx.Done(), m.informer.HasSynced) {
+	// 	return fmt.Errorf("informer cache sync for ComputeDomains failed")
+	// }
 
 	m.waitGroup.Add(1)
 	go func() {
 		defer m.waitGroup.Done()
-		m.factory.Start(ctx.Done())
+		m.pollCD(ctx)
 	}()
-
-	if !cache.WaitForCacheSync(ctx.Done(), m.informer.HasSynced) {
-		return fmt.Errorf("informer cache sync for ComputeDomains failed")
-	}
 
 	if err := m.podManager.Start(ctx); err != nil {
 		return fmt.Errorf("failed to start pod manager: %w", err)
 	}
 
 	return nil
+}
+
+func (m *ComputeDomainManager) pollCD(ctx context.Context) {
+	// Polling loop startup jitter.
+	delay := time.Duration(rand.Intn(1500)) * time.Millisecond
+	timeoutErrors := 0
+	for {
+		klog.V(6).Infof("next CD GET in %s", delay)
+		time.Sleep(delay)
+
+		// Note: I should be the only one in this entire process that issues
+		// these GET requests. ResourceVersion: "0" means: use API server cache
+		// (not 'qorum read').
+		//opts := metav1.GetOptions{ResourceVersion: "0"}
+		opts := metav1.GetOptions{}
+		t0 := time.Now()
+		cd, err := m.config.clientsets.Nvidia.ResourceV1beta1().ComputeDomains(m.config.computeDomainNamespace).Get(ctx, m.config.computeDomainName, opts)
+		if err != nil {
+			klog.Infof("pollCD: failed to GET: %s", err)
+			delay = 10 * time.Second
+			continue
+		}
+		// t_get_cd may be large-ish, as in 3.825 s
+		getLatencySeconds := time.Since(t0).Seconds()
+		klog.V(6).Infof("t_get_cd %.3f s", getLatencySeconds)
+
+		// if time.Since(m.latestCDupdate).Seconds() < 1 {
+		// 	time.Sleep(2 * time.Second)
+		// 	continue
+		// }
+
+		// If we have processed this before: abort iteration.
+		if m.latestCD != nil && cd.GetResourceVersion() == m.latestCD.GetResourceVersion() {
+			klog.V(6).Infof("pollCD: seen this CD version before")
+			delay = 15 * time.Second
+			continue
+		}
+
+		// If the last GET was slow, let's wait a bit with our PATCHing.
+		// time.Sleep(time.Duration(int(getLatencySeconds/1000.0)*3) * time.Millisecond)
+		cd, err = m.EnsureNodeInfoInCD(ctx, cd.DeepCopy())
+		if err != nil && errors.Is(err, context.DeadlineExceeded) {
+			timeoutErrors += 1
+			//backoffMs := 2000*timeoutErrors + rand.Intn(1000*timeoutErrors)
+			//backoffMs = int(math.Max(float64(backoffMs), float64(6000)))
+			//backoff := time.Duration(backoffMs) * time.Millisecond
+
+			rndDelay := time.Duration(10000+rand.Intn(35000)) * time.Millisecond
+			klog.V(6).Infof("EnsureNodeInfoInCD: PATCH failed with timeout (%d), delay next poll by %s", timeoutErrors, rndDelay)
+			delay = rndDelay
+			continue
+		}
+
+		timeoutErrors = 0
+
+		if err != nil {
+			klog.Infof("pollCD: EnsureNodeInfoInCD failed: %s", err)
+			delay = 15 * time.Second
+			continue
+		}
+
+		// Start and/or update IMEX daemon.
+		m.MaybePushNodesUpdate(cd)
+
+		// Expose this latest CD object to other consumers, and take note
+		// that we have processed this successfully.
+		m.trackLatest(cd)
+
+		// Temporarily increase poll period if the last API server get was slow.
+		//time.Sleep(time.Duration(int(math.Min(getLatencySeconds/1000.0, 7000.0))) * time.Millisecond)
+		delay = 10 * time.Second
+	}
 }
 
 // Stop stops the compute domain manager.
@@ -178,59 +268,62 @@ func (m *ComputeDomainManager) Stop() error {
 	return nil
 }
 
-// Get gets the ComputeDomain by UID from the mutation cache.
-func (m *ComputeDomainManager) Get(uid string) (*nvapi.ComputeDomain, error) {
-	cds, err := getByComputeDomainUID[*nvapi.ComputeDomain](m.mutationCache, uid)
-	if err != nil {
-		return nil, fmt.Errorf("error retrieving ComputeDomain by UID: %w", err)
+func (m *ComputeDomainManager) Get() (*nvapi.ComputeDomain, error) {
+	if m.latestCD == nil {
+		return nil, fmt.Errorf("node entry not yet inserted")
 	}
-	if len(cds) == 0 {
-		return nil, nil
-	}
-	if len(cds) != 1 {
-		return nil, fmt.Errorf("multiple ComputeDomains with the same UID")
-	}
-	return cds[0], nil
+	return m.latestCD, nil
+	// cds, err := getByComputeDomainUID[*nvapi.ComputeDomain](m.mutationCache, uid)
+	// if err != nil {
+	// 	return nil, fmt.Errorf("error retrieving ComputeDomain by UID: %w", err)
+	// }
+	// if len(cds) == 0 {
+	// 	return nil, nil
+	// }
+	// if len(cds) != 1 {
+	// 	return nil, fmt.Errorf("multiple ComputeDomains with the same UID")
+	// }
+	// return cds[0], nil
 }
 
 // onAddOrUpdate handles the addition or update of a ComputeDomain. Here, we
 // receive updates not for all CDs in the system, but only for the CD that we
 // are registered for (filtered by CD name). Note that the informer triggers
 // this callback once upon startup for all existing objects.
-func (m *ComputeDomainManager) onAddOrUpdate(ctx context.Context, obj any) error {
-	// Cast the object to a ComputeDomain object
-	o, ok := obj.(*nvapi.ComputeDomain)
-	if !ok {
-		return fmt.Errorf("failed to cast to ComputeDomain")
-	}
+// func (m *ComputeDomainManager) onAddOrUpdate(ctx context.Context, obj any) error {
+// 	// Cast the object to a ComputeDomain object
+// 	o, ok := obj.(*nvapi.ComputeDomain)
+// 	if !ok {
+// 		return fmt.Errorf("failed to cast to ComputeDomain")
+// 	}
 
-	// Get the latest ComputeDomain object from the mutation cache (backed by
-	// the informer cache) since we plan to update it later and always *must*
-	// have the latest version.
-	cd, err := m.Get(string(o.GetUID()))
-	if err != nil {
-		return fmt.Errorf("error getting latest ComputeDomain: %w", err)
-	}
-	if cd == nil {
-		return nil
-	}
+// 	// Get the latest ComputeDomain object from the mutation cache (backed by
+// 	// the informer cache) since we plan to update it later and always *must*
+// 	// have the latest version.
+// 	cd, err := m.Get(string(o.GetUID()))
+// 	if err != nil {
+// 		return fmt.Errorf("error getting latest ComputeDomain: %w", err)
+// 	}
+// 	if cd == nil {
+// 		return nil
+// 	}
 
-	// Because the informer only filters by name:
-	// Skip ComputeDomains that don't match on UUID
-	if string(cd.UID) != m.config.computeDomainUUID {
-		klog.Warningf("ComputeDomain processed with non-matching UID (%v, %v)", cd.UID, m.config.computeDomainUUID)
-		return nil
-	}
+// 	// Because the informer only filters by name:
+// 	// Skip ComputeDomains that don't match on UUID
+// 	if string(cd.UID) != m.config.computeDomainUUID {
+// 		klog.Warningf("ComputeDomain processed with non-matching UID (%v, %v)", cd.UID, m.config.computeDomainUUID)
+// 		return nil
+// 	}
 
-	// Update node info in ComputeDomain, if required.
-	cd, err = m.EnsureNodeInfoInCD(ctx, cd)
-	if err != nil {
-		return fmt.Errorf("CD update: failed to insert/update node info in CD: %w", err)
-	}
-	m.MaybePushNodesUpdate(cd)
+// 	// Update node info in ComputeDomain, if required.
+// 	cd, err = m.EnsureNodeInfoInCD(ctx, cd)
+// 	if err != nil {
+// 		return fmt.Errorf("CD update: failed to insert/update node info in CD: %w", err)
+// 	}
+// 	m.MaybePushNodesUpdate(cd)
 
-	return nil
-}
+// 	return nil
+// }
 
 // EnsureNodeInfoInCD makes sure that the current node (by node name) is
 // represented in the `Nodes` field in the ComputeDomain object, and that it
@@ -255,9 +348,9 @@ func (m *ComputeDomainManager) EnsureNodeInfoInCD(ctx context.Context, cd *nvapi
 
 	// Create new ComputeDomainNode object representing myself, and insert it into the nodes list.
 	if myNode == nil {
-		// Get the next available index for this new node (local point of view,
-		// API server may tell us later that this index was chosen poorly).
-		nextIndex, err := getNextAvailableIndex(m.config.cliqueID, newCD.Status.Nodes, m.config.maxNodesPerIMEXDomain)
+		// Get an available index for this new node (local point of view, API
+		// server may tell us later that this index was chosen poorly).
+		nextIndex, err := getRandomAvailableIndex(m.config.cliqueID, newCD.Status.Nodes, m.config.maxNodesPerIMEXDomain)
 		if err != nil {
 			return nil, fmt.Errorf("error getting next available index: %w", err)
 		}
@@ -292,12 +385,15 @@ func (m *ComputeDomainManager) EnsureNodeInfoInCD(ctx context.Context, cd *nvapi
 				continue
 			}
 			if other.Index == myNode.Index {
-				idx, err := getNextAvailableIndex(m.config.cliqueID, newCD.Status.Nodes, m.config.maxNodesPerIMEXDomain)
+				idx, err := getRandomAvailableIndex(m.config.cliqueID, newCD.Status.Nodes, m.config.maxNodesPerIMEXDomain)
 				if err != nil {
 					return nil, fmt.Errorf("error getting next available index: %w", err)
 				}
 				myNode.Index = idx
 				klog.V(4).Infof("EnsureNodeInfoInCD: IMEX daemon not started yet, DNS index collision with %v, picked new index: %d", other, idx)
+				jitter := time.Duration(rand.Intn(500)) * time.Millisecond
+				//klog.V(6).Infof("Delay startup by %s", startupJitter)
+				time.Sleep(jitter)
 			}
 		}
 	}
@@ -316,11 +412,21 @@ func (m *ComputeDomainManager) EnsureNodeInfoInCD(ctx context.Context, cd *nvapi
 		return nil, fmt.Errorf("could not serialize patch: %w", err)
 	}
 
+	// Before proceeding to send PATCH, add a tiny amount of jitter
+	// (for large N).
+	// jitter := time.Duration(rand.Intn(2000)) * time.Millisecond
+	// time.Sleep(jitter)
 	updatedCD, err := m.patchCD(ctx, patchBytes)
 	if err != nil {
+		// if err == context.DeadlineExceeded {
+		// 	jitter := time.Duration(rand.Intn(5000)) * time.Millisecond
+		// 	klog.V(6).Infof("EnsureNodeInfoInCD: PATCH failed with timeout, sleep %d ms", jitter)
+		// 	time.Sleep(jitter)
+		// }
 		return nil, fmt.Errorf("error patching ComputeDomain status: %w", err)
 	}
-	m.mutationCache.Mutation(updatedCD)
+	//m.trackLatest(updatedCD)
+	// m.mutationCache.Mutation(updatedCD)
 
 	klog.Infof("Successfully inserted/updated node in CD (nodeinfo: %v)", myNode)
 	return updatedCD, nil
@@ -378,6 +484,46 @@ func getNextAvailableIndex(currentCliqueID string, nodes []*nvapi.ComputeDomainN
 	return nextIndex, nil
 }
 
+func getRandomAvailableIndex(currentCliqueID string, nodes []*nvapi.ComputeDomainNode, maxNodesPerIMEXDomain int) (int, error) {
+	// Determine upper bound based on the clique ID: if no clique ID is set
+	// ("noop" mode) use big limit. Otherwise, use standard domain limit.
+	max := maxNodesPerIMEXDomain
+	if currentCliqueID == "" {
+		max = 10000
+	}
+
+	// Only consider nodes with the same cliqueID.
+	var cliqueNodes []*nvapi.ComputeDomainNode
+	for _, node := range nodes {
+		if node.CliqueID == currentCliqueID {
+			cliqueNodes = append(cliqueNodes, node)
+		}
+	}
+
+	// Collect used indices.
+	used := make(map[int]bool)
+	for _, node := range cliqueNodes {
+		used[node.Index] = true
+	}
+
+	// Build set of free indices, considering upper bound `max`. Allocating a
+	// slice even for 10k ints is efficient in Go, i.e. we can safely build the
+	// full candidate list.
+	candidates := make([]int, 0, max)
+	for i := 0; i < max; i++ {
+		if !used[i] {
+			candidates = append(candidates, i)
+		}
+	}
+
+	// Make random selection from candidate list.
+	if len(candidates) > 0 {
+		return candidates[rand.Intn(len(candidates))], nil
+	}
+
+	return -1, fmt.Errorf("no available indices within limit (%d) for cliqueID '%s'", max, currentCliqueID)
+}
+
 // If there was actually a change compared to the previously known set of
 // nodes: pass info to IMEX daemon controller.
 func (m *ComputeDomainManager) MaybePushNodesUpdate(cd *nvapi.ComputeDomain) {
@@ -396,8 +542,9 @@ func (m *ComputeDomainManager) MaybePushNodesUpdate(cd *nvapi.ComputeDomain) {
 		return
 	}
 
-	newIPs := getIPSet(cd.Status.Nodes)
-	previousIPs := getIPSet(m.previousNodes)
+	newIPs := getIPSetForClique(cd.Status.Nodes, m.config.cliqueID)
+	previousIPs := getIPSetForClique(m.previousNodes, m.config.cliqueID)
+	added, removed := previousIPs.Diff(newIPs)
 
 	// Compare sets (i.e., without paying attention to order). Note: the order
 	// of IP addresses written to the IMEX daemon's config file might matter (in
@@ -407,13 +554,11 @@ func (m *ComputeDomainManager) MaybePushNodesUpdate(cd *nvapi.ComputeDomain) {
 	// config file. Note/TODO: we probably want to limit this check to IP
 	// addresses relevant to _this_ clique.
 	if !maps.Equal(newIPs, previousIPs) {
-		klog.V(2).Infof("IP set changed")
-		// This log message gets large for large node numbers
-		klog.V(6).Infof("previous: %v; new: %v", previousIPs, newIPs)
+		klog.V(2).Infof("IP set for clique changed.\nAdded:%v\nRemoved:%v", added, removed)
 		m.previousNodes = cd.Status.Nodes
 		m.updatedNodesChan <- cd.Status.Nodes
 	} else {
-		klog.V(6).Infof("IP set did not change")
+		klog.V(6).Infof("IP set for clique did not change")
 	}
 }
 
@@ -431,14 +576,22 @@ func (m *ComputeDomainManager) removeNodeFromComputeDomain(ctx context.Context) 
 	if err != nil {
 		return fmt.Errorf("could not serialize patch: %w", err)
 	}
-	updatedCD, err := m.patchCD(ctx, patchBytes)
+	_, err = m.patchCD(ctx, patchBytes)
 	if err != nil {
 		return fmt.Errorf("error patching ComputeDomain status for node removal: %w", err)
 	}
-	m.mutationCache.Mutation(updatedCD)
+	//m.trackLatest(updatedCD)
+	//m.mutationCache.Mutation(updatedCD)
 
 	klog.Infof("Successfully removed node with IP %s from ComputeDomain %s/%s", m.config.podIP, m.config.computeDomainNamespace, m.config.computeDomainName)
 	return nil
+}
+
+func (m *ComputeDomainManager) trackLatest(cd *nvapi.ComputeDomain) {
+	// here we could implement a resource version comparator. for now, trust the
+	// code.
+	m.latestCD = cd
+	m.latestCDupdate = time.Now()
 }
 
 // Notes:
@@ -469,8 +622,15 @@ func (m *ComputeDomainManager) removeNodeFromComputeDomain(ctx context.Context) 
 //     request reflects both, the patch, and also patches made by other
 //     owners if they happened in the meantime.
 func (m *ComputeDomainManager) patchCD(ctx context.Context, patch []byte) (*nvapi.ComputeDomain, error) {
+	// Patching may result in contention indicated by the response not coming
+	// back in time. As a pragmatic of backpressure, abort early and let the
+	// caller wait.
+	childCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+
+	klog.V(6).Infof("try to PATCH CD")
 	updatedCD, err := m.config.clientsets.Nvidia.ResourceV1beta1().ComputeDomains(m.config.computeDomainNamespace).Patch(
-		ctx,
+		childCtx,
 		m.config.computeDomainName,
 		types.ApplyPatchType,
 		patch,
@@ -482,10 +642,12 @@ func (m *ComputeDomainManager) patchCD(ctx context.Context, patch []byte) (*nvap
 	return updatedCD, err
 }
 
-func getIPSet(nodeInfos []*nvapi.ComputeDomainNode) IPSet {
+func getIPSetForClique(nodeInfos []*nvapi.ComputeDomainNode, cliqueID string) IPSet {
 	set := make(IPSet)
 	for _, n := range nodeInfos {
-		set[n.IPAddress] = struct{}{}
+		if n.CliqueID == cliqueID {
+			set[n.IPAddress] = struct{}{}
+		}
 	}
 	return set
 }
@@ -514,7 +676,7 @@ func (m *ComputeDomainManager) HasDuplicateIndex(nodeInfos []*nvapi.ComputeDomai
 		}
 
 		if _, exists := seen[node.Index]; exists {
-			klog.V(4).Infof("DNS index collision detected: %v uses an index seen before (we are node %v)", node, m.config.nodeName)
+			klog.V(6).Infof("DNS index collision detected: %v uses an index seen before (we are node %v)", node, m.config.nodeName)
 			return true
 		}
 
@@ -523,4 +685,30 @@ func (m *ComputeDomainManager) HasDuplicateIndex(nodeInfos []*nvapi.ComputeDomai
 	}
 
 	return false
+}
+
+// Diff compares two IP sets. It returns a list of IPs that were added and a
+// list of IPs that were removed.
+func (s IPSet) Diff(cmp IPSet) ([]string, []string) {
+	var added []string
+	var removed []string
+
+	// Check for IPs in s (reference) that are NOT in cmp (removed)
+	for ip := range s {
+		if _, exists := cmp[ip]; !exists {
+			removed = append(removed, ip)
+		}
+	}
+
+	// Check for IPs in cmp that are NOT in reference s (added)
+	for ip := range cmp {
+		if _, exists := s[ip]; !exists {
+			added = append(added, ip)
+		}
+	}
+
+	sort.Strings(added)
+	sort.Strings(removed)
+
+	return added, removed
 }

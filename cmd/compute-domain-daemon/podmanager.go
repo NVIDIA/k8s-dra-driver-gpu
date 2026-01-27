@@ -35,17 +35,17 @@ import (
 
 // PodManager watches for changes to its own pod and updates the CD status accordingly.
 type PodManager struct {
-	config                     *ManagerConfig
-	getComputeDomain           GetComputeDomainFunc
-	waitGroup                  sync.WaitGroup
-	cancelContext              context.CancelFunc
-	podInformer                cache.SharedIndexInformer
-	informerFactory            informers.SharedInformerFactory
-	computeDomainMutationCache cache.MutationCache
+	config           *ManagerConfig
+	getComputeDomain GetComputeDomainFunc
+	waitGroup        sync.WaitGroup
+	cancelContext    context.CancelFunc
+	podInformer      cache.SharedIndexInformer
+	informerFactory  informers.SharedInformerFactory
+	//computeDomainMutationCache cache.MutationCache
 }
 
 // NewPodManager creates a new PodManager instance.
-func NewPodManager(config *ManagerConfig, getComputeDomain GetComputeDomainFunc, mutationCache cache.MutationCache) *PodManager {
+func NewPodManager(config *ManagerConfig, getComputeDomain GetComputeDomainFunc) *PodManager {
 	informerFactory := informers.NewSharedInformerFactoryWithOptions(
 		config.clientsets.Core,
 		informerResyncPeriod,
@@ -58,11 +58,11 @@ func NewPodManager(config *ManagerConfig, getComputeDomain GetComputeDomainFunc,
 	podInformer := informerFactory.Core().V1().Pods().Informer()
 
 	p := &PodManager{
-		config:                     config,
-		getComputeDomain:           getComputeDomain,
-		podInformer:                podInformer,
-		informerFactory:            informerFactory,
-		computeDomainMutationCache: mutationCache,
+		config:           config,
+		getComputeDomain: getComputeDomain,
+		podInformer:      podInformer,
+		informerFactory:  informerFactory,
+		//computeDomainMutationCache: mutationCache,
 	}
 
 	return p
@@ -161,7 +161,7 @@ func (pm *PodManager) isPodReady(pod *corev1.Pod) bool {
 // pod running the CD daemon) in the CD status.
 func (pm *PodManager) updateNodeStatus(ctx context.Context, status string) error {
 	// Get the current CD using the provided function
-	cd, err := pm.getComputeDomain(pm.config.computeDomainUUID)
+	cd, err := pm.getComputeDomain() //pm.config.computeDomainUUID)
 	if err != nil {
 		return fmt.Errorf("failed to get ComputeDomain: %w", err)
 	}
@@ -214,7 +214,7 @@ func (pm *PodManager) updateNodeStatus(ctx context.Context, status string) error
 		return fmt.Errorf("could not serialize patch: %w", err)
 	}
 
-	updatedCD, err := pm.config.clientsets.Nvidia.ResourceV1beta1().ComputeDomains(cd.Namespace).Patch(
+	_, err = pm.config.clientsets.Nvidia.ResourceV1beta1().ComputeDomains(cd.Namespace).Patch(
 		ctx,
 		cd.Name,
 		types.ApplyPatchType,
@@ -231,7 +231,7 @@ func (pm *PodManager) updateNodeStatus(ctx context.Context, status string) error
 	// Store the CD object returned by the API server in the mutationCache (it
 	// now has a newer ResourceVersion than `newCD` and hence any further
 	// mutations should be performed based on that).
-	pm.computeDomainMutationCache.Mutation(updatedCD)
+	// pm.computeDomainMutationCache.Mutation(updatedCD)
 
 	klog.Infof("Successfully updated node status in CD (new nodeinfo: %v)", node)
 	return nil
