@@ -89,7 +89,7 @@ vendor:
 	go mod verify
 
 check-modules: vendor
-	git diff --quiet HEAD -- go.mod go.sum vendor
+	git diff --exit-code HEAD -- go.mod go.sum vendor
 
 COVERAGE_FILE := coverage.out
 test: build cmds
