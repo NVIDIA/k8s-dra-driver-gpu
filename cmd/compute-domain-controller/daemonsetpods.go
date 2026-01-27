@@ -29,10 +29,12 @@ import (
 	"k8s.io/klog/v2"
 
 	nvapi "github.com/NVIDIA/k8s-dra-driver-gpu/api/nvidia.com/resource/v1beta1"
+	"github.com/NVIDIA/k8s-dra-driver-gpu/pkg/workqueue"
 )
 
 type DaemonSetPodManager struct {
 	config        *ManagerConfig
+	workQueue     *workqueue.WorkQueue
 	waitGroup     sync.WaitGroup
 	cancelContext context.CancelFunc
 
@@ -44,7 +46,7 @@ type DaemonSetPodManager struct {
 	updateComputeDomainStatus UpdateComputeDomainStatusFunc
 }
 
-func NewDaemonSetPodManager(config *ManagerConfig, getComputeDomain GetComputeDomainFunc, updateComputeDomainStatus UpdateComputeDomainStatusFunc) *DaemonSetPodManager {
+func NewDaemonSetPodManager(config *ManagerConfig, workQueue *workqueue.WorkQueue, getComputeDomain GetComputeDomainFunc, updateComputeDomainStatus UpdateComputeDomainStatusFunc) *DaemonSetPodManager {
 	labelSelector := &metav1.LabelSelector{
 		MatchExpressions: []metav1.LabelSelectorRequirement{
 			{
@@ -68,6 +70,7 @@ func NewDaemonSetPodManager(config *ManagerConfig, getComputeDomain GetComputeDo
 
 	m := &DaemonSetPodManager{
 		config:                    config,
+		workQueue:                 workQueue,
 		factory:                   factory,
 		informer:                  informer,
 		lister:                    lister,
@@ -92,7 +95,7 @@ func (m *DaemonSetPodManager) Start(ctx context.Context) (rerr error) {
 
 	_, err := m.informer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		DeleteFunc: func(obj interface{}) {
-			m.config.workQueue.Enqueue(obj, m.onPodDelete)
+			m.workQueue.Enqueue(obj, m.onPodDelete)
 		},
 	})
 	if err != nil {

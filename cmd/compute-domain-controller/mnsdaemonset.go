@@ -23,6 +23,7 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 
 	nvapi "github.com/NVIDIA/k8s-dra-driver-gpu/api/nvidia.com/resource/v1beta1"
+	"github.com/NVIDIA/k8s-dra-driver-gpu/pkg/workqueue"
 )
 
 // MultiNamespaceDaemonSetManager manages DaemonSets across multiple namespaces.
@@ -33,7 +34,7 @@ type MultiNamespaceDaemonSetManager struct {
 
 // NewMultiNamespaceDaemonSetManager creates a new multi-namespace DaemonSet manager
 // It creates individual DaemonSet managers for the driver namespace and all additional namespaces.
-func NewMultiNamespaceDaemonSetManager(config *ManagerConfig, getComputeDomain GetComputeDomainFunc, updateComputeDomainStatus UpdateComputeDomainStatusFunc) *MultiNamespaceDaemonSetManager {
+func NewMultiNamespaceDaemonSetManager(config *ManagerConfig, workQueue *workqueue.WorkQueue, getComputeDomain GetComputeDomainFunc, updateComputeDomainStatus UpdateComputeDomainStatusFunc) *MultiNamespaceDaemonSetManager {
 	m := &MultiNamespaceDaemonSetManager{
 		config:   config,
 		managers: make(map[string]*DaemonSetManager),
@@ -51,7 +52,7 @@ func NewMultiNamespaceDaemonSetManager(config *ManagerConfig, getComputeDomain G
 		configNew := *config
 		configNew.driverNamespace = ns
 		configNew.additionalNamespaces = nil
-		m.managers[ns] = NewDaemonSetManager(&configNew, getComputeDomain, updateComputeDomainStatus)
+		m.managers[ns] = NewDaemonSetManager(&configNew, workQueue, getComputeDomain, updateComputeDomainStatus)
 	}
 
 	return m
