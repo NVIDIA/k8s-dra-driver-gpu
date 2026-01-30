@@ -116,7 +116,7 @@ FROM ${TOOLKIT_CONTAINER_IMAGE} AS toolkit
 # For consistency, the build stage above derives from Debian 12 directly. The
 # `-dev` suffic is to get busybox as a shell added. For RUN directives to pick
 # that up, use `SHELL ["/busybox/sh", "-c"]`.
-FROM nvcr.io/nvidia/distroless/cc:v4.0.0-dev
+FROM nvcr.io/nvidia/distroless/cc:v4.0.1-dev
 
 ENV NVIDIA_DISABLE_REQUIRE="true"
 ENV NVIDIA_VISIBLE_DEVICES=all
