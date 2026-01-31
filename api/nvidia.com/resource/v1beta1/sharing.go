@@ -28,6 +28,7 @@ import (
 const (
 	TimeSlicingStrategy = "TimeSlicing"
 	MpsStrategy         = "MPS"
+	FabricStrategy      = "Fabric"
 )
 
 // These constants represent the different TimeSlicing configurations.
