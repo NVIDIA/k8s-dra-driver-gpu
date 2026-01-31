@@ -30,6 +30,9 @@ func (s GpuSharingStrategy) Validate() error {
 	if featuregates.Enabled(featuregates.MPSSupport) && s == MpsStrategy {
 		return nil
 	}
+	if s == FabricStrategy {
+		return fmt.Errorf("fabric GPU sharing strategy is not enabled")
+	}
 	return fmt.Errorf("unknown GPU sharing strategy: %v", s)
 }
 
@@ -40,6 +43,9 @@ func (s MigDeviceSharingStrategy) Validate() error {
 	}
 	if featuregates.Enabled(featuregates.MPSSupport) && s == MpsStrategy {
 		return nil
+	}
+	if s == FabricStrategy {
+		return fmt.Errorf("fabric GPU sharing strategy is not enabled")
 	}
 	return fmt.Errorf("unknown GPU sharing strategy: %v", s)
 }
