@@ -185,6 +185,14 @@ webhook:
       caBundle: ""
 
 controller:
+  replicas: 1
+  leaderElection:
+    enabled: false
+    leaseLockName: "nvidia-compute-domain-controller"
+    leaseLockNamespace: ""
+    leaseDuration: "15s"
+    renewDeadline: "10s"
+    retryPeriod: "2s"
   priorityClassName: "system-node-critical"
   podAnnotations: {}
   podSecurityContext: {}
