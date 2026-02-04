@@ -104,10 +104,25 @@ func NewTimeSlicingManager(deviceLib *deviceLib) *TimeSlicingManager {
 	}
 }
 
-func (t *TimeSlicingManager) SetTimeSlice(devices UUIDProvider, config *configapi.TimeSlicingConfig) error {
+func (t *TimeSlicingManager) SetTimeSlice(devices *UUIDProvider, config *configapi.TimeSlicingConfig) error {
 	// Ensure all devices are full devices
 	if !slices.Equal(devices.UUIDs(), devices.GpuUUIDs()) {
 		return fmt.Errorf("can only set the time-slice interval on full GPUs")
+	}
+	for _, gpu := range devices.Gpu.Devices {
+		err, isSupportTimeSlice := detectSupportTimeSliceByCudaComputeCapability(gpu.cudaComputeCapability)
+		if err != nil {
+			return fmt.Errorf("failed to detectSupportTimeSliceByCudaComputeCapability : %w", err)
+		}
+		if !isSupportTimeSlice {
+			klog.InfoS("the current card does not support setting time slices and will be ignored.", "arch", gpu.architecture, "uuid", gpu.uuid, "cudaComputeCapability", gpu.cudaComputeCapability)
+			return fmt.Errorf("setting a TimeSlice duration on devices uuid=%v is unsupported", gpu.uuid)
+		}
+	}
+
+	timeSlice := sharing.DefaultTimeSlice
+	if config != nil && config.TimeSlice != nil {
+		timeSlice = *config.TimeSlice
 	}
 
 	// Set the compute mode of the GPU to DEFAULT.
@@ -448,4 +463,22 @@ func getDefaultShmSize() string {
 		return fmt.Sprintf("%d%s", memTotal/2, unit)
 	}
 	return fallbackSize
+}
+
+// detactSupportTimeSliceByArch Determine whether the architecture series
+// supports setting time slices based on the gpu cudaComputeCapability.
+func detectSupportTimeSliceByCudaComputeCapability(cudaComputeCapability string) (error, bool) {
+	// ref https://github.com/NVIDIA/k8s-dra-driver/pull/58#discussion_r1469338562
+	// we believe time-slicing is available on Volta+ architectures, so the check would simply be cudaComputeCapability >= 7.0
+	// by https://github.com/NVIDIA/go-nvlib/blob/main/pkg/nvlib/device/device.go#L149, We know that cuda major and minor versions are concatenated through `.` .
+
+	cudaVersion := strings.Split(cudaComputeCapability, ".")
+	major, err := strconv.Atoi(cudaVersion[0])
+	if err != nil {
+		return fmt.Errorf("error to get cudaComputeCapability major version %v", cudaComputeCapability), false
+	}
+	if major >= 7 {
+		return nil, true
+	}
+	return nil, false
 }
