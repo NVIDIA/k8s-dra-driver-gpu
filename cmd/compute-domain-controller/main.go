@@ -305,18 +305,24 @@ func newApp() *cli.App {
 func run(ctx context.Context, config *Config) error {
 	controller := NewController(config)
 
+	// Fallback to standalone mode if leader election is disabled
 	if !config.flags.leaderElect {
 		klog.Info("Leader election disabled, starting controller directly")
-		if err := controller.Run(ctx); err != nil {
-			return fmt.Errorf("run controller: %w", err)
-		}
-		return nil
+		return controller.Run(ctx)
 	}
 
 	klog.Info("Leader election enabled")
+	// Unique identity: PodName + UUID to prevent conflicts on restarts
 	id := uuid.New().String()
 	lockID := fmt.Sprintf("%s-%s", config.flags.podName, id)
-	klog.InfoS("Leader election candidate registered", "lockID", lockID, "leaseName", config.flags.leaseLockName, "leaseNamespace", config.flags.leaseLockNamespace)
+	klog.InfoS("Leader election candidate registered", "lockID", lockID,
+		"leaseName", config.flags.leaseLockName,
+		"leaseNamespace", config.flags.leaseLockNamespace)
+
+	// electorCtx controls the lifecycle of the leader election loop
+	electorCtx, cancelElector := context.WithCancel(ctx)
+	// Standard defer to ensure resources are cleaned up on function exit
+	defer cancelElector()
 
 	lock := &resourcelock.LeaseLock{
 		LeaseMeta: metav1.ObjectMeta{
@@ -329,41 +335,56 @@ func run(ctx context.Context, config *Config) error {
 		},
 	}
 
-	elector, err := leaderelection.NewLeaderElector(leaderelection.LeaderElectionConfig{
-		Lock:          lock,
-		LeaseDuration: config.flags.leaseDuration,
-		RenewDeadline: config.flags.renewDeadline,
-		RetryPeriod:   config.flags.retryPeriod,
-		Name:          config.flags.leaseLockName,
-		Callbacks: leaderelection.LeaderCallbacks{
-			OnStartedLeading: func(ctx context.Context) {
-				klog.Infof("Became leader, starting controller (id: %s)", lockID)
-				if err := controller.Run(ctx); err != nil {
-					klog.Errorf("Error running controller as leader: %v", err)
-					return
-				}
-			},
-			OnStoppedLeading: func() {
-				klog.Warningf("Lost leader election (id: %s), waiting to re-compete", lockID)
-			},
-			OnNewLeader: func(identity string) {
-				if identity == lockID {
-					return
-				}
-				klog.Infof("New leader elected: %s (current candidate: %s)", identity, lockID)
-			},
+	var controllerErr error
+	callbacks := leaderelection.LeaderCallbacks{
+		OnStartedLeading: func(leaderCtx context.Context) {
+			klog.InfoS("Became leader, starting controller", "lockID", lockID)
+			// Critical: Shut down the elector loop when the controller logic exits
+			defer cancelElector()
+
+			// NOTE: Use leaderCtx provided by the callback.
+			// It is automatically cancelled if leadership is lost.
+			if err := controller.Run(leaderCtx); err != nil {
+				controllerErr = err // store controller error
+				klog.ErrorS(err, "Controller exited with error", "lockID", lockID)
+			} else {
+				klog.InfoS("Controller exited gracefully", "lockID", lockID)
+			}
 		},
-		ReleaseOnCancel: true,
+		OnStoppedLeading: func() {
+			klog.Warningf("Stopped leading, lockID: %s", lockID)
+		},
+		OnNewLeader: func(identity string) {
+			if identity == lockID {
+				return
+			}
+			klog.InfoS("New leader elected", "leader", identity, "currentCandidate", lockID)
+		},
+	}
+
+	elector, err := leaderelection.NewLeaderElector(leaderelection.LeaderElectionConfig{
+		Lock:            lock,
+		LeaseDuration:   config.flags.leaseDuration,
+		RenewDeadline:   config.flags.renewDeadline,
+		RetryPeriod:     config.flags.retryPeriod,
+		Name:            config.flags.leaseLockName,
+		Callbacks:       callbacks,
+		ReleaseOnCancel: true, // Steps down immediately by clearing the Lease holder
 	})
 	if err != nil {
 		return fmt.Errorf("failed to create leader elector: %w", err)
 	}
-	go func() {
-		<-ctx.Done()
-		klog.InfoS("Context canceled, stopping leader elector", "lockID", lockID)
-	}()
 
-	elector.Run(ctx)
+	// Block until electorCtx is cancelled or leadership is lost
+	klog.InfoS("Starting leader election loop", "lockID", lockID)
+	elector.Run(electorCtx)
+
+	// If exiting due to a controller failure, propagate the error to main
+	if controllerErr != nil {
+		klog.ErrorS(controllerErr, "Process exiting due to controller failure")
+		return fmt.Errorf("controller execution failed: %w", controllerErr)
+	}
+	klog.InfoS("Leader election loop ended gracefully", "lockID", lockID)
 	return nil
 }
 
