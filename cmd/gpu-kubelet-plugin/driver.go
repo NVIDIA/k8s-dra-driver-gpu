@@ -25,9 +25,11 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Masterminds/semver"
 	resourceapi "k8s.io/api/resource/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/runtime"
+	"k8s.io/apimachinery/pkg/version"
 	coreclientset "k8s.io/client-go/kubernetes"
 	"k8s.io/dynamic-resource-allocation/kubeletplugin"
 	"k8s.io/dynamic-resource-allocation/resourceslice"
@@ -56,6 +58,10 @@ type driver struct {
 	healthcheck         *healthcheck
 	deviceHealthMonitor deviceHealthMonitor
 	wg                  sync.WaitGroup
+	// Idicates whether to use separate ResourceSlices for SharedCounters and
+	// Devices (required for k8s 1.35+) or combined SharedCounters and Devices
+	// in the same slice (required for k8s 1.34).
+	useSplitResourceSlices bool
 }
 
 func NewDriver(ctx context.Context, config *Config) (*driver, error) {
@@ -63,6 +69,8 @@ func NewDriver(ctx context.Context, config *Config) (*driver, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	useSplitSlices := false
 
 	if featuregates.Enabled(featuregates.DynamicMIG) {
 		// Could be done in NewDeviceState, but I want to make sure that the
@@ -94,14 +102,23 @@ func NewDriver(ctx context.Context, config *Config) (*driver, error) {
 		// scheduler state is equivalent. TODO: review if this logic is correct;
 		// or if it potentially is too invasive for certain edge cases.
 		state.DestroyUnknownMIGDevices(ctx)
+
+		// Read Kubernetes API server version to determine which ResourceSlice
+		// model to use.
+		var err error
+		useSplitSlices, err = shouldUseSplitResourceSlices(config.clientsets.Core)
+		if err != nil {
+			return nil, fmt.Errorf("failed to determine ResourceSlice model: %w", err)
+		}
 	}
 
 	puLockPath := filepath.Join(config.DriverPluginPath(), DriverPrepUprepFlockFileName)
 
 	driver := &driver{
-		client: config.clientsets.Core,
-		state:  state,
-		pulock: flock.NewFlock(puLockPath),
+		client:                 config.clientsets.Core,
+		state:                  state,
+		pulock:                 flock.NewFlock(puLockPath),
+		useSplitResourceSlices: useSplitSlices,
 	}
 
 	helper, err := kubeletplugin.Start(
@@ -159,32 +176,59 @@ func NewDriver(ctx context.Context, config *Config) (*driver, error) {
 // GenerateDriverResources() returns the set of DRA ResourceSlices announced by
 // this DRA driver to the system, using the Partitionable Devices paradigm.
 func (d *driver) GenerateDriverResources(nodeName string) resourceslice.DriverResources {
-	// Note(JP): I first considered model 1, and then implemented model model 2.
-	//
-	// Model 1) Create G+1 resource slices, given G physical GPUs. 1) one slice
-	// with shared counters, for each full GPU 2) for each full GPU, a slice
-	// with the full-GPU-device and all potential MIG profile/placement devices.
-	// That model is inspired by KEP 4815 which talks about "require that
-	// ResourceSlice objects can only contain either SharedCounters or Devices".
-	// In practice, that does not work against k8s 1.34. Which brings us to
-	// model 2, for now.
-	//
-	// Model 2) Create G resource slices, given G physical GPUs. Each slice
-	// describes the physical full device capacity by defining _one_ counter
-	// set as part of `SharedCounters`. Then, in the same resource slice define
-	// all devices allocatable for that physical GPU. That is, M possible MIG
-	// devices, and 1 device representing the full GPU. Hence:
-	//
-	// - G resource slices
-	// - Each resource slice:
-	//   - Defines `SharedCounters` with 1 counter set
-	//   - Defines M+1 devices
-	//
-	// A relevant quote from KEP 4815 does not apply to k8s 1.34: "The decision
-	// to require that ResourceSlice objects can only contain either
-	// SharedCounters or Devices was made to prevent having to enforce overly
-	// strict validation to make sure that ResourceSlice objects can't exceed
-	// the etcd limit."
+	if d.useSplitResourceSlices {
+		return d.generateSplitResourceSlices(nodeName)
+	}
+	return d.generateCombinedResourceSlices(nodeName)
+}
+
+// generateSplitResourceSlices generates ResourceSlices for DynamicMIG for k8s 1.35+.
+// Creates G+1 resource slices for G physical GPUs:
+// - One slice with all SharedCounters (one counter set per GPU).
+// - For each GPU, one slice with devices only (full GPU + MIG partitions).
+func (d *driver) generateSplitResourceSlices(nodeName string) resourceslice.DriverResources {
+	var gpuslices []resourceslice.Slice
+	var allCounterSets []resourceapi.CounterSet
+
+	// Iterate through `perGPUAllocatable` map in predictable order
+	for _, minor := range slices.Sorted(maps.Keys(d.state.perGPUAllocatable)) {
+		allocatable := d.state.perGPUAllocatable[minor]
+		var deviceSlice resourceslice.Slice
+
+		// Stable sort order by devicename
+		for _, devname := range slices.Sorted(maps.Keys(allocatable)) {
+			device := allocatable[devname]
+			klog.V(4).Infof("About to announce device %s", devname)
+
+			// Full GPU: collect its counter sets for the `sharedCountersSlice`.
+			if device.Gpu != nil {
+				allCounterSets = append(allCounterSets, device.Gpu.PartSharedCounterSets()...)
+			}
+
+			// Add device/partition to the device-only slice for this GPU.
+			deviceSlice.Devices = append(deviceSlice.Devices, device.PartGetDevice())
+		}
+		gpuslices = append(gpuslices, deviceSlice)
+	}
+
+	sharedCountersSlice := resourceslice.Slice{
+		SharedCounters: allCounterSets,
+	}
+
+	// Emit the `sharedCountersSlice` first.
+	gpuslices = append([]resourceslice.Slice{sharedCountersSlice}, gpuslices...)
+
+	return resourceslice.DriverResources{
+		Pools: map[string]resourceslice.Pool{
+			nodeName: {Slices: gpuslices},
+		},
+	}
+}
+
+// generateCombinedResourceSlices generates ResourceSlices for DynamicMIG for k8s 1.34.
+// Creates G resource slices for G physical GPUs, each containing both,
+// SharedCounters and Devices.
+func (d *driver) generateCombinedResourceSlices(nodeName string) resourceslice.DriverResources {
 	var gpuslices []resourceslice.Slice
 
 	// Iterate through `perGPUAllocatable` map in predictable order so that the
@@ -459,6 +503,42 @@ func (d *driver) deviceHealthEvents(ctx context.Context, nodeName string) {
 			}
 		}
 	}
+}
+
+// shouldUseSplitResourceSlices detects the Kubernetes server version and
+// returns true if separate ResourceSlices should be used for SharedCounters and
+// Devices (required for k8s 1.35+), or false if they must be combined (k8s
+// 1.34).
+func shouldUseSplitResourceSlices(client coreclientset.Interface) (bool, error) {
+	discoveryClient := client.Discovery()
+	v, err := discoveryClient.ServerVersion()
+	if err != nil {
+		return false, fmt.Errorf("failed to get server version: %w", err)
+	}
+
+	shouldSplit, err := isVersion135OrLater(v)
+	if err != nil {
+		return false, fmt.Errorf("API server version detection failed: %w", err)
+	}
+
+	if shouldSplit {
+		klog.V(2).Infof("Detected Kubernetes version %s (>= 1.35), plan to use separate ResourceSlices for SharedCounters and Devices", v.GitVersion)
+		return true, nil
+	}
+
+	klog.V(2).Infof("Detected Kubernetes version %s (< 1.35), plan to use combined ResourceSlices with SharedCounters and Devices", v.GitVersion)
+	return false, nil
+}
+
+func isVersion135OrLater(v *version.Info) (bool, error) {
+	// `v.GitVersion`` is e.g. "v1.35.2"; semver.NewVersion handes the v prefix.
+	serverVer, err := semver.NewVersion(v.GitVersion)
+	if err != nil {
+		return false, fmt.Errorf("failed to parse version '%s': %w", v.GitVersion, err)
+	}
+
+	minVersion := semver.MustParse("1.35.0")
+	return serverVer.GreaterThan(minVersion) || serverVer.Equal(minVersion), nil
 }
 
 // TODO: implement loop to remove CDI files from the CDI path for claimUIDs
