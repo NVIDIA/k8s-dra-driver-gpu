@@ -35,9 +35,10 @@ type DaemonSetPodManager struct {
 	waitGroup     sync.WaitGroup
 	cancelContext context.CancelFunc
 
-	factory  informers.SharedInformerFactory
-	informer cache.SharedIndexInformer
-	lister   corev1listers.PodLister
+	factory       informers.SharedInformerFactory
+	informer      cache.SharedIndexInformer
+	lister        corev1listers.PodLister
+	mutationCache cache.MutationCache
 }
 
 func NewDaemonSetPodManager(config *ManagerConfig) *DaemonSetPodManager {
@@ -84,6 +85,18 @@ func (m *DaemonSetPodManager) Start(ctx context.Context) (rerr error) {
 		}
 	}()
 
+	if err := addComputeDomainLabelIndexer[*corev1.Pod](m.informer); err != nil {
+		return fmt.Errorf("error adding indexer for MultiNodeEnvironment label: %w", err)
+	}
+
+	m.mutationCache = cache.NewIntegerResourceVersionMutationCache(
+		klog.Background(),
+		m.informer.GetStore(),
+		m.informer.GetIndexer(),
+		mutationCacheTTL,
+		true,
+	)
+
 	m.waitGroup.Add(1)
 	go func() {
 		defer m.waitGroup.Done()
@@ -108,4 +121,19 @@ func (m *DaemonSetPodManager) Stop() error {
 // List returns all daemon pods from the informer cache.
 func (m *DaemonSetPodManager) List() ([]*corev1.Pod, error) {
 	return m.lister.Pods(m.config.driverNamespace).List(labels.Everything())
+}
+
+func (m *DaemonSetPodManager) Get(ctx context.Context, cdUID string, nodeName string) (*corev1.Pod, error) {
+	pods, err := getByComputeDomainUID[*corev1.Pod](ctx, m.mutationCache, cdUID)
+	if err != nil {
+		return nil, fmt.Errorf("error retrieving DaemonSetPods: %w", err)
+	}
+
+	for _, p := range pods {
+		if p.Spec.NodeName == nodeName {
+			return p, nil
+		}
+	}
+
+	return nil, fmt.Errorf("no DeamonSetPod with name %s matching DomainID %s found", nodeName, cdUID)
 }

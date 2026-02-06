@@ -293,50 +293,6 @@ func (m *ComputeDomainManager) isCurrentNodeReadyInClique(ctx context.Context, c
 	return false
 }
 
-func (m *ComputeDomainManager) AssertComputeDomainNamespace(ctx context.Context, claimNamespace, cdUID string) error {
-	cd, err := m.GetComputeDomain(ctx, cdUID)
-	if err != nil {
-		return fmt.Errorf("error getting ComputeDomain: %w", err)
-	}
-	if cd == nil {
-		return fmt.Errorf("ComputeDomain not found: %s", cdUID)
-	}
-
-	if cd.Namespace != claimNamespace {
-		return fmt.Errorf("the ResourceClaim's namespace is different than the ComputeDomain's namespace")
-	}
-
-	return nil
-}
-
-func (m *ComputeDomainManager) AddNodeLabel(ctx context.Context, cdUID string) error {
-	node, err := m.config.clientsets.Core.CoreV1().Nodes().Get(ctx, m.config.flags.nodeName, metav1.GetOptions{})
-	if err != nil {
-		return fmt.Errorf("error retrieving Node: %w", err)
-	}
-
-	currentValue, exists := node.Labels[computeDomainLabelKey]
-	if exists && currentValue != cdUID {
-		return fmt.Errorf("label already exists for a different ComputeDomain")
-	}
-
-	if exists && currentValue == cdUID {
-		return nil
-	}
-
-	newNode := node.DeepCopy()
-	if newNode.Labels == nil {
-		newNode.Labels = make(map[string]string)
-	}
-	newNode.Labels[computeDomainLabelKey] = cdUID
-
-	if _, err = m.config.clientsets.Core.CoreV1().Nodes().Update(ctx, newNode, metav1.UpdateOptions{}); err != nil {
-		return fmt.Errorf("error updating Node with label: %w", err)
-	}
-
-	return nil
-}
-
 // RemoveNodeLabel() attempts removal and returns no error if the label was
 // removed or didn't exist in the first place.
 func (m *ComputeDomainManager) RemoveNodeLabel(ctx context.Context, cdUID string) error {

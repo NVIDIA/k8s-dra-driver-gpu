@@ -27,6 +27,9 @@ const (
 
 	ComputeDomainChannelAllocationModeSingle = "Single"
 	ComputeDomainChannelAllocationModeAll    = "All"
+
+	ComputeDomainBindingConditions        = "IMEXDaemonSettingsDone"
+	ComputeDomainBindingFailureConditions = "IMEXDaemonSettingsFailed"
 )
 
 // +genclient
