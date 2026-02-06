@@ -339,7 +339,16 @@ func run(ctx context.Context, config *Config) error {
 	callbacks := leaderelection.LeaderCallbacks{
 		OnStartedLeading: func(leaderCtx context.Context) {
 			klog.InfoS("Became leader, starting controller", "lockID", lockID)
-			// Critical: Shut down the elector loop when the controller logic exits
+
+			// ARCHITECTURE NOTE:
+			// We use cancelElector() to ensure that if the controller logic exits
+			// (either gracefully or with an error), the entire leader election loop
+			// terminates. This triggers ReleaseOnCancel, clearing the lease holder
+			// identity and allowing standby replicas to take over immediately.
+			//
+			// By returning from run() after elector.Run() finishes, we rely on
+			// Kubernetes to restart the Pod, ensuring a clean in-memory state
+			// for the next leadership term.
 			defer cancelElector()
 
 			// NOTE: Use leaderCtx provided by the callback.
@@ -352,10 +361,19 @@ func run(ctx context.Context, config *Config) error {
 			}
 		},
 		OnStoppedLeading: func() {
+			// ARCHITECTURE NOTE:
+			// We only log here. The actual shutdown of the controller is handled by the
+			// cancellation of the leaderCtx passed to OnStartedLeading.
+			// When leadership is lost, the library cancels that context, triggering
+			// the controller's graceful shutdown logic.
 			klog.Warningf("Stopped leading, lockID: %s", lockID)
 		},
 		OnNewLeader: func(identity string) {
+			// OnNewLeader is called when a new leader is observed.
+			// We ignore the case where the "new" leader is ourselves to avoid
+			// redundant logs during initial election or re-election.
 			if identity == lockID {
+				klog.V(6).InfoS("OnNewLeader callback: observed leader is still ourselves", "lockID", lockID)
 				return
 			}
 			klog.InfoS("New leader elected", "leader", identity, "currentCandidate", lockID)
