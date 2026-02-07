@@ -6,11 +6,6 @@ setup_file () {
   _common_setup
   local _iargs=("--set" "logVerbosity=6")
   iupgrade_wait "${TEST_CHART_REPO}" "${TEST_CHART_VERSION}" _iargs
-  run kubectl logs \
-    -l nvidia-dra-driver-gpu-component=kubelet-plugin \
-    -n nvidia-dra-driver-gpu \
-    -c gpus \
-    --prefix --tail=-1
 }
 
 # Executed before entering each test in this file.
