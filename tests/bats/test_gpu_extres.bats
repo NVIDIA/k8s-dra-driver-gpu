@@ -25,8 +25,6 @@ bats::on_failure() {
 
 
 # bats test_tags=extres,fastfeedback
-
-# bats test_tags=bats:focus
 @test "GPUs: handle legacy 'nvidia.com/gpu: 1' (with DRAExtendedResource)" {
   # 1) Skip test if criteria are not met.
   run kubectl version -o json
