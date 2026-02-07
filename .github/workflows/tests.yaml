@@ -14,14 +14,15 @@ on:
         - all
 
 
-# Only one job at any time, and cancel in-progress
+# Allow only one workflow at any time, and cancel in-progress Cancel upon. push
+# to the same branch. The jobs below are run in parallel, and they are both
+# cancelled when this cancel criterion hits in.
 concurrency:
-  # Cancel when push to the same branch
   group: ${{ github.workflow }}-${{ github.head_ref }}
   cancel-in-progress: true
 
 jobs:
-  k8s-bats:
+  bats-k8s134:
     runs-on: compute-domain-runner
     steps:
       - uses: actions/checkout@v6
@@ -30,4 +31,16 @@ jobs:
           TESTFILTER: ${{ inputs.testfilter }}
         run: |
           export TEST_FILTER_TAGS="${TESTFILTER:-fastfeedback}"
+          make bats
+
+  bats-k8s135:
+    runs-on: compute-domain-runner-k8s135
+    steps:
+      - uses: actions/checkout@v6
+      - name: batssuite
+        env:
+          TESTFILTER: ${{ inputs.testfilter }}
+        run: |
+          # export TEST_FILTER_TAGS="${TESTFILTER:-fastfeedback}"
+          # Run only GPU tests for now.
           make bats
