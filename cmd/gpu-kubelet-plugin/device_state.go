@@ -564,10 +564,7 @@ func (s *DeviceState) updateCheckpoint(ctx context.Context, mutate func(*Checkpo
 
 	checkpoint := &Checkpoint{}
 	if err := s.checkpointManager.GetCheckpoint(DriverPluginCheckpointFileBasename, checkpoint); err != nil {
-		return err
-	}
-	if err != nil {
-		return fmt.Errorf("unable to get checkpoint: %w", err)
+		return fmt.Errorf("updateCheckpoint: unable to get checkpoint: %w", err)
 	}
 
 	// Potentially migrate to newest version. This also creates an empty
