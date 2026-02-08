@@ -128,8 +128,12 @@ func NewMigSpecTupleFromCanonicalName(n DeviceName) (*MigSpecTuple, error) {
 	placementStart, err3 := strconv.Atoi(matches[4])
 
 	if err1 != nil || err2 != nil || err3 != nil {
-		return nil, fmt.Errorf("integer parsing failed (dev name: %s)", n)
+		return nil, fmt.Errorf(
+			"failed to parse MIG canonical name %q (parentMinor=%v, profileID=%v, placementStart=%v)",
+			n, err1, err2, err3,
+		)
 	}
+
 
 	return &MigSpecTuple{
 		ParentMinor:    GPUMinor(parentMinor),
