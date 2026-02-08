@@ -43,4 +43,4 @@ jobs:
         run: |
           # export TEST_FILTER_TAGS="${TESTFILTER:-fastfeedback}"
           # Run only GPU tests for now.
-          make bats-gpu
+          make bats
