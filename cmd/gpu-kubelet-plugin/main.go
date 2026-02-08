@@ -228,7 +228,7 @@ func RunPlugin(ctx context.Context, config *Config) error {
 	// Create the plugin directory
 	err := os.MkdirAll(config.DriverPluginPath(), 0750)
 	if err != nil {
-		return err
+		return fmt.Errorf("error creating plugin directory %q: %w", config.DriverPluginPath(), err)
 	}
 
 	// Setup nvidia-cdi-hook binary
@@ -242,7 +242,7 @@ func RunPlugin(ctx context.Context, config *Config) error {
 	case err != nil && os.IsNotExist(err):
 		err := os.MkdirAll(config.flags.cdiRoot, 0750)
 		if err != nil {
-			return err
+			return fmt.Errorf("error creating CDI root directory %q: %w", config.flags.cdiRoot, err)
 		}
 	case err != nil:
 		return err
