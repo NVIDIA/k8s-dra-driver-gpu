@@ -6,7 +6,7 @@ The NVIDIA DRA driver supports GPU health monitoring using the [NVIDIA Managemen
 
 GPU health checking is managed by the ``NVMLDeviceHealthCheck`` feature gate. This is currently an alpha feature and is disabled by default.
 
-When enabled, the DRA Driver for GPUs periodically monitors GPUs for XID errors and assigns health statuses:
+When enabled, the DRA Driver for GPUs continuously monitors GPUs for XID errors and assigns health statuses:
 * Healthy - GPU is functioning normally. The GPU may have a non-critical XID error but is still available for workloads.
 * Unhealthy - GPU has a critical XID error and is not suitable for workloads.
 
