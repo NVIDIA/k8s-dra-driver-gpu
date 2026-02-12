@@ -2,7 +2,7 @@
 
 Note: This is an alpha feature and not recommended for production environments. 
 
-The NVIDIA DRA driver supports GPU health monitoring using the [NVIDIA Management Library (NVML)](https://developer.nvidia.com/management-library-nvml). This feature uses NVML to check for [GPU XID errors](https://docs.nvidia.com/deploy/xid-errors/introduction.html) and determines if a GPU or MIG device is functioning properly.
+The NVIDIA DRA driver supports GPU health monitoring using the [NVIDIA Management Library (NVML)](https://developer.nvidia.com/management-library-nvml) to check for [GPU XID errors](https://docs.nvidia.com/deploy/xid-errors/introduction.html) and determines if a GPU or MIG device is functioning properly.
 
 GPU health checking is managed by the ``NVMLDeviceHealthCheck`` feature gate. This is currently an alpha feature and is disabled by default.
 
