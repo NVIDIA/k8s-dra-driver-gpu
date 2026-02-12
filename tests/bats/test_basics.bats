@@ -18,11 +18,11 @@ bats::on_failure() {
 # unintentionally change/break these targets.
 @test "basics: test VERSION_W_COMMIT, VERSION_GHCR_CHART, VERSION" {
   run make print-VERSION
-  assert_output --regexp '^v[0-9]+\.[0-9]+\.[0-9]+-dev$'
+  assert_output --regexp '^v[0-9]+\.[0-9]+\.[0-9]+$'
   run make print-VERSION_W_COMMIT
-  assert_output --regexp '^v[0-9]+\.[0-9]+\.[0-9]+-dev-[0-9a-f]{8}$'
+  assert_output --regexp '^v[0-9]+\.[0-9]+\.[0-9]+-[0-9a-f]{8}$'
   run make print-VERSION_GHCR_CHART
-  assert_output --regexp '^[0-9]+\.[0-9]+\.[0-9]+-dev-[0-9a-f]{8}-chart$'
+  assert_output --regexp '^[0-9]+\.[0-9]+\.[0-9]+-[0-9a-f]{8}-chart$'
 }
 
 
