@@ -141,6 +141,62 @@ get_all_cd_daemon_logs_for_cd_name() {
 }
 
 
+# Compare attribute sets. Specifically, compare two sets of words where the
+# reference must be provided as array, and the other set must be provided as a
+# string with one word per line.
+# Usage: compare_attributes "$actual_attrs" reference_array[@]
+assert_attrs_equal() {
+  local actual="$1"
+  shift
+  local reference=("$@")
+
+  local expected=$(printf '%s\n' "${reference[@]}" | sort)
+  local actual_sorted=$(echo "$actual" | sort)
+
+  if [[ "$expected" != "$actual_sorted" ]]; then
+    echo -e "Attribute mismatch detected!"
+    echo -e "\nExpected:\n--\n$expected\n--\n"
+    echo -e "\nActual:\n--\n$actual_sorted\n--\n"
+
+    echo -e "\nMissing required attributes (in reference but not in actual):"
+    comm -23 <(echo "$expected") <(echo "$actual_sorted")
+    echo -e "\nUnexpected attributes (in actual but not in reference):"
+    comm -13 <(echo "$expected") <(echo "$actual_sorted")
+    return 1
+  fi
+
+  return 0
+}
+
+
+# Helper function to get device attributes from a GPU resource slice
+# Usage: get_device_attrs_from_any_gpu_slice "gpu"
+#        get_device_attrs_from_any_gpu_slice "mig"
+get_device_attrs_from_any_gpu_slice() {
+  local device_type="$1"
+  local node_name="$2"
+  local spath="${BATS_TEST_TMPDIR}/gpu_resource_slice_content"
+  local slicename
+
+  # Get contents of first listed GPU plugin resource slice, and dump it into a
+  # file. Then, for the first device in that slice (of given type), extract the
+  # set of device attribute _keys_. Emit those keys, one per line. If a
+  # node_name was provided, filter for the GPU plugin resource slice on that
+  # node.
+
+  if [ -n "$node_name" ]; then
+    slicename="$(kubectl get resourceslices.resource.k8s.io | grep 'gpu.nvidia.com' | grep "$node_name" | head -n1 | awk '{print $1}')"
+  else
+    slicename="$(kubectl get resourceslices.resource.k8s.io | grep 'gpu.nvidia.com' | head -n1 | awk '{print $1}')"
+  fi
+
+  echo "resource slice name: $slicename" >&2
+
+  kubectl get resourceslices.resource.k8s.io -o yaml "${slicename}" > "${spath}"
+  yq --raw-output "[.spec.devices[] | select(.attributes.type.string == \"${device_type}\")] | .[0] | .attributes | keys | .[]" "${spath}"
+}
+
+
 show_kubelet_plugin_error_logs() {
   echo -e "\nKUBELET PLUGIN ERROR LOGS START"
   (

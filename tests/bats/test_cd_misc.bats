@@ -227,7 +227,7 @@ bats::on_failure() {
   # As of now, because of `numNodes=1` in the workload, this is expected to
   # result in the global CD status transitioning to NotReady. TODO: check
   # periodically, until deadline.
-  sleep 3
+  sleep 5
   run bats_pipe kubectl get computedomain imex-channel-injection -o json \| jq '.status.status'
   assert_output --partial 'NotReady'
 

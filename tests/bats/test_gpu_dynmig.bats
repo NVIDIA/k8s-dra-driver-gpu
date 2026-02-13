@@ -40,6 +40,49 @@ confirm_mig_mode_disabled_all_nodes() {
 
 
 # bats test_tags=fastfeedback
+@test "DynMIG: inspect device attributes in resource slice (gpu)" {
+  local reference=(
+    "architecture"
+    "brand"
+    "cudaComputeCapability"
+    "cudaDriverVersion"
+    "driverVersion"
+    "productName"
+    "resource.kubernetes.io/pciBusID"
+    "resource.kubernetes.io/pcieRoot"
+    "type"
+    "uuid"
+    "addressingMode"
+  )
+
+  local attrs=$(get_device_attrs_from_any_gpu_slice "gpu")
+  assert_attrs_equal "$attrs" "${reference[@]}"
+}
+
+
+# bats test_tags=fastfeedback
+@test "DynMIG: inspect device attributes in resource slice (mig)" {
+  local reference=(
+    "architecture"
+    "brand"
+    "cudaComputeCapability"
+    "cudaDriverVersion"
+    "driverVersion"
+    "productName"
+    "resource.kubernetes.io/pciBusID"
+    "resource.kubernetes.io/pcieRoot"
+    "type"
+    "addressingMode"
+    "parentUUID"
+    "profile"
+  )
+
+  local attrs=$(get_device_attrs_from_any_gpu_slice "mig")
+  assert_attrs_equal "$attrs" "${reference[@]}"
+}
+
+
+# bats test_tags=fastfeedback
 @test "DynMIG: 1 pod, 1 MIG" {
   confirm_mig_mode_disabled_all_nodes
   kubectl apply -f tests/bats/specs/gpu-simple-mig.yaml

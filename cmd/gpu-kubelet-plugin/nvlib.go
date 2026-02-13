@@ -1180,7 +1180,7 @@ func (l deviceLib) inspectMigProfilesAndPlacements(gpuInfo *GpuInfo, device nvde
 			// Across all MIG profiles, identify the largest value for each
 			// capacity dimension. They probably all corresponding to the same
 			// profile.
-			caps := mi.PartCapacities()
+			caps := mi.Capacities()
 			for name, cap := range caps {
 				setMax(maxCapacities, name, cap)
 			}
