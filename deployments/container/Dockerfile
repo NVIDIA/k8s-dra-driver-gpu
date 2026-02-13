@@ -104,7 +104,7 @@ RUN --mount=type=cache,target=/mc/go/build-cache,id=gocache \
 # RUN cd /bashbuild/bash-static/releases && ./bash*-static --version && mv bash-*-static /bashbuild/bash && file /bashbuild/bash
 
 # option 2:
-FROM ghcr.io/nvidia/k8s-dra-driver-gpu:v25.12.0-dev-839e966a AS bash
+FROM ghcr.io/nvidia/k8s-dra-driver-gpu:v26.4.0-dev-0d50e3fd AS bash
 
 # Pull the nvidia-cdi-hook binary out of the relevant toolkit container
 # (arch: TARGETPLATFORM, set via --platform).
