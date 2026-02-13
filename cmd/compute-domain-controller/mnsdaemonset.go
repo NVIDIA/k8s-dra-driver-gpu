@@ -21,6 +21,7 @@ import (
 	"fmt"
 
 	appsv1 "k8s.io/api/apps/v1"
+	corev1 "k8s.io/api/core/v1"
 
 	nvapi "github.com/NVIDIA/k8s-dra-driver-gpu/api/nvidia.com/resource/v1beta1"
 )
@@ -123,4 +124,8 @@ func (m *MultiNamespaceDaemonSetManager) AssertRemoved(ctx context.Context, cdUI
 		}
 	}
 	return nil
+}
+
+func (m *MultiNamespaceDaemonSetManager) GetDaemonSetPod(ctx context.Context, namspace, cdUID, nodeName string) (*corev1.Pod, error) {
+	return nil, nil
 }

@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/cache"
 )
@@ -72,4 +73,42 @@ func getByComputeDomainUID[T1 *T2, T2 any](ctx context.Context, indexer Indexer,
 	}
 
 	return ds, nil
+}
+
+func addComputeDomainNodePodInexer(informer cache.SharedIndexInformer) error {
+	return informer.AddIndexers(cache.Indexers{
+		"computeDomainNode": func(obj any) ([]string, error) {
+			pod, ok := obj.(*corev1.Pod)
+			if !ok {
+				return nil, fmt.Errorf("expected a *corev1.Pod but got %T", obj)
+			}
+			labels := pod.GetObjectMeta().GetLabels()
+			if value, exists := labels[computeDomainLabelKey]; exists {
+				nodeName := pod.Spec.NodeName
+				if len(nodeName) != 0 {
+					return []string{fmt.Sprintf("%s/%s", value, nodeName)}, nil
+				}
+			}
+			return nil, nil
+		},
+	})
+}
+
+func getByComputeDomainUIDAndNode(ctx context.Context, indexer Indexer, cdUID string, nodeName string) (*corev1.Pod, error) {
+	key := fmt.Sprintf("%s/%s", cdUID, nodeName)
+	objs, err := indexer.ByIndex("computeDomainNode", key)
+	if err != nil {
+		return nil, fmt.Errorf("error getting Pod via ComputeDomain+Node index: %w", err)
+	}
+	if len(objs) == 0 {
+		return nil, nil
+	}
+	if len(objs) > 1 {
+		return nil, fmt.Errorf("multiple DaemonSetPods found for cdUID %s and nodeName %s", cdUID, nodeName)
+	}
+	pod, ok := objs[0].(*corev1.Pod)
+	if !ok {
+		return nil, fmt.Errorf("failed to cast to *corev1.Pod")
+	}
+	return pod, nil
 }

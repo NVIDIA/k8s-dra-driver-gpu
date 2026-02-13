@@ -111,7 +111,7 @@ func (m *NodeManager) Stop() error {
 // RemoveComputeDomainLabels() searches all nodes that are currently labeled for
 // a specific CD (as identified via CD UID). It then removes that label from all
 // such nodes.
-func (m *NodeManager) RemoveComputeDomainLabels(ctx context.Context, cdUID string) error {
+func (m *NodeManager) RemoveComputeDomainLabels(ctx context.Context, cdUID string, nodeNames ...string) error {
 	labelSelector := &metav1.LabelSelector{
 		MatchExpressions: []metav1.LabelSelectorRequirement{
 			{
@@ -128,9 +128,21 @@ func (m *NodeManager) RemoveComputeDomainLabels(ctx context.Context, cdUID strin
 	if err != nil {
 		return fmt.Errorf("error retrieving nodes: %w", err)
 	}
+	var candidates []corev1.Node
+	if len(nodeNames) == 0 {
+		candidates = nodes.Items
+	} else {
+		for _, nodeName := range nodeNames {
+			for _, node := range nodes.Items {
+				if node.Name == nodeName {
+					candidates = append(candidates, node)
+				}
+			}
+		}
+	}
 
 	var names []string
-	for _, node := range nodes.Items {
+	for _, node := range candidates {
 		// Rely on above's List() API call to only return node objects that
 		// really have this label set. Remove it.
 		newNode := node.DeepCopy()
@@ -164,5 +176,33 @@ func (m *NodeManager) cleanupLabels(ctx context.Context, cdUID string) error {
 	if err := m.RemoveComputeDomainLabels(ctx, cdUID); err != nil {
 		return fmt.Errorf("error removing ComputeDomain node labels: %w", err)
 	}
+	return nil
+}
+
+func (m *NodeManager) AddComputeDomainLabels(ctx context.Context, nodeName string, cdUID string) error {
+	node, err := m.config.clientsets.Core.CoreV1().Nodes().Get(ctx, nodeName, metav1.GetOptions{})
+	if err != nil {
+		return fmt.Errorf("error retrieving Node: %w", err)
+	}
+
+	currentValue, exists := node.Labels[computeDomainLabelKey]
+	if exists && currentValue != cdUID {
+		return fmt.Errorf("label already exists for a different ComputeDomain")
+	}
+
+	if exists && currentValue == cdUID {
+		return nil
+	}
+
+	newNode := node.DeepCopy()
+	if newNode.Labels == nil {
+		newNode.Labels = make(map[string]string)
+	}
+	newNode.Labels[computeDomainLabelKey] = cdUID
+
+	if _, err = m.config.clientsets.Core.CoreV1().Nodes().Update(ctx, newNode, metav1.UpdateOptions{}); err != nil {
+		return fmt.Errorf("error updating Node with label: %w", err)
+	}
+
 	return nil
 }

@@ -487,6 +487,10 @@ func (s *DeviceState) applyComputeDomainChannelConfig(ctx context.Context, confi
 		return nil, fmt.Errorf("allocation failed: %w", err)
 	}
 
+	if featuregates.Enabled(featuregates.ComputeDomainBindingConditions) {
+		goto skipAssertNamespaceAddNodeLabel
+	}
+
 	// Create any necessary ComputeDomain channels and gather their CDI container edits.
 	if err := s.computeDomainManager.AssertComputeDomainNamespace(ctx, claim.Namespace, config.DomainID); err != nil {
 		return nil, permanentError{fmt.Errorf("error asserting ComputeDomain's namespace: %w", err)}
@@ -495,6 +499,8 @@ func (s *DeviceState) applyComputeDomainChannelConfig(ctx context.Context, confi
 	if err := s.computeDomainManager.AddNodeLabel(ctx, config.DomainID); err != nil {
 		return nil, fmt.Errorf("error adding Node label for ComputeDomain: %w", err)
 	}
+
+skipAssertNamespaceAddNodeLabel:
 
 	if err := s.computeDomainManager.AssertComputeDomainReady(ctx, config.DomainID); err != nil {
 		return nil, fmt.Errorf("error asserting ComputeDomain Ready: %w", err)
