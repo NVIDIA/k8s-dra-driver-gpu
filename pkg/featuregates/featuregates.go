@@ -55,6 +55,10 @@ const (
 	// CrashOnNVLinkFabricErrors causes the kubelet plugin to crash instead of
 	// falling back to non-fabric mode when NVLink fabric errors are detected.
 	CrashOnNVLinkFabricErrors featuregate.Feature = "CrashOnNVLinkFabricErrors"
+
+	// ComputeDomainBindingConditions enables scheduling of workload pods with channel devices
+	// to be delayed by DRADeviceBindingConditions until the IMEX Daemon Pods complete their processing.
+	ComputeDomainBindingConditions featuregate.Feature = "ComputeDomainBindingConditions"
 )
 
 // defaultFeatureGates contains the default settings for all project-specific feature gates.
@@ -113,6 +117,13 @@ var defaultFeatureGates = map[featuregate.Feature]featuregate.VersionedSpecs{
 		{
 			Default:    true,
 			PreRelease: featuregate.Beta,
+			Version:    version.MajorMinor(25, 12),
+		},
+	},
+	ComputeDomainBindingConditions: {
+		{
+			Default:    false,
+			PreRelease: featuregate.Alpha,
 			Version:    version.MajorMinor(25, 12),
 		},
 	},

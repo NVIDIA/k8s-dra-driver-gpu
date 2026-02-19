@@ -28,6 +28,7 @@ import (
 	"k8s.io/klog/v2"
 
 	nvapi "github.com/NVIDIA/k8s-dra-driver-gpu/api/nvidia.com/resource/v1beta1"
+	"github.com/NVIDIA/k8s-dra-driver-gpu/pkg/featuregates"
 	nvinformers "github.com/NVIDIA/k8s-dra-driver-gpu/pkg/nvidia.com/informers/externalversions"
 	nvlisters "github.com/NVIDIA/k8s-dra-driver-gpu/pkg/nvidia.com/listers/resource/v1beta1"
 )
@@ -72,6 +73,7 @@ type ComputeDomainManager struct {
 	daemonSetManager             *MultiNamespaceDaemonSetManager
 	resourceClaimTemplateManager *WorkloadResourceClaimTemplateManager
 	nodeManager                  *NodeManager
+	resourceClaimManager         *ResourceClaimManager
 }
 
 // NewComputeDomainManager creates a new ComputeDomainManager.
@@ -90,6 +92,7 @@ func NewComputeDomainManager(config *ManagerConfig) *ComputeDomainManager {
 	m.daemonSetManager = NewMultiNamespaceDaemonSetManager(config, m.Get, m.List, m.UpdateStatus)
 	m.resourceClaimTemplateManager = NewWorkloadResourceClaimTemplateManager(config, m.Get)
 	m.nodeManager = NewNodeManager(config, m.Get)
+	m.resourceClaimManager = NewResourceClaimManager(config, m.Get)
 
 	return m
 }
@@ -151,11 +154,17 @@ func (m *ComputeDomainManager) Start(ctx context.Context) (rerr error) {
 	}
 
 	if err := m.resourceClaimTemplateManager.Start(ctx); err != nil {
-		return fmt.Errorf("error creating ResourceClaim manager: %w", err)
+		return fmt.Errorf("error starting ResourceClaimTemplate manager: %w", err)
 	}
 
 	if err := m.nodeManager.Start(ctx); err != nil {
 		return fmt.Errorf("error starting Node manager: %w", err)
+	}
+
+	if featuregates.Enabled(featuregates.ComputeDomainBindingConditions) {
+		if err := m.resourceClaimManager.Start(ctx); err != nil {
+			return fmt.Errorf("error starting ResourceClaim manager: %w", err)
+		}
 	}
 
 	return nil
@@ -170,6 +179,11 @@ func (m *ComputeDomainManager) Stop() error {
 	}
 	if err := m.nodeManager.Stop(); err != nil {
 		return fmt.Errorf("error stopping Node manager: %w", err)
+	}
+	if featuregates.Enabled(featuregates.ComputeDomainBindingConditions) {
+		if err := m.resourceClaimManager.Stop(); err != nil {
+			return fmt.Errorf("error stopping ResourceClaim manager: %w", err)
+		}
 	}
 	if m.cancelContext != nil {
 		m.cancelContext()

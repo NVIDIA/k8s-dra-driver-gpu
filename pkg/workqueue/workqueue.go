@@ -58,6 +58,22 @@ func DefaultPrepUnprepRateLimiter() workqueue.TypedRateLimiter[any] {
 	)
 }
 
+// DefaultCDKubeletPluginRateLimiter returns a composite limiter that combines:
+// - per-item exponential backoff (1s..10m)
+func DefaultCDKubeletPluginRateLimiter() workqueue.TypedRateLimiter[any] {
+	return workqueue.NewTypedMaxOfRateLimiter(
+		// Per-item exponential backoff: base 1s, max 10m
+		workqueue.NewTypedItemExponentialFailureRateLimiter[any](
+			1*time.Second,
+			10*time.Minute,
+		),
+		// Global rate limit: 5 retries/sec with burst up to 10 (optional)
+		&workqueue.TypedBucketRateLimiter[any]{
+			Limiter: rate.NewLimiter(rate.Limit(5), 10),
+		},
+	)
+}
+
 func DefaultCDDaemonRateLimiter() workqueue.TypedRateLimiter[any] {
 	return NewJitterRateLimiter(workqueue.NewTypedItemExponentialFailureRateLimiter[any](5*time.Millisecond, 6000*time.Millisecond), 0.5)
 }

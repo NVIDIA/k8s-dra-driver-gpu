@@ -175,10 +175,18 @@ func (m *ComputeDomainStatusManager) sync(ctx context.Context) {
 	// Group pods by CD UID and type (fabric-attached vs non-fabric-attached)
 	fabricPodsByCD := make(map[string][]*corev1.Pod)
 	nonFabricPodsByCD := make(map[string][]*corev1.Pod)
+	failedPodsByCD := make(map[string][]*corev1.Pod)
 	for _, pod := range pods {
 		cdUID := pod.Labels[computeDomainLabelKey]
 		if cdUID == "" {
 			continue
+		}
+
+		if featuregates.Enabled(featuregates.ComputeDomainBindingConditions) {
+			if IsPodFailed(pod) {
+				failedPodsByCD[cdUID] = append(fabricPodsByCD[cdUID], pod)
+				continue
+			}
 		}
 
 		// Separate pods based on cliqueID label
@@ -198,26 +206,28 @@ func (m *ComputeDomainStatusManager) sync(ctx context.Context) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			m.syncCD(ctx, cd, cliquesByCD[string(cd.UID)], fabricPodsByCD[string(cd.UID)], nonFabricPodsByCD[string(cd.UID)])
+			m.syncCD(ctx, cd, cliquesByCD[string(cd.UID)], fabricPodsByCD[string(cd.UID)], nonFabricPodsByCD[string(cd.UID)], failedPodsByCD[string(cd.UID)])
 		}()
 	}
 	wg.Wait()
 }
 
 // syncCD synchronizes node information to a single ComputeDomain's status.
-func (m *ComputeDomainStatusManager) syncCD(ctx context.Context, cd *nvapi.ComputeDomain, cliques []*nvapi.ComputeDomainClique, fabricPods []*corev1.Pod, nonFabricPods []*corev1.Pod) {
-	var fabricNodes, nonFabricNodes, newNodes []*nvapi.ComputeDomainNode
+func (m *ComputeDomainStatusManager) syncCD(ctx context.Context, cd *nvapi.ComputeDomain, cliques []*nvapi.ComputeDomainClique, fabricPods, nonFabricPods, failedPods []*corev1.Pod) {
+	var fabricNodes, nonFabricNodes, failedNodes, newNodes []*nvapi.ComputeDomainNode
 
 	if m.cliqueManager != nil {
 		// Feature gate enabled: build from cliques + non-fabric pods
 		fabricNodes = m.buildNodesFromCliques(cliques)
 		nonFabricNodes = m.buildNodesFromPods(nonFabricPods)
-		newNodes = slices.Concat(fabricNodes, nonFabricNodes)
+		failedNodes = m.buildNodesFromPods(failedPods)
+		newNodes = slices.Concat(fabricNodes, nonFabricNodes, failedNodes)
 	} else {
 		// Feature gate disabled: filter stale fabric nodes + rebuild non-fabric nodes
 		fabricNodes = m.getNonStaleFabricNodes(cd.Status.Nodes, fabricPods)
 		nonFabricNodes = m.buildNodesFromPods(nonFabricPods)
-		newNodes = slices.Concat(fabricNodes, nonFabricNodes)
+		failedNodes = m.buildNodesFromPods(failedPods)
+		newNodes = slices.Concat(fabricNodes, nonFabricNodes, failedNodes)
 	}
 
 	// Check if update is needed
@@ -269,6 +279,10 @@ func (m *ComputeDomainStatusManager) buildNodesFromPods(pods []*corev1.Pod) []*n
 				status = nvapi.ComputeDomainStatusReady
 				break
 			}
+		}
+
+		if IsPodFailed(pod) {
+			status = nvapi.ComputeDomainStatusFailed
 		}
 
 		nodes = append(nodes, &nvapi.ComputeDomainNode{
@@ -362,4 +376,20 @@ func (m *ComputeDomainStatusManager) nodesEqual(a, b []*nvapi.ComputeDomainNode)
 		bMap[node.Name] = *node
 	}
 	return maps.Equal(aMap, bMap)
+}
+
+func IsPodFailed(pod *corev1.Pod) bool {
+	if pod.Status.Phase == corev1.PodFailed {
+		return true
+	}
+
+	for _, ctrStatus := range pod.Status.ContainerStatuses {
+		if ctrStatus.State.Waiting != nil {
+			switch ctrStatus.State.Waiting.Reason {
+			case "ErrImagePull", "ImagePullBackOff", "CrashLoopBackOff":
+				return true
+			}
+		}
+	}
+	return false
 }
