@@ -176,7 +176,7 @@ func (m *DNSNameManager) updateHostsFile() error {
 
 	// Add new DNS name mappings
 	for ip, dnsName := range m.ipToDNSName {
-		newHostsContent.WriteString(fmt.Sprintf("%s\t%s\n", ip, dnsName))
+		_, _ = fmt.Fprintf(&newHostsContent, "%s\t%s\n", ip, dnsName)
 	}
 
 	// Write the updated hosts file
