@@ -22,7 +22,7 @@ metadata:
   labels:
     {{- include "nvidia-dra-driver-gpu.labels" . | nindent 4 }}
 spec:
-  replicas: 1
+  replicas: {{ .Values.controller.replicas }}
   selector:
     matchLabels:
       {{- include "nvidia-dra-driver-gpu.selectorLabels" (dict "context" . "componentName" "controller") | nindent 6 }}
@@ -87,6 +87,18 @@ spec:
         {{- with .Values.controller.containers.computeDomain.env }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
+        - name: LEADER_ELECT
+          value: "{{ .Values.controller.leaderElection.enabled }}"
+        - name: LEASE_LOCK_NAME
+          value: "{{ .Values.controller.leaderElection.leaseLockName }}"
+        - name: LEASE_LOCK_NAMESPACE
+          value: "{{ .Values.controller.leaderElection.leaseLockNamespace | default (include "nvidia-dra-driver-gpu.namespace" .) }}"
+        - name: LEASE_DURATION
+          value: "{{ .Values.controller.leaderElection.leaseDuration }}"
+        - name: RENEW_DEADLINE
+          value: "{{ .Values.controller.leaderElection.renewDeadline }}"
+        - name: RETRY_PERIOD
+          value: "{{ .Values.controller.leaderElection.retryPeriod }}"
       {{- with .Values.controller.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}
