@@ -1,0 +1,54 @@
+# One pod, two containers
+# Each container asking for 1 distinct GPU
+
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: gpu-test7
+
+---
+apiVersion: resource.k8s.io/v1beta1
+kind: ResourceClaimTemplate
+metadata:
+  namespace: gpu-test7
+  name: single-gpu
+spec:
+  spec:
+    devices:
+      requests:
+      - name: gpu
+        deviceClassName: gpu.nvidia.com
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  namespace: gpu-test7
+  name: gpu-pod
+  labels:
+    app: pod
+spec:
+  containers:
+  - name: ctr0
+    image: ubuntu:22.04
+    command: ["bash", "-c"]
+    args: ["nvidia-smi -L; trap 'exit 0' TERM; sleep 9999 & wait"]
+    resources:
+      claims:
+      - name: gpu0
+  - name: ctr1
+    image: ubuntu:22.04
+    command: ["bash", "-c"]
+    args: ["nvidia-smi -L; trap 'exit 0' TERM; sleep 9999 & wait"]
+    resources:
+      claims:
+      - name: gpu1
+  resourceClaims:
+  - name: gpu0
+    resourceClaimTemplateName: single-gpu
+  - name: gpu1
+    resourceClaimTemplateName: single-gpu
+  tolerations:
+  - key: "nvidia.com/gpu"
+    operator: "Exists"
+    effect: "NoSchedule"
