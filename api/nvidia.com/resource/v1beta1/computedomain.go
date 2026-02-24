@@ -24,9 +24,13 @@ const (
 	ComputeDomainStatusNone     = ""
 	ComputeDomainStatusReady    = "Ready"
 	ComputeDomainStatusNotReady = "NotReady"
+	ComputeDomainStatusFailed   = "Failed"
 
 	ComputeDomainChannelAllocationModeSingle = "Single"
 	ComputeDomainChannelAllocationModeAll    = "All"
+
+	ComputeDomainBindingConditions        = "ComputeDomainReady"
+	ComputeDomainBindingFailureConditions = "ComputeDomainNotReady"
 )
 
 // +genclient
@@ -113,6 +117,9 @@ type ComputeDomainStatus struct {
 	// +listType=map
 	// +listMapKey=name
 	Nodes []*ComputeDomainNode `json:"nodes,omitempty"`
+	// +listType=map
+	// +listMapKey=name
+	ResourceClaims []*ComputeDomainResourceClaim `json:"resourceClaims,omitempty"`
 }
 
 // ComputeDomainNode provides information about each node added to a ComputeDomain.
@@ -134,7 +141,17 @@ type ComputeDomainNode struct {
 	// it is not. It is marked as optional in order to support downgrades
 	// and avoid an API bump.
 	// +kubebuilder:validation:Optional
-	// +kubebuilder:validation:Enum=Ready;NotReady
+	// +kubebuilder:validation:Enum=Ready;NotReady;Failed
 	// +kubebuilder:default:=NotReady
 	Status string `json:"status,omitempty"`
+}
+
+// ComputeDomainResourceClaim represents a resource claim within a ComputeDomain
+type ComputeDomainResourceClaim struct {
+	// Name of the resource claim
+	Name string `json:"name"`
+	// Namespace where the resource claim exists
+	Namespace string `json:"namespace"`
+	// NodeName is the name of the node where this resource claim is bound
+	NodeName string `json:"nodeName"`
 }

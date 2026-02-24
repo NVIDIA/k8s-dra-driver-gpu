@@ -18,12 +18,14 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"sync"
 	"time"
 
+	resourcev1 "k8s.io/api/resource/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
@@ -46,6 +48,8 @@ const (
 	ComputeDomainDaemonConfigFilesDirName = "domains"
 	ComputeDomainDaemonConfigTemplatePath = "/templates/compute-domain-daemon-config.tmpl.cfg"
 )
+
+var ErrBindingFailure = errors.New("binding failure")
 
 type ComputeDomainManager struct {
 	config        *Config
@@ -100,6 +104,18 @@ func (m *ComputeDomainManager) Start(ctx context.Context) (rerr error) {
 	})
 	if err != nil {
 		return fmt.Errorf("error adding indexer for UIDs: %w", err)
+	}
+
+	_, err = m.informer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc: func(obj any) {
+			m.config.workQueue.Enqueue(obj, m.onAddOrUpdate)
+		},
+		UpdateFunc: func(oldObj, newObj any) {
+			m.config.workQueue.Enqueue(newObj, m.onAddOrUpdate)
+		},
+	})
+	if err != nil {
+		return fmt.Errorf("error adding event handlers for ComputeDomain informer: %w", err)
 	}
 
 	m.waitGroup.Add(1)
@@ -245,7 +261,11 @@ func (m *ComputeDomainManager) AssertComputeDomainReady(ctx context.Context, cdU
 	}
 
 	// Check if the current node is ready in the ComputeDomain
-	if !m.isCurrentNodeReady(ctx, cd) {
+	ready, failed := m.isCurrentNodeReady(ctx, cd)
+	if failed {
+		return fmt.Errorf("%w: current node failed in ComputeDomain", ErrBindingFailure)
+	}
+	if !ready {
 		return fmt.Errorf("current node not ready in ComputeDomain")
 	}
 
@@ -256,23 +276,28 @@ func (m *ComputeDomainManager) AssertComputeDomainReady(ctx context.Context, cdU
 // When the feature gate is enabled, we check both the clique and the status to ensure
 // that compute domains started before the feature gate was enabled continue to work
 // even after the feature gate is enabled.
-func (m *ComputeDomainManager) isCurrentNodeReady(ctx context.Context, cd *nvapi.ComputeDomain) bool {
+func (m *ComputeDomainManager) isCurrentNodeReady(ctx context.Context, cd *nvapi.ComputeDomain) (bool, bool) {
 	if featuregates.Enabled(featuregates.ComputeDomainCliques) {
 		if m.isCurrentNodeReadyInClique(ctx, cd) {
-			return true
+			return true, false
 		}
 	}
 	return m.isCurrentNodeReadyInStatus(cd)
 }
 
 // isCurrentNodeReadyInStatus checks if the current node is marked as ready in the ComputeDomain status.
-func (m *ComputeDomainManager) isCurrentNodeReadyInStatus(cd *nvapi.ComputeDomain) bool {
+func (m *ComputeDomainManager) isCurrentNodeReadyInStatus(cd *nvapi.ComputeDomain) (bool, bool) {
 	for _, node := range cd.Status.Nodes {
 		if node.Name == m.config.flags.nodeName {
-			return node.Status == nvapi.ComputeDomainStatusReady
+			switch node.Status {
+			case nvapi.ComputeDomainStatusReady:
+				return true, false
+			case nvapi.ComputeDomainStatusFailed:
+				return false, true
+			}
 		}
 	}
-	return false
+	return false, false
 }
 
 // isCurrentNodeReadyInClique checks if the current node is marked as ready in the ComputeDomainClique.
@@ -436,4 +461,125 @@ func (m *ComputeDomainManager) periodicCleanup(ctx context.Context) {
 			return
 		}
 	}
+}
+
+func (m *ComputeDomainManager) onAddOrUpdate(ctx context.Context, obj any) error {
+	cd, ok := obj.(*nvapi.ComputeDomain)
+	if !ok {
+		return fmt.Errorf("failed to cast to ComputeDomain")
+	}
+
+	klog.V(2).Infof("Processing added or updated ComputeDomain: %s/%s/%s", cd.Namespace, cd.Name, cd.UID)
+
+	var foundRCStatus bool
+	if cd.Status.ResourceClaims != nil {
+		for _, rc := range cd.Status.ResourceClaims {
+			if rc.NodeName == m.config.flags.nodeName {
+				foundRCStatus = true
+				err := m.startComputeDomainSettings(ctx, string(cd.UID), rc.Name, rc.Namespace)
+				if err != nil {
+					return fmt.Errorf("failed to set ComputeDomain: %w", err)
+				}
+			}
+		}
+	}
+
+	if !foundRCStatus {
+		if err := m.RemoveNodeLabel(ctx, string(cd.UID)); err != nil {
+			return fmt.Errorf("error removing Node label for ComputeDomain: %w", err)
+		}
+		return nil
+	}
+
+	return nil
+}
+
+func (m *ComputeDomainManager) startComputeDomainSettings(ctx context.Context, cdUID, rcName, rcNamespace string) error {
+	if err := m.AddNodeLabel(ctx, cdUID); err != nil {
+		return fmt.Errorf("error adding Node label for ComputeDomain: %w", err)
+	}
+
+	err := m.AssertComputeDomainReady(ctx, cdUID)
+
+	switch {
+	// Ready
+	case err == nil:
+		if err := m.SetBindingConditions(ctx, rcName, rcNamespace, nvapi.ComputeDomainBindingConditions); err != nil {
+			return fmt.Errorf("error setting BindingConditions to ResourceClaim: %w", err)
+		}
+	// Failed
+	case errors.Is(err, ErrBindingFailure):
+		if err := m.SetBindingConditions(ctx, rcName, rcNamespace, nvapi.ComputeDomainBindingFailureConditions); err != nil {
+			return fmt.Errorf("error setting BindingFailureConditions to ResourceClaim: %w", err)
+		}
+		return err
+	// NotReady
+	default:
+		return fmt.Errorf("error asserting ComputeDomain Ready: %w", err)
+	}
+
+	return nil
+}
+
+func (m *ComputeDomainManager) SetBindingConditions(ctx context.Context, rcName, rcNamespace string, conditionType string) error {
+	rc, err := m.config.clientsets.Resource.ResourceClaims(rcNamespace).Get(ctx, rcName, metav1.GetOptions{})
+	if err != nil {
+		return fmt.Errorf("failed to get ResourceClaim: %s/%s", rcNamespace, rcName)
+	}
+	newRC := rc.DeepCopy()
+	if len(newRC.Status.Devices) == 0 {
+		for _, allocationDevice := range newRC.Status.Allocation.Devices.Results {
+			device := &resourcev1.AllocatedDeviceStatus{
+				Driver: allocationDevice.Driver,
+				Pool:   allocationDevice.Pool,
+				Device: allocationDevice.Device,
+			}
+			newRC.Status.Devices = append(newRC.Status.Devices, *device)
+		}
+	}
+
+	if len(newRC.Status.Devices) == 0 {
+		return nil
+	}
+
+	var reason string
+	var message string
+	switch conditionType {
+	case nvapi.ComputeDomainBindingConditions:
+		reason = "ComputeDomainSettingsSucceeded"
+		message = "binding succeeded — ComputeDomain status ready"
+	case nvapi.ComputeDomainBindingFailureConditions:
+		reason = "ComputeDomainSettingsFailed"
+		message = "binding failed — ComputeDomain status failed"
+	}
+
+	for i := range newRC.Status.Devices {
+		device := &newRC.Status.Devices[i]
+		newCondition := metav1.Condition{
+			Type:               conditionType,
+			Status:             metav1.ConditionTrue,
+			LastTransitionTime: metav1.NewTime(time.Now()),
+			Reason:             reason,
+			Message:            fmt.Sprintf("Device %s: %s", device.Device, message),
+		}
+		conditionExists := false
+		for j, existingCond := range device.Conditions {
+			if existingCond.Type == conditionType {
+				if existingCond.Status != newCondition.Status {
+					device.Conditions[j] = newCondition
+				}
+				conditionExists = true
+				break
+			}
+		}
+		if !conditionExists {
+			device.Conditions = append(device.Conditions, newCondition)
+		}
+	}
+
+	_, err = m.config.clientsets.Resource.ResourceClaims(newRC.Namespace).UpdateStatus(ctx, newRC, metav1.UpdateOptions{})
+	if err != nil {
+		return fmt.Errorf("failed to update ResourceClaim %s/%s status with binding conditions: %w", newRC.Namespace, newRC.Name, err)
+	}
+	return nil
 }

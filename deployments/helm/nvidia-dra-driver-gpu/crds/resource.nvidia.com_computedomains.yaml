@@ -136,11 +136,36 @@ spec:
                       enum:
                       - Ready
                       - NotReady
+                      - Failed
                       type: string
                   required:
                   - cliqueID
                   - ipAddress
                   - name
+                  type: object
+                type: array
+                x-kubernetes-list-map-keys:
+                - name
+                x-kubernetes-list-type: map
+              resourceClaims:
+                items:
+                  description: ComputeDomainResourceClaim represents a resource claim
+                    within a ComputeDomain
+                  properties:
+                    name:
+                      description: Name of the resource claim
+                      type: string
+                    namespace:
+                      description: Namespace where the resource claim exists
+                      type: string
+                    nodeName:
+                      description: NodeName is the name of the node where this resource
+                        claim is bound
+                      type: string
+                  required:
+                  - name
+                  - namespace
+                  - nodeName
                   type: object
                 type: array
                 x-kubernetes-list-map-keys:

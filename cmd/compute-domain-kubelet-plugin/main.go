@@ -36,6 +36,7 @@ import (
 	"github.com/NVIDIA/k8s-dra-driver-gpu/internal/info"
 	"github.com/NVIDIA/k8s-dra-driver-gpu/pkg/featuregates"
 	pkgflags "github.com/NVIDIA/k8s-dra-driver-gpu/pkg/flags"
+	"github.com/NVIDIA/k8s-dra-driver-gpu/pkg/workqueue"
 )
 
 const (
@@ -62,6 +63,8 @@ type Flags struct {
 type Config struct {
 	flags      *Flags
 	clientsets pkgflags.ClientSets
+	// workQueue manages the asynchronous processing of tasks
+	workQueue *workqueue.WorkQueue
 }
 
 func (c Config) DriverPluginPath() string {
@@ -180,9 +183,12 @@ func newApp() *cli.App {
 				return fmt.Errorf("create client: %w", err)
 			}
 
+			workQueue := workqueue.New(workqueue.DefaultCDKubeletPluginRateLimiter())
+
 			config := &Config{
 				flags:      flags,
 				clientsets: clientSets,
+				workQueue:  workQueue,
 			}
 
 			return RunPlugin(c.Context, config)
@@ -245,7 +251,7 @@ func RunPlugin(ctx context.Context, config *Config) error {
 		return fmt.Errorf("error creating driver: %w", err)
 	}
 
-	<-ctx.Done()
+	config.workQueue.Run(ctx)
 	if err := ctx.Err(); err != nil && !errors.Is(err, context.Canceled) {
 		// A canceled context is the normal case here when the process receives
 		// a signal. Only log the error for more interesting cases.
