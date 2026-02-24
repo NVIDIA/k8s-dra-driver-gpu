@@ -20,7 +20,7 @@
 # If the NVIDIA GPU driver is managed using the NVIDIA GPU Driver Container,
 # this is typically /run/nvidia/driver.
 # For driver installed directly on a host, a value of `/` is used.
-nvidiaDriverRoot: /
+nvidiaDriverRoot: /run/nvidia/driver
 
 # Optional path to the nvidia-cdi-hook executable.
 # If not specified, the default path inferred from the nvidia-container-toolkit library version will be used.
@@ -28,9 +28,9 @@ nvidiaCDIHookPath: ""
 
 nameOverride: ""
 fullnameOverride: ""
-namespaceOverride: ""
+namespaceOverride: nvidia-node
 selectorLabelsOverride: {}
-gpuResourcesEnabledOverride: false
+gpuResourcesEnabledOverride: true
 
 allowDefaultNamespace: false
 
@@ -50,13 +50,13 @@ resourceApiVersion: ""
 
 imagePullSecrets: []
 image:
-  repository: nvcr.io/nvidia/k8s-dra-driver-gpu
+  repository: registry.ddbuild.io/test-just1not2/k8s-dra-driver-gpu
   pullPolicy: IfNotPresent
   # Note: an empty string is translated to the `appVersion` string from
   # the Helm chart YAML (effectively implementing the default value to be
   # the current version). Also note that a "v" is prefixed to the
   # `appVersion` value.
-  tag: ""
+  tag: v25.8.0
 
 serviceAccount:
   # Specifies whether a service account should be created
@@ -71,7 +71,7 @@ resources:
   gpus:
     enabled: true
   computeDomains:
-    enabled: true
+    enabled: false
 
 # Feature gates configuration following Kubernetes patterns
 # Configure feature gates as key-value pairs (feature_name: true/false)
@@ -146,7 +146,19 @@ webhook:
   podAnnotations: {}
   podSecurityContext: {}
   nodeSelector: {}
-  tolerations: []
+  tolerations:
+  - effect: NoSchedule
+    key: node
+    value: nodeless
+  - effect: NoSchedule
+    key: runtime
+    value: nvidia
+  - effect: NoSchedule
+    key: flavor
+    value: nodeless-gpu
+  - key: cpu_arch
+    effect: NoSchedule
+    value: arm64
   affinity: {}
   containers:
     webhook:

@@ -5,9 +5,9 @@ kind: ClusterRole
 metadata:
   name: {{ include "nvidia-dra-driver-gpu.name" . }}-clusterrole-kubeletplugin
 rules:
-- apiGroups: ["resource.nvidia.com"]
-  resources: ["computedomains"]
-  verbs: ["get", "list", "watch"]
+# - apiGroups: ["resource.nvidia.com"]
+#   resources: ["computedomains"]
+#   verbs: ["get", "list", "watch"]
 - apiGroups: ["resource.k8s.io"]
   resources: ["resourceclaims"]
   verbs: ["get", "list", "watch"]
