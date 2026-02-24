@@ -23,8 +23,12 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/Masterminds/semver"
 	nvdev "github.com/NVIDIA/go-nvlib/pkg/nvlib/device"
 	"github.com/NVIDIA/go-nvml/pkg/nvml"
+	resourceapi "k8s.io/api/resource/v1"
+	"k8s.io/dynamic-resource-allocation/deviceattribute"
+	"k8s.io/utils/ptr"
 )
 
 // MigSpecTuple is a 3-tuple precisely describing a physical MIG device
@@ -104,6 +108,78 @@ func (m *MigSpec) Tuple() *MigSpecTuple {
 func (m *MigSpecTuple) ToCanonicalName(profileName string) DeviceName {
 	pname := toRFC1123Compliant(strings.ReplaceAll(profileName, ".", ""))
 	return fmt.Sprintf("gpu-%d-mig-%s-%d-%d", m.ParentMinor, pname, m.ProfileID, m.PlacementStart)
+}
+
+// CommonCapacitiesMig returns the relevant GPU instance profile properties. The
+// device capacity map returned here does however not contain memory slices.
+func CommonCapacitiesMig(p *nvml.GpuInstanceProfileInfo) map[resourceapi.QualifiedName]resourceapi.DeviceCapacity {
+	return map[resourceapi.QualifiedName]resourceapi.DeviceCapacity{
+		"multiprocessors": intcap(p.MultiprocessorCount),
+		"copyEngines":     intcap(p.CopyEngineCount),
+		"decoders":        intcap(p.DecoderCount),
+		"encoders":        intcap(p.EncoderCount),
+		"jpegEngines":     intcap(p.JpegCount),
+		"ofaEngines":      intcap(p.OfaCount),
+		// `memory` here is by convention announced in "Bytes". The MIG
+		// profile's MemorySizeMB` property comes straight from NVML and is
+		// documented in the public API docs with "Memory size in MBytes". As it
+		// says "MB" and not MiB", one could assume that unit to be 10^6 Bytes.
+		// However, in nvml.h this type's property is documented with
+		// `memorySizeMB; //!< Device memory size (in MiB)`. Hence, the unit is
+		// 2^20 Bytes (1024 * 1024 Bytes).
+		"memory": intcap(int64(p.MemorySizeMB * 1024 * 1024)),
+	}
+}
+
+// CommonAttributesMig returns device attributes for MIG devices that are
+// in common among the 'static MIG' and 'dynamic MIG' cases.
+func CommonAttributesMig(parent *GpuInfo, profileName string) map[resourceapi.QualifiedName]resourceapi.DeviceAttribute {
+	// TODO: Consume GetPCIBusIDAttribute from https://github.com/kubernetes/kubernetes/blob/4c5746c0bc529439f78af458f8131b5def4dbe5d/staging/src/k8s.io/dynamic-resource-allocation/deviceattribute/attribute.go#L39
+	pciBusIDAttrName := resourceapi.QualifiedName(deviceattribute.StandardDeviceAttributePrefix + "pciBusID")
+	attrs := map[resourceapi.QualifiedName]resourceapi.DeviceAttribute{
+		"type": {
+			StringValue: ptr.To("mig"),
+		},
+		"parentUUID": {
+			StringValue: &parent.UUID,
+		},
+		"profile": {
+			StringValue: ptr.To(profileName),
+		},
+		"productName": {
+			StringValue: &parent.productName,
+		},
+		"brand": {
+			StringValue: &parent.brand,
+		},
+		"architecture": {
+			StringValue: &parent.architecture,
+		},
+		"cudaComputeCapability": {
+			VersionValue: ptr.To(semver.MustParse(parent.cudaComputeCapability).String()),
+		},
+		"driverVersion": {
+			VersionValue: ptr.To(semver.MustParse(parent.driverVersion).String()),
+		},
+		"cudaDriverVersion": {
+			VersionValue: ptr.To(semver.MustParse(parent.cudaDriverVersion).String()),
+		},
+		pciBusIDAttrName: {
+			StringValue: &parent.pcieBusID,
+		},
+	}
+
+	if parent.addressingMode != nil {
+		attrs["addressingMode"] = resourceapi.DeviceAttribute{
+			StringValue: parent.addressingMode,
+		}
+	}
+
+	if parent.pcieRootAttr != nil {
+		attrs[parent.pcieRootAttr.Name] = parent.pcieRootAttr.Value
+	}
+
+	return attrs
 }
 
 // NewMigSpecTupleFromCanonicalName() attempts to parse a canonical MIG device

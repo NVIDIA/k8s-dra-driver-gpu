@@ -112,5 +112,8 @@ timeout -v 10 kubectl delete crds computedomains.resource.nvidia.com || echo "CR
 set -e
 bash tests/bats/clean-state-dirs-all-nodes.sh
 
+# Remove any stray MIG devices and disable MIG mode on all nodes.
+nvmm all sh -c 'nvidia-smi mig -dci; nvidia-smi mig -dgi; nvidia-smi -mig 0'
+
 set +x
 echo "cleanup: done"

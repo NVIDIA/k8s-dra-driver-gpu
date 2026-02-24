@@ -38,6 +38,7 @@ bats::on_failure() {
   echo -e "FAILURE HOOK END\n\n"
 }
 
+
 # bats test_tags=XXbats:focus
 # bats test_tags=fastfeedback
 @test "StaticMIG: allocate (1 cnt)" {
@@ -48,9 +49,6 @@ bats::on_failure() {
   # Create MIG device via mig-manager pod, start DRA driver (announce fresh slices)
   mig_create_1g0_on_node "$node"
 
-  # Note(JP): this takes ~15 seconds, and dominates the test execution time. It
-  # will be worth investigating that at some point, might have a huge impact on
-  # the test suite snappiness.
   iupgrade_wait "${TEST_CHART_REPO}" "${TEST_CHART_VERSION}" NOARGS
 
   # Run workload, validate `nvidia-smi -L` output in container.
@@ -64,6 +62,34 @@ bats::on_failure() {
 
   timeout -v 10 kubectl delete -f tests/bats/specs/gpu-anymig.yaml
   kubectl wait --for=delete pods pod-anymig --timeout=10s
+}
+
+
+# bats test_tags=fastfeedback
+@test "StaticMIG: inspect device attributes in resource slice (mig)" {
+  local node=$(kubectl get nodes | grep worker | head -n1 | awk '{print $1}')
+  log "selected node: $node"
+  mig_create_1g0_on_node "$node"
+  iupgrade_wait "${TEST_CHART_REPO}" "${TEST_CHART_VERSION}" NOARGS
+
+  local reference=(
+    "architecture"
+    "brand"
+    "cudaComputeCapability"
+    "cudaDriverVersion"
+    "driverVersion"
+    "productName"
+    "resource.kubernetes.io/pciBusID"
+    "resource.kubernetes.io/pcieRoot"
+    "type"
+    "uuid"
+    "parentUUID"
+    "profile"
+    "addressingMode"
+  )
+
+  local attrs=$(get_device_attrs_from_any_gpu_slice "mig" "$node")
+  assert_attrs_equal "$attrs" "${reference[@]}"
 }
 
 

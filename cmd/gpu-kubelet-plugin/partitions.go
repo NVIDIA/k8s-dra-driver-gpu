@@ -20,51 +20,12 @@ package main
 import (
 	"fmt"
 
-	"github.com/Masterminds/semver"
 	resourceapi "k8s.io/api/resource/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/api/validate/constraints"
-	"k8s.io/dynamic-resource-allocation/deviceattribute"
-	"k8s.io/utils/ptr"
 )
 
 type PartCapacityMap map[resourceapi.QualifiedName]resourceapi.DeviceCapacity
-
-// KEP 4815 device announcement: return device attributes for a partition that
-// represents the full, regular GPU.
-func (d *GpuInfo) PartDevAttributes() map[resourceapi.QualifiedName]resourceapi.DeviceAttribute {
-	// TODO: Consume GetPCIBusIDAttribute from https://github.com/kubernetes/kubernetes/blob/4c5746c0bc529439f78af458f8131b5def4dbe5d/staging/src/k8s.io/dynamic-resource-allocation/deviceattribute/attribute.go#L39
-	pciBusIDAttrName := resourceapi.QualifiedName(deviceattribute.StandardDeviceAttributePrefix + "pciBusID")
-	return map[resourceapi.QualifiedName]resourceapi.DeviceAttribute{
-		"type": {
-			StringValue: ptr.To(GpuDeviceType),
-		},
-		"uuid": {
-			StringValue: &d.UUID,
-		},
-		"productName": {
-			StringValue: &d.productName,
-		},
-		"brand": {
-			StringValue: &d.brand,
-		},
-		"architecture": {
-			StringValue: &d.architecture,
-		},
-		"cudaComputeCapability": {
-			VersionValue: ptr.To(semver.MustParse(d.cudaComputeCapability).String()),
-		},
-		"driverVersion": {
-			VersionValue: ptr.To(semver.MustParse(d.driverVersion).String()),
-		},
-		"cudaDriverVersion": {
-			VersionValue: ptr.To(semver.MustParse(d.cudaDriverVersion).String()),
-		},
-		pciBusIDAttrName: {
-			StringValue: &d.pcieBusID,
-		},
-	}
-}
 
 // KEP 4815 device announcement: return the full device capacity for this device
 // (uses information from looking at all MIG profiles beforehand).
@@ -104,7 +65,7 @@ func (d *GpuInfo) PartConsumesCounters() []resourceapi.DeviceCounterConsumption 
 func (d *GpuInfo) PartGetDevice() resourceapi.Device {
 	dev := resourceapi.Device{
 		Name:             d.CanonicalName(),
-		Attributes:       d.PartDevAttributes(),
+		Attributes:       d.Attributes(),
 		Capacity:         d.PartCapacities(),
 		ConsumesCounters: d.PartConsumesCounters(),
 	}
@@ -122,8 +83,8 @@ func (d *GpuInfo) PartGetDevice() resourceapi.Device {
 func (i *MigSpec) PartGetDevice() resourceapi.Device {
 	d := resourceapi.Device{
 		Name:             i.CanonicalName(),
-		Attributes:       i.PartAttributes(),
-		Capacity:         i.PartCapacities(),
+		Attributes:       i.Attributes(),
+		Capacity:         i.Capacities(),
 		ConsumesCounters: i.PartConsumesCounters(),
 	}
 	return d
@@ -170,64 +131,12 @@ func (i *MigSpec) PartGetDevice() resourceapi.Device {
 // 3) If `capacity“ is in our case always encoding the _same_ information as
 // `consumesCounters` then that is a lot of duplication and feels a bit wrong.
 // They serve a different need, and hence there may be differences.
-func (i MigSpec) PartCapacities() PartCapacityMap {
-	p := i.GIProfileInfo
-	return PartCapacityMap{
-		"multiprocessors": intcap(p.MultiprocessorCount),
-		"copyEngines":     intcap(p.CopyEngineCount),
-		"decoders":        intcap(p.DecoderCount),
-		"encoders":        intcap(p.EncoderCount),
-		"jpegEngines":     intcap(p.JpegCount),
-		"ofaEngines":      intcap(p.OfaCount),
-		// In the k8s world, we love announcing unit-less memory :-). `memory`
-		// here is announced implicitly with the unit "Bytes". The MIG profile's
-		// MemorySizeMB` property comes straight from NVML and is documented in
-		// the public API docs with "Memory size in MBytes". As it says "MB" and
-		// not MiB", one could assume that unit to be 10^6 Bytes. However, in
-		// nvml.h this type's property is documented with `memorySizeMB; //!<
-		// Device memory size (in MiB)`. Hence, the unit is 2^20 Bytes (1024 *
-		// 1024 Bytes).
-		"memory": intcap(int64(p.MemorySizeMB * 1024 * 1024)),
-	}
+func (i MigSpec) Capacities() PartCapacityMap {
+	return CommonCapacitiesMig(&i.GIProfileInfo)
 }
 
-func (i MigSpec) PartAttributes() map[resourceapi.QualifiedName]resourceapi.DeviceAttribute {
-	// TODO: Consume GetPCIBusIDAttribute from https://github.com/kubernetes/kubernetes/blob/4c5746c0bc529439f78af458f8131b5def4dbe5d/staging/src/k8s.io/dynamic-resource-allocation/deviceattribute/attribute.go#L39
-	pciBusIDAttrName := resourceapi.QualifiedName(deviceattribute.StandardDeviceAttributePrefix + "pciBusID")
-	return map[resourceapi.QualifiedName]resourceapi.DeviceAttribute{
-		// TODOMIG:
-		// - do not hard-code "mig"?
-		"type": {
-			StringValue: ptr.To("mig"),
-		},
-		"parentUUID": {
-			StringValue: &i.Parent.UUID,
-		},
-		"profile": {
-			StringValue: ptr.To(i.Profile.String()),
-		},
-		"productName": {
-			StringValue: &i.Parent.productName,
-		},
-		"brand": {
-			StringValue: &i.Parent.brand,
-		},
-		"architecture": {
-			StringValue: &i.Parent.architecture,
-		},
-		"cudaComputeCapability": {
-			VersionValue: ptr.To(semver.MustParse(i.Parent.cudaComputeCapability).String()),
-		},
-		"driverVersion": {
-			VersionValue: ptr.To(semver.MustParse(i.Parent.driverVersion).String()),
-		},
-		"cudaDriverVersion": {
-			VersionValue: ptr.To(semver.MustParse(i.Parent.cudaDriverVersion).String()),
-		},
-		pciBusIDAttrName: {
-			StringValue: &i.Parent.pcieBusID,
-		},
-	}
+func (i MigSpec) Attributes() map[resourceapi.QualifiedName]resourceapi.DeviceAttribute {
+	return CommonAttributesMig(i.Parent, i.Profile.String())
 }
 
 func capacitiesToCounters(m PartCapacityMap) map[string]resourceapi.Counter {
@@ -263,7 +172,7 @@ func capacitiesToCounters(m PartCapacityMap) map[string]resourceapi.Counter {
 func (i MigSpec) PartConsumesCounters() []resourceapi.DeviceCounterConsumption {
 	return []resourceapi.DeviceCounterConsumption{{
 		CounterSet: i.Parent.GetSharedCounterSetName(),
-		Counters:   addCountersForMemSlices(capacitiesToCounters(i.PartCapacities()), int(i.Placement.Start), int(i.Placement.Size)),
+		Counters:   addCountersForMemSlices(capacitiesToCounters(i.Capacities()), int(i.Placement.Start), int(i.Placement.Size)),
 	}}
 }
 

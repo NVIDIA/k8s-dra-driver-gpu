@@ -117,3 +117,24 @@ bats::on_failure() {
   kubectl delete -f  "${_specpath}"
   kubectl wait --for=delete pods pod1 --timeout=10s
 }
+
+
+# bats test_tags=fastfeedback
+@test "GPUs: inspect device attributes in resource slice (gpu)" {
+  local reference=(
+    "architecture"
+    "brand"
+    "cudaComputeCapability"
+    "cudaDriverVersion"
+    "driverVersion"
+    "productName"
+    "resource.kubernetes.io/pciBusID"
+    "resource.kubernetes.io/pcieRoot"
+    "type"
+    "uuid"
+    "addressingMode"
+  )
+
+  local attrs=$(get_device_attrs_from_any_gpu_slice "gpu")
+  assert_attrs_equal "$attrs" "${reference[@]}"
+}

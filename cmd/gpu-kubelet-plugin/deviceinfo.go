@@ -156,113 +156,87 @@ func (d *GpuInfo) AddDetailAfterWalkingMigProfiles(maxcap PartCapacityMap, memSl
 	d.memSliceCount = memSliceCount
 }
 
-func (d *GpuInfo) GetDevice() resourceapi.Device {
+func (d *GpuInfo) Attributes() map[resourceapi.QualifiedName]resourceapi.DeviceAttribute {
 	// TODO: Consume GetPCIBusIDAttribute from https://github.com/kubernetes/kubernetes/blob/4c5746c0bc529439f78af458f8131b5def4dbe5d/staging/src/k8s.io/dynamic-resource-allocation/deviceattribute/attribute.go#L39
+	pciBusIDAttrName := resourceapi.QualifiedName(deviceattribute.StandardDeviceAttributePrefix + "pciBusID")
+	attrs := map[resourceapi.QualifiedName]resourceapi.DeviceAttribute{
+		"type": {
+			StringValue: ptr.To(GpuDeviceType),
+		},
+		"uuid": {
+			StringValue: &d.UUID,
+		},
+		"productName": {
+			StringValue: &d.productName,
+		},
+		"brand": {
+			StringValue: &d.brand,
+		},
+		"architecture": {
+			StringValue: &d.architecture,
+		},
+		"cudaComputeCapability": {
+			VersionValue: ptr.To(semver.MustParse(d.cudaComputeCapability).String()),
+		},
+		"driverVersion": {
+			VersionValue: ptr.To(semver.MustParse(d.driverVersion).String()),
+		},
+		"cudaDriverVersion": {
+			VersionValue: ptr.To(semver.MustParse(d.cudaDriverVersion).String()),
+		},
+		pciBusIDAttrName: {
+			StringValue: &d.pcieBusID,
+		},
+	}
+
+	if d.pcieRootAttr != nil {
+		attrs[d.pcieRootAttr.Name] = d.pcieRootAttr.Value
+	}
+
+	if d.addressingMode != nil {
+		attrs["addressingMode"] = resourceapi.DeviceAttribute{
+			StringValue: d.addressingMode,
+		}
+	}
+
+	return attrs
+}
+
+func (d *GpuInfo) GetDevice() resourceapi.Device {
 	device := resourceapi.Device{
 		Name:       d.CanonicalName(),
-		Attributes: d.PartDevAttributes(),
+		Attributes: d.Attributes(),
 		Capacity: map[resourceapi.QualifiedName]resourceapi.DeviceCapacity{
 			"memory": {
 				Value: *resource.NewQuantity(int64(d.memoryBytes), resource.BinarySI),
 			},
 		},
 	}
-	if d.pcieRootAttr != nil {
-		device.Attributes[d.pcieRootAttr.Name] = d.pcieRootAttr.Value
-	}
-	if d.addressingMode != nil {
-		device.Attributes["addressingMode"] = resourceapi.DeviceAttribute{
-			StringValue: d.addressingMode,
-		}
-	}
 	return device
 }
 
 func (d *MigDeviceInfo) GetDevice() resourceapi.Device {
-	// TODO: Consume GetPCIBusIDAttribute from https://github.com/kubernetes/kubernetes/blob/4c5746c0bc529439f78af458f8131b5def4dbe5d/staging/src/k8s.io/dynamic-resource-allocation/deviceattribute/attribute.go#L39
-	pciBusIDAttrName := resourceapi.QualifiedName(deviceattribute.StandardDeviceAttributePrefix + "pciBusID")
+
+	attrs := CommonAttributesMig(d.parent, d.Profile)
+	attrs["uuid"] = resourceapi.DeviceAttribute{
+		StringValue: &d.UUID,
+	}
+
 	device := resourceapi.Device{
-		Name: d.CanonicalName(),
-		Attributes: map[resourceapi.QualifiedName]resourceapi.DeviceAttribute{
-			"type": {
-				// Note: for API stability, it's critical we use the string
-				// "mig" here. In order to not confuse this with implementation
-				// details, I've now hard-coded it here. Replace again with a
-				// constant when we make sure that this constant is used wisely
-				// across the codebase. This was const `MigDeviceType` before
-				// introduction of the dyn MIG feature.
-				StringValue: ptr.To("mig"),
-			},
-			"uuid": {
-				StringValue: &d.UUID,
-			},
-			"parentUUID": {
-				StringValue: &d.parent.UUID,
-			},
-			"profile": {
-				StringValue: &d.Profile,
-			},
-			"productName": {
-				StringValue: &d.parent.productName,
-			},
-			"brand": {
-				StringValue: &d.parent.brand,
-			},
-			"architecture": {
-				StringValue: &d.parent.architecture,
-			},
-			"cudaComputeCapability": {
-				VersionValue: ptr.To(semver.MustParse(d.parent.cudaComputeCapability).String()),
-			},
-			"driverVersion": {
-				VersionValue: ptr.To(semver.MustParse(d.parent.driverVersion).String()),
-			},
-			"cudaDriverVersion": {
-				VersionValue: ptr.To(semver.MustParse(d.parent.cudaDriverVersion).String()),
-			},
-			pciBusIDAttrName: {
-				StringValue: &d.pcieBusID,
-			},
-		},
-		Capacity: map[resourceapi.QualifiedName]resourceapi.DeviceCapacity{
-			"multiprocessors": {
-				Value: *resource.NewQuantity(int64(d.giProfileInfo.MultiprocessorCount), resource.BinarySI),
-			},
-			"copyEngines": {Value: *resource.NewQuantity(int64(d.giProfileInfo.CopyEngineCount), resource.BinarySI)},
-			"decoders":    {Value: *resource.NewQuantity(int64(d.giProfileInfo.DecoderCount), resource.BinarySI)},
-			"encoders":    {Value: *resource.NewQuantity(int64(d.giProfileInfo.EncoderCount), resource.BinarySI)},
-			"jpegEngines": {Value: *resource.NewQuantity(int64(d.giProfileInfo.JpegCount), resource.BinarySI)},
-			"ofaEngines":  {Value: *resource.NewQuantity(int64(d.giProfileInfo.OfaCount), resource.BinarySI)},
-			// `memoryBytes` would be more expressive -- but in the k8s
-			// landscape, that ship has long sailed: container limits for
-			// example also use `memory`. Note that giProfileInfo.MemorySizeMB
-			// has a misleading name -- think of it as MemorySizeMiB (that's
-			// documented in the NVML source).
-			"memory": {Value: *resource.NewQuantity(int64(d.giProfileInfo.MemorySizeMB*1024*1024), resource.BinarySI)},
-		},
+		Name:       d.CanonicalName(),
+		Attributes: attrs,
+		Capacity:   CommonCapacitiesMig(d.giProfileInfo),
 	}
 
 	// Note(JP): noted elsewhere; what's the purpose of announcing memory slices
-	// as capacity? Are users interested? That effectively shows 'placement' to
-	// users. Does it also allow users to request placement? Do we want to allow
-	// users to request specific placement?
+	// as capacity? Do we want to allow users to request specific placement?
 	for i := d.PlacementStart; i < d.PlacementStart+d.PlacementSize; i++ {
-		// TODO: review memorySlice (legacy) vs memory-slice -- I believe I
-		// prefer memory-slice because that works for counters. Do we even need
-		// to announce the slices as capacity?
 		capacity := resourceapi.QualifiedName(fmt.Sprintf("memorySlice%d", i))
 		device.Capacity[capacity] = resourceapi.DeviceCapacity{
 			Value: *resource.NewQuantity(1, resource.BinarySI),
 		}
 	}
-	if d.pcieRootAttr != nil {
-		device.Attributes[d.pcieRootAttr.Name] = d.pcieRootAttr.Value
-	}
-	if d.parent.addressingMode != nil {
-		device.Attributes["addressingMode"] = resourceapi.DeviceAttribute{
-			StringValue: d.parent.addressingMode,
-		}
-	}
+
 	return device
 }
 
