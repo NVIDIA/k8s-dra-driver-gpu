@@ -34,6 +34,10 @@ const dumpPath = "/tmp/goroutine-stacks.dump"
 // output didn't work.
 func StartDebugSignalHandlers() {
 	go func() {
+		if runtime.GOOS == "windows" {
+			klog.Infof("Debug signal handlers are disabled on Windows")
+			return
+		}
 		c := make(chan os.Signal, 1)
 		signal.Notify(c, syscall.SIGUSR2)
 		for range c {
