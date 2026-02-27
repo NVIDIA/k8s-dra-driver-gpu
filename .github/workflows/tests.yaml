@@ -1,6 +1,10 @@
 name: test
 
 on:
+  # Run periodically, for stability sampling
+  # as well as for detecting changes fast.
+  schedule:
+    - cron: '0 */2 * * *'
   workflow_call:
   workflow_dispatch:
     inputs:
