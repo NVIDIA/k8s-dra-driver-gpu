@@ -47,6 +47,11 @@ const (
 	ComputeDomainDaemonConfigTemplatePath = "/templates/compute-domain-daemon-config.tmpl.cfg"
 )
 
+type AssertNameSpaceFunc func(ctx context.Context, claimNamespace, cdUID string) error
+type AddNodeLabelFunc func(ctx context.Context, cdUID string) error
+type RemoveNodeLabelFunc func(ctx context.Context, cdUID string) error
+type AssertComputeDomainReadyFunc func(ctx context.Context, cdUID string) error
+
 type ComputeDomainManager struct {
 	config        *Config
 	waitGroup     sync.WaitGroup
@@ -57,6 +62,8 @@ type ComputeDomainManager struct {
 
 	configFilesRoot string
 	cliqueID        string
+
+	podManager *PodManager
 }
 
 type ComputeDomainDaemonSettings struct {
@@ -79,6 +86,8 @@ func NewComputeDomainManager(config *Config, cliqueID string) *ComputeDomainMana
 		configFilesRoot: configFilesRoot,
 		cliqueID:        cliqueID,
 	}
+
+	m.podManager = NewPodManager(config, m.AssertComputeDomainNamespace, m.AddNodeLabel, m.RemoveNodeLabel, m.AssertComputeDomainReady)
 
 	return m
 }
@@ -118,10 +127,21 @@ func (m *ComputeDomainManager) Start(ctx context.Context) (rerr error) {
 		return fmt.Errorf("informer cache sync for ComputeDomains failed")
 	}
 
+	if featuregates.Enabled(featuregates.ComputeDomainBindingConditions) {
+		if err := m.podManager.Start(ctx); err != nil {
+			return fmt.Errorf("error starting Pod manager: %w", err)
+		}
+	}
+
 	return nil
 }
 
 func (m *ComputeDomainManager) Stop() error {
+	if featuregates.Enabled(featuregates.ComputeDomainBindingConditions) {
+		if err := m.podManager.Stop(); err != nil {
+			return fmt.Errorf("error stopping Pod manager: %w", err)
+		}
+	}
 	if m.cancelContext != nil {
 		m.cancelContext()
 	}
@@ -245,7 +265,11 @@ func (m *ComputeDomainManager) AssertComputeDomainReady(ctx context.Context, cdU
 	}
 
 	// Check if the current node is ready in the ComputeDomain
-	if !m.isCurrentNodeReady(ctx, cd) {
+	ready, failed := m.isCurrentNodeReady(ctx, cd)
+	if failed {
+		return fmt.Errorf("%w: current node failed in ComputeDomain", ErrBindingFailure)
+	}
+	if !ready {
 		return fmt.Errorf("current node not ready in ComputeDomain")
 	}
 
@@ -256,23 +280,28 @@ func (m *ComputeDomainManager) AssertComputeDomainReady(ctx context.Context, cdU
 // When the feature gate is enabled, we check both the clique and the status to ensure
 // that compute domains started before the feature gate was enabled continue to work
 // even after the feature gate is enabled.
-func (m *ComputeDomainManager) isCurrentNodeReady(ctx context.Context, cd *nvapi.ComputeDomain) bool {
+func (m *ComputeDomainManager) isCurrentNodeReady(ctx context.Context, cd *nvapi.ComputeDomain) (bool, bool) {
 	if featuregates.Enabled(featuregates.ComputeDomainCliques) {
 		if m.isCurrentNodeReadyInClique(ctx, cd) {
-			return true
+			return true, false
 		}
 	}
 	return m.isCurrentNodeReadyInStatus(cd)
 }
 
 // isCurrentNodeReadyInStatus checks if the current node is marked as ready in the ComputeDomain status.
-func (m *ComputeDomainManager) isCurrentNodeReadyInStatus(cd *nvapi.ComputeDomain) bool {
+func (m *ComputeDomainManager) isCurrentNodeReadyInStatus(cd *nvapi.ComputeDomain) (bool, bool) {
 	for _, node := range cd.Status.Nodes {
 		if node.Name == m.config.flags.nodeName {
-			return node.Status == nvapi.ComputeDomainStatusReady
+			switch node.Status {
+			case nvapi.ComputeDomainStatusReady:
+				return true, false
+			case nvapi.ComputeDomainStatusFailed:
+				return false, true
+			}
 		}
 	}
-	return false
+	return false, false
 }
 
 // isCurrentNodeReadyInClique checks if the current node is marked as ready in the ComputeDomainClique.
