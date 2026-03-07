@@ -217,21 +217,33 @@ get_device_attrs_from_any_gpu_slice() {
   local device_type="$1"
   local node_name="$2"
   local spath="${BATS_TEST_TMPDIR}/gpu_resource_slice_content"
-  local slicename
-
-  # Get contents of first listed GPU plugin resource slice; dump into file. If a
-  # node_name was provided, filter for the GPU plugin resource slice on that
-  # node.
-  if [ -n "$node_name" ]; then
-    slicename="$(kubectl get resourceslices.resource.k8s.io | grep 'gpu.nvidia.com' | grep "$node_name" | head -n1 | awk '{print $1}')"
-  else
-    slicename="$(kubectl get resourceslices.resource.k8s.io | grep 'gpu.nvidia.com' | head -n1 | awk '{print $1}')"
-  fi
-  log "resource slice name: $slicename"
+  local slicenames
 
   # For debugging, show current set of slices.
   kubectl get resourceslice >&2
-  kubectl get resourceslices.resource.k8s.io -o yaml "${slicename}" > "${spath}"
+
+  # Get names of resource slices: either for all gpu plugin resource slices, or
+  # all for all gpu slices announced by a specific node.
+  if [ -n "$node_name" ]; then
+    slicenames="$(kubectl get resourceslices.resource.k8s.io | grep 'gpu.nvidia.com' | grep "$node_name" | awk '{print $1}')"
+  else
+    slicenames="$(kubectl get resourceslices.resource.k8s.io | grep 'gpu.nvidia.com' | awk '{print $1}')"
+  fi
+
+  # Identify a suitable (device-announcing) resource slice. This is relevant
+  # because on Kubernetes 1.35+ there is one special resource slice per node
+  # that only contains counters, and no devices. We must make sure that we
+  # do not use that for device attribute extraction.
+  local slicename
+  for slicename in $slicenames; do
+    kubectl get resourceslices.resource.k8s.io -o yaml "${slicename}" > "${spath}"
+    if grep -q "devices:" "${spath}"; then
+      log "identified suitable resource slice: $slicename"
+      break
+    fi
+    log "do not use slice $slicename (does not define devices)"
+  done
+
   log "wrote resource slice content to: ${spath}"
 
   # Log contents, for https://github.com/NVIDIA/k8s-dra-driver-gpu/issues/902

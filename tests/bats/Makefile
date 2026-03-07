@@ -22,7 +22,7 @@ TEST_CHART_VERSION ?= "$(VERSION_GHCR_CHART)"
 
 # The baseline Helm chart to test upgrades from and downgrades to.
 TEST_CHART_LASTSTABLE_REPO ?= "oci://ghcr.io/nvidia/k8s-dra-driver-gpu"
-TEST_CHART_LASTSTABLE_VERSION ?= "25.8.1-fc69d985-chart"
+TEST_CHART_LASTSTABLE_VERSION ?= "25.12.0-0882da87-chart"
 
 # If not "false": the to-be-tested Helm chart is installed from the local
 # filesystem (from `deployments/helm/nvidia-dra-driver-gpu`). Make sure
@@ -136,9 +136,18 @@ endef
 
 default: tests
 
+# Temporary image tag, see
+# https://github.com/NVIDIA/k8s-dra-driver-gpu/issues/908. The `$$$$` below
+# evaluates to $$ in the recipe-executing shell, which resolves to its process
+# ID. With that, concurrent recipe executions use different image tags,
+# preventing rare export errors. Note that `docker tag` is atomic (never fails
+# with "already exists").
 .PHONY: runner-image
 runner-image:
-	docker buildx build . -t $(BATS_IMAGE) -f tests/bats/Dockerfile
+	TMP_TAG="$(BATS_IMAGE)-tmp-$$$$" && \
+	docker buildx build . -t $$TMP_TAG -f tests/bats/Dockerfile && \
+	docker tag $$TMP_TAG $(BATS_IMAGE) && \
+	docker rmi $$TMP_TAG
 
 # Warning: destructive against currently configured k8s cluster.
 #
