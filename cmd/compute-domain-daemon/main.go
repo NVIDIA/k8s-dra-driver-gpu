@@ -374,7 +374,7 @@ func IMEXDaemonUpdateLoopWithDNSNames(ctx context.Context, controller *Controlle
 			klog.Infof("shutdown: stop IMEXDaemonUpdateLoopWithDNSNames")
 			return nil
 		case daemons := <-controller.GetDaemonInfoUpdateChan():
-			updated, err := dnsNameManager.UpdateDNSNameMappings(daemons)
+			oldCount := len(dnsNameManager.ipToDNSName)                        updated, err := dnsNameManager.UpdateDNSNameMappings(daemons)
 			if err != nil {
 				return fmt.Errorf("failed to update DNS name => IP mappings: %w", err)
 			}
@@ -396,7 +396,7 @@ func IMEXDaemonUpdateLoopWithDNSNames(ctx context.Context, controller *Controlle
 			// this also if the new set of IP addresses only strictly removes
 			// addresses compared to the old set (then we don't need to force
 			// the daemon to re-resolve & re-connect).
-			if !updated || fresh {
+			if !updated || fresh || len(dnsNameManager.ipToDNSName) < oldCount {
 				break
 			}
 
