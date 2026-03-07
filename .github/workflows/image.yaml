@@ -31,7 +31,7 @@ jobs:
           image: tonistiigi/binfmt:qemu-v10.0.4
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
         with:
           # Use pull-through cache for container registry. See NV runner docs.
           buildkitd-config: /etc/buildkit/buildkitd.toml

@@ -28,7 +28,7 @@ jobs:
         with:
           image: tonistiigi/binfmt:qemu-v10.0.4
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
         with:
           buildkitd-config: /etc/buildkit/buildkitd.toml
       - name: Login to GitHub Container Registry
