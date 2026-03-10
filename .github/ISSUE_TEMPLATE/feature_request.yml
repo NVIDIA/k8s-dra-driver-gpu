@@ -1,0 +1,77 @@
+name: Feature Request
+description: Suggest a new feature or enhancement
+title: "[Feature]: "
+labels: ["enhancement", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for suggesting a feature. Please describe the problem you're trying to solve and your proposed solution.
+
+        > **Note:** Large features that introduce new feature gates or significant behavioral changes require a formal proposal. TBD
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      description: Which component does this feature relate to?
+      options:
+        - gpu-kubelet-plugin
+        - compute-domain-kubelet-plugin
+        - compute-domain-controller
+        - compute-domain-daemon
+        - webhook
+        - Helm chart / installation
+        - API / CRDs
+        - Documentation
+        - CI / testing
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem Statement
+      description: What problem does this feature solve? Is this related to a frustration with the current behavior?
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed Solution
+      description: Describe the solution you'd like to see.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives Considered
+      description: Describe any alternative solutions or workarounds you've considered.
+
+  - type: dropdown
+    id: scope
+    attributes:
+      label: Scope
+      description: How significant is this change?
+      options:
+        - "Small: CLI flag, config option, minor behavior change"
+        - "Medium: New capability behind existing feature gate"
+        - "Large: New feature gate, API change, or multi-component change"
+    validations:
+      required: true
+
+  - type: textarea
+    id: upstream
+    attributes:
+      label: Upstream Kubernetes Dependencies
+      description: Does this feature depend on any upstream Kubernetes KEPs or features? If so, link them here.
+      placeholder: "e.g., Depends on KEP-xxxx (kep-name) at (Alpha/Beta/GA)"
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional Context
+      description: Any other context, screenshots, or references.
