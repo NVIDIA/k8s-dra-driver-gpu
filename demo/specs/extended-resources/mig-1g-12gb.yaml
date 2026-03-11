@@ -1,0 +1,81 @@
+# MIG 1g.12gb via Extended Resource
+#
+# One DeviceClass per MIG profile. The CEL selector filters on
+# type == 'mig' and profile == '1g.12gb'.
+#
+# Uses nvidia.com/gpu as the extended resource name.
+# The DeviceClass CEL selector narrows the match to
+# 1g.12gb MIG devices specifically.
+#
+# Prerequisites:
+#   - Kubernetes >= 1.35 with feature gate DRAExtendedResource=true
+#   - NVIDIA DRA driver installed
+#   - GPU(s) with MIG mode enabled and 1g.12gb instances created
+#
+# MIG partition config (mig-partition.yaml):
+#   version: v1
+#   mig-configs:
+#     all-devices:
+#       - devices: [0, 1]
+#         mig-enabled: true
+#         mig-devices:
+#           "1g.12gb": 7
+#
+# Expected nvidia-smi -L output (2x GH200, 7 MIG instances each = 14 total):
+#   GPU 0: NVIDIA GH200 96GB HBM3 (UUID: GPU-a4f34abc-7715-3560-dcea-7238b9611a45)
+#     MIG 1g.12gb     Device  0: (UUID: MIG-4d806f22-346a-5a1d-ac01-86b505cdf485)
+#     MIG 1g.12gb     Device  1: (UUID: MIG-8949ea7d-9166-53ce-9bac-6c58262addf9)
+#     MIG 1g.12gb     Device  2: (UUID: MIG-48e730aa-3a45-5cf9-b1f3-07d2916e9d83)
+#     MIG 1g.12gb     Device  3: (UUID: MIG-ddcdfb36-d773-524c-9dc8-4075877523e6)
+#     MIG 1g.12gb     Device  4: (UUID: MIG-59e178f7-0c5e-52e3-902c-bf2f31c2275f)
+#     MIG 1g.12gb     Device  5: (UUID: MIG-d0c7cbd9-070b-58c6-9f87-cb8dd99a7214)
+#     MIG 1g.12gb     Device  6: (UUID: MIG-24c6a0e5-fe28-53ac-9537-c4e23104f30f)
+#   GPU 1: NVIDIA GH200 96GB HBM3 (UUID: GPU-9e6df7cb-64d4-5e53-2b1d-cee9e58aeb94)
+#     MIG 1g.12gb     Device  0: (UUID: MIG-643fb61f-fb9a-553e-87d8-627fa535d3cb)
+#     MIG 1g.12gb     Device  1: (UUID: MIG-d256cb8d-de32-55bf-833a-ef8a59112a84)
+#     MIG 1g.12gb     Device  2: (UUID: MIG-5ff5c47b-80e1-525d-bb61-5eef5ce0441a)
+#     MIG 1g.12gb     Device  3: (UUID: MIG-81544523-8683-58cd-8b72-5d797baf35de)
+#     MIG 1g.12gb     Device  4: (UUID: MIG-9b33318c-1fa4-58eb-a6f5-18273c6db866)
+#     MIG 1g.12gb     Device  5: (UUID: MIG-4e9fed73-e2a4-512f-ad8e-e7bb75aa920e)
+#     MIG 1g.12gb     Device  6: (UUID: MIG-c7cbc24b-a93f-5ff3-b388-deba1f3ac17e)
+#
+# Verify after apply:
+#   kubectl get resourceclaims -n extended-resource-mig-1g12gb
+#   kubectl get pod mig-1g12gb-pod -n extended-resource-mig-1g12gb \
+#     -o jsonpath='{.status.extendedResourceClaimStatus}' | jq .
+
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: extended-resource-mig-1g12gb
+
+---
+apiVersion: resource.k8s.io/v1
+kind: DeviceClass
+metadata:
+  name: mig-1g-12gb.gpu.nvidia.com
+spec:
+  selectors:
+  - cel:
+      expression: "device.driver == 'gpu.nvidia.com' && device.attributes['gpu.nvidia.com'].type == 'mig' && device.attributes['gpu.nvidia.com'].profile == '1g.12gb'"
+  extendedResourceName: nvidia.com/gpu
+
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  namespace: extended-resource-mig-1g12gb
+  name: mig-1g12gb-pod
+spec:
+  restartPolicy: Never
+  containers:
+  - name: cuda-container
+    image: nvcr.io/nvidia/k8s/cuda-sample:vectoradd-cuda12.5.0
+    resources:
+      limits:
+        nvidia.com/gpu: "1"
+  tolerations:
+  - key: nvidia.com/gpu
+    operator: Exists
+    effect: NoSchedule
