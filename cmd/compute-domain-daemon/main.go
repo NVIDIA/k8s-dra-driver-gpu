@@ -374,6 +374,10 @@ func IMEXDaemonUpdateLoopWithDNSNames(ctx context.Context, controller *Controlle
 			klog.Infof("shutdown: stop IMEXDaemonUpdateLoopWithDNSNames")
 			return nil
 		case daemons := <-controller.GetDaemonInfoUpdateChan():
+			oldIPs := make(map[string]struct{}, len(dnsNameManager.ipToDNSName))
+			for ip := range dnsNameManager.ipToDNSName {
+				oldIPs[ip] = struct{}{}
+			}
 			updated, err := dnsNameManager.UpdateDNSNameMappings(daemons)
 			if err != nil {
 				return fmt.Errorf("failed to update DNS name => IP mappings: %w", err)
@@ -391,12 +395,20 @@ func IMEXDaemonUpdateLoopWithDNSNames(ctx context.Context, controller *Controlle
 
 			dnsNameManager.LogDNSNameMappings()
 
+			onlyRemovals := true
+			for ip := range dnsNameManager.ipToDNSName {
+				if _, existed := oldIPs[ip]; !existed {
+					onlyRemovals = false
+					break
+				}
+			}
+
 			// Skip sending SIGUSR1 when the process is fresh (has newly been
 			// created) or when this was a noop update. TODO: review skipping
 			// this also if the new set of IP addresses only strictly removes
 			// addresses compared to the old set (then we don't need to force
 			// the daemon to re-resolve & re-connect).
-			if !updated || fresh {
+			if !updated || fresh || onlyRemovals {
 				break
 			}
 
