@@ -181,6 +181,13 @@ func (m *ComputeDomainStatusManager) sync(ctx context.Context) {
 			continue
 		}
 
+		if featuregates.Enabled(featuregates.ComputeDomainBindingConditions) {
+			if IsPodFailed(pod) {
+				nonFabricPodsByCD[cdUID] = append(nonFabricPodsByCD[cdUID], pod)
+				continue
+			}
+		}
+
 		// Separate pods based on cliqueID label
 		cliqueID, exists := pod.Labels[computeDomainCliqueLabelKey]
 		if !exists || cliqueID != "" {
@@ -269,6 +276,10 @@ func (m *ComputeDomainStatusManager) buildNodesFromPods(pods []*corev1.Pod) []*n
 				status = nvapi.ComputeDomainStatusReady
 				break
 			}
+		}
+
+		if IsPodFailed(pod) {
+			status = nvapi.ComputeDomainStatusFailed
 		}
 
 		nodes = append(nodes, &nvapi.ComputeDomainNode{
@@ -362,4 +373,20 @@ func (m *ComputeDomainStatusManager) nodesEqual(a, b []*nvapi.ComputeDomainNode)
 		bMap[node.Name] = *node
 	}
 	return maps.Equal(aMap, bMap)
+}
+
+func IsPodFailed(pod *corev1.Pod) bool {
+	if pod.Status.Phase == corev1.PodFailed {
+		return true
+	}
+
+	for _, ctrStatus := range pod.Status.ContainerStatuses {
+		if ctrStatus.State.Waiting != nil {
+			switch ctrStatus.State.Waiting.Reason {
+			case "ErrImagePull", "ImagePullBackOff", "CrashLoopBackOff":
+				return true
+			}
+		}
+	}
+	return false
 }
