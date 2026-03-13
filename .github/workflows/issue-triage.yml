@@ -1,0 +1,119 @@
+name: Issue Triage
+
+on:
+  issues:
+    types: [opened, edited]
+
+permissions:
+  issues: write
+
+jobs:
+  label-by-component:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const issue = context.payload.issue;
+            const body = issue.body || '';
+            const title = issue.title || '';
+            const labelsToAdd = [];
+
+            // Component detection from issue form dropdown
+            const componentMap = {
+              'gpu-kubelet-plugin': 'component/gpu-kubelet-plugin',
+              'compute-domain-kubelet-plugin': 'component/compute-domain-kubelet-plugin',
+              'compute-domain-controller': 'component/compute-domain-controller',
+              'compute-domain-daemon': 'component/compute-domain-daemon',
+              'webhook': 'component/webhook',
+              'Helm chart / installation': 'component/helm',
+              'Helm chart': 'component/helm',
+              'API / CRDs': 'component/api',
+              'Documentation': 'documentation',
+              'CI / testing': 'ci',
+            };
+
+            for (const [pattern, label] of Object.entries(componentMap)) {
+              if (body.includes(pattern)) {
+                labelsToAdd.push(label);
+              }
+            }
+
+            // Feature gate detection
+            const featureGates = [
+              'TimeSlicingSettings',
+              'MPSSupport',
+              'PassthroughSupport',
+              'DynamicMIG',
+              'NVMLDeviceHealthCheck',
+              'ComputeDomainCliques',
+              'CrashOnNVLinkFabricErrors',
+              'IMEXDaemonsWithDNSNames',
+            ];
+
+            for (const gate of featureGates) {
+              if (body.includes(gate) || title.includes(gate)) {
+                labelsToAdd.push(`feature-gate/${gate}`);
+              }
+            }
+
+            // Scope detection (from feature request template)
+            if (body.includes('Large: New feature gate')) {
+              labelsToAdd.push('size/large');
+            } else if (body.includes('Medium: New capability')) {
+              labelsToAdd.push('size/medium');
+            } else if (body.includes('Small: CLI flag')) {
+              labelsToAdd.push('size/small');
+            }
+
+            // Add detected labels
+            if (labelsToAdd.length > 0) {
+              const existingLabels = await github.rest.issues.listLabelsOnIssue({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+              });
+              const existing = existingLabels.data.map(l => l.name);
+              const newLabels = labelsToAdd.filter(l => !existing.includes(l));
+
+              if (newLabels.length > 0) {
+                // Ensure labels exist before adding them
+                for (const label of newLabels) {
+                  try {
+                    await github.rest.issues.getLabel({
+                      owner: context.repo.owner,
+                      repo: context.repo.repo,
+                      name: label,
+                    });
+                  } catch (e) {
+                    if (e.status === 404) {
+                      const colors = {
+                        'component/': '0075ca',
+                        'feature-gate/': 'e4e669',
+                        'size/': 'fbca04',
+                        'documentation': '0075ca',
+                        'ci': 'ededed',
+                      };
+                      const color = Object.entries(colors).find(
+                        ([prefix]) => label.startsWith(prefix)
+                      )?.[1] || 'ededed';
+
+                      await github.rest.issues.createLabel({
+                        owner: context.repo.owner,
+                        repo: context.repo.repo,
+                        name: label,
+                        color: color,
+                      });
+                    }
+                  }
+                }
+
+                await github.rest.issues.addLabels({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: issue.number,
+                  labels: newLabels,
+                });
+                core.info(`Added labels: ${newLabels.join(', ')}`);
+              }
+            }

@@ -1,0 +1,31 @@
+name: Stale Issues
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "30 4 * * *"
+
+permissions:
+  issues: write
+
+jobs:
+  stale:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/stale@v10
+        with:
+          stale-issue-message: >
+            This issue has been automatically marked as stale because it has not
+            had activity in the last 90 days. It will be closed in 30 days if no
+            further activity occurs. To keep this issue open, add a comment or
+            remove the `lifecycle/stale` label. To exempt it permanently, apply
+            the `lifecycle/frozen` label.
+          close-issue-message: >
+            This issue was automatically closed due to inactivity. If you believe
+            this is still relevant, feel free to reopen it.
+          stale-issue-label: "lifecycle/stale"
+          exempt-issue-labels: "lifecycle/frozen,enhancement,proposal"
+          days-before-stale: 90
+          days-before-issue-close: 30
+          remove-stale-when-updated: true
+          operations-per-run: 1000
