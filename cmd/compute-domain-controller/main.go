@@ -26,7 +26,6 @@ import (
 	"os/signal"
 	"path"
 	"syscall"
-	"time"
 
 	"github.com/google/uuid"
 	"github.com/prometheus/client_golang/prometheus"
@@ -76,12 +75,7 @@ type Flags struct {
 	additionalNamespaces cli.StringSlice
 	klogVerbosity        int
 
-	leaderElect        bool
-	leaseLockName      string
-	leaseLockNamespace string
-	leaseDuration      time.Duration
-	renewDeadline      time.Duration
-	retryPeriod        time.Duration
+	leaderElectionConfig pkgflags.LeaderElectionConfig
 }
 
 type Config struct {
@@ -167,56 +161,9 @@ func newApp() *cli.App {
 			Destination: &flags.additionalNamespaces,
 			EnvVars:     []string{"ADDITIONAL_NAMESPACES"},
 		},
-		&cli.BoolFlag{
-			Category:    "Leader election:",
-			Name:        "leader-elect",
-			Usage:       "Start a leader election client and gain leadership before executing the main loop. Enable this when running replicated components for high availability.",
-			Value:       false,
-			Destination: &flags.leaderElect,
-			EnvVars:     []string{"LEADER_ELECT"},
-		},
-		&cli.StringFlag{
-			Category:    "Leader election:",
-			Name:        "lease-lock-namespace",
-			Usage:       "The lease lock resource namespace.",
-			Value:       "default",
-			Destination: &flags.leaseLockNamespace,
-			EnvVars:     []string{"LEASE_LOCK_NAMESPACE"},
-		},
-		&cli.StringFlag{
-			Category:    "Leader election:",
-			Name:        "lease-lock-name",
-			Usage:       "The lease lock resource name.",
-			Value:       "nvidia-compute-domain-controller",
-			Destination: &flags.leaseLockName,
-			EnvVars:     []string{"LEASE_LOCK_NAME"},
-		},
-		&cli.DurationFlag{
-			Category:    "Leader election:",
-			Name:        "lease-duration",
-			Usage:       "The duration that non-leader candidates will wait to force acquire leadership. This is measured against time of last observed ack.",
-			Value:       15 * time.Second,
-			Destination: &flags.leaseDuration,
-			EnvVars:     []string{"LEASE_DURATION"},
-		},
-		&cli.DurationFlag{
-			Category:    "Leader election:",
-			Name:        "renew-deadline",
-			Usage:       "The duration that the acting controlplane will retry refreshing leadership before giving up.",
-			Value:       10 * time.Second,
-			Destination: &flags.renewDeadline,
-			EnvVars:     []string{"RENEW_DEADLINE"},
-		},
-		&cli.DurationFlag{
-			Category:    "Leader election:",
-			Name:        "retry-period",
-			Usage:       "The duration the LeaderElector clients should wait between tries of actions.",
-			Value:       2 * time.Second,
-			Destination: &flags.retryPeriod,
-			EnvVars:     []string{"RETRY_PERIOD"},
-		},
 	}
 
+	cliFlags = append(cliFlags, flags.leaderElectionConfig.Flags()...)
 	cliFlags = append(cliFlags, flags.kubeClientConfig.Flags()...)
 	cliFlags = append(cliFlags, featureGateConfig.Flags()...)
 	cliFlags = append(cliFlags, loggingConfig.Flags()...)
@@ -306,18 +253,22 @@ func run(ctx context.Context, config *Config) error {
 	controller := NewController(config)
 
 	// Fallback to standalone mode if leader election is disabled
-	if !config.flags.leaderElect {
+	if !config.flags.leaderElectionConfig.Enabled {
 		klog.Info("Leader election disabled, starting controller directly")
 		return controller.Run(ctx)
 	}
 
+	return runWithLeaderElection(ctx, config, controller)
+}
+
+func runWithLeaderElection(ctx context.Context, config *Config, controller *Controller) error {
 	klog.Info("Leader election enabled")
 	// Unique identity: PodName + UUID to prevent conflicts on restarts
 	id := uuid.New().String()
 	lockID := fmt.Sprintf("%s-%s", config.flags.podName, id)
 	klog.InfoS("Leader election candidate registered", "lockID", lockID,
-		"leaseName", config.flags.leaseLockName,
-		"leaseNamespace", config.flags.leaseLockNamespace)
+		"leaseName", config.flags.leaderElectionConfig.LeaseLockName,
+		"leaseNamespace", config.flags.leaderElectionConfig.LeaseLockNamespace)
 
 	// electorCtx controls the lifecycle of the leader election loop
 	electorCtx, cancelElector := context.WithCancel(ctx)
@@ -326,8 +277,8 @@ func run(ctx context.Context, config *Config) error {
 
 	lock := &resourcelock.LeaseLock{
 		LeaseMeta: metav1.ObjectMeta{
-			Name:      config.flags.leaseLockName,
-			Namespace: config.flags.leaseLockNamespace,
+			Name:      config.flags.leaderElectionConfig.LeaseLockName,
+			Namespace: config.flags.leaderElectionConfig.LeaseLockNamespace,
 		},
 		Client: config.clientsets.Core.CoordinationV1(),
 		LockConfig: resourcelock.ResourceLockConfig{
@@ -335,7 +286,7 @@ func run(ctx context.Context, config *Config) error {
 		},
 	}
 
-	var controllerErr error
+	controllerErrCh := make(chan error, 1)
 	callbacks := leaderelection.LeaderCallbacks{
 		OnStartedLeading: func(leaderCtx context.Context) {
 			klog.InfoS("Became leader, starting controller", "lockID", lockID)
@@ -354,7 +305,10 @@ func run(ctx context.Context, config *Config) error {
 			// NOTE: Use leaderCtx provided by the callback.
 			// It is automatically cancelled if leadership is lost.
 			if err := controller.Run(leaderCtx); err != nil {
-				controllerErr = err // store controller error
+				select {
+				case controllerErrCh <- err:
+				default:
+				}
 				klog.ErrorS(err, "Controller exited with error", "lockID", lockID)
 			} else {
 				klog.InfoS("Controller exited gracefully", "lockID", lockID)
@@ -382,10 +336,10 @@ func run(ctx context.Context, config *Config) error {
 
 	elector, err := leaderelection.NewLeaderElector(leaderelection.LeaderElectionConfig{
 		Lock:            lock,
-		LeaseDuration:   config.flags.leaseDuration,
-		RenewDeadline:   config.flags.renewDeadline,
-		RetryPeriod:     config.flags.retryPeriod,
-		Name:            config.flags.leaseLockName,
+		LeaseDuration:   config.flags.leaderElectionConfig.LeaseDuration,
+		RenewDeadline:   config.flags.leaderElectionConfig.RenewDeadline,
+		RetryPeriod:     config.flags.leaderElectionConfig.RetryPeriod,
+		Name:            config.flags.leaderElectionConfig.LeaseLockName,
 		Callbacks:       callbacks,
 		ReleaseOnCancel: true, // Steps down immediately by clearing the Lease holder
 	})
@@ -398,9 +352,13 @@ func run(ctx context.Context, config *Config) error {
 	elector.Run(electorCtx)
 
 	// If exiting due to a controller failure, propagate the error to main
-	if controllerErr != nil {
-		klog.ErrorS(controllerErr, "Process exiting due to controller failure")
-		return fmt.Errorf("controller execution failed: %w", controllerErr)
+	select {
+	case err := <-controllerErrCh:
+		if err != nil {
+			klog.ErrorS(err, "Process exiting due to controller failure")
+			return fmt.Errorf("controller execution failed: %w", err)
+		}
+	default:
 	}
 	klog.InfoS("Leader election loop ended gracefully", "lockID", lockID)
 	return nil
