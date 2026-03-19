@@ -27,10 +27,14 @@ import (
 	"path"
 	"syscall"
 
+	"github.com/google/uuid"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/urfave/cli/v2"
 
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/tools/leaderelection"
+	"k8s.io/client-go/tools/leaderelection/resourcelock"
 	"k8s.io/component-base/logs"
 	"k8s.io/component-base/metrics/legacyregistry"
 	"k8s.io/klog/v2"
@@ -56,7 +60,8 @@ const (
 )
 
 type Flags struct {
-	kubeClientConfig pkgflags.KubeClientConfig
+	kubeClientConfig     pkgflags.KubeClientConfig
+	leaderElectionConfig pkgflags.LeaderElectionConfig
 
 	podName               string
 	namespace             string
@@ -157,6 +162,7 @@ func newApp() *cli.App {
 		},
 	}
 
+	cliFlags = append(cliFlags, flags.leaderElectionConfig.Flags()...)
 	cliFlags = append(cliFlags, flags.kubeClientConfig.Flags()...)
 	cliFlags = append(cliFlags, featureGateConfig.Flags()...)
 	cliFlags = append(cliFlags, loggingConfig.Flags()...)
@@ -217,12 +223,19 @@ func newApp() *cli.App {
 			controller := NewController(config)
 			ctx, cancel := context.WithCancel(c.Context)
 			go func() {
-				errChan <- controller.Run(ctx)
+				// Fallback to standalone mode if leader election is disabled
+				if !config.flags.leaderElectionConfig.Enabled {
+					klog.Info("Leader election disabled, starting controller directly")
+					errChan <- controller.Run(ctx)
+					return
+				}
+				errChan <- runWithLeaderElection(ctx, config, controller)
 			}()
 
 			for {
 				select {
 				case <-sigs:
+					klog.Info("Received signal, shutting down")
 					cancel()
 				case err := <-errChan:
 					cancel()
@@ -251,6 +264,109 @@ func newApp() *cli.App {
 	}
 
 	return app
+}
+
+func runWithLeaderElection(ctx context.Context, config *Config, controller *Controller) error {
+	klog.Info("Leader election enabled")
+	// Unique identity: PodName + UUID to prevent conflicts on restarts
+	id := uuid.New().String()
+	lockID := fmt.Sprintf("%s-%s", config.flags.podName, id)
+	klog.InfoS("Leader election candidate registered", "lockID", lockID,
+		"leaseName", config.flags.leaderElectionConfig.LeaseLockName,
+		"leaseNamespace", config.flags.leaderElectionConfig.LeaseLockNamespace)
+
+	// electorCtx controls the lifecycle of the leader election loop
+	electorCtx, cancelElector := context.WithCancel(ctx)
+	// Standard defer to ensure resources are cleaned up on function exit
+	defer cancelElector()
+
+	lock := &resourcelock.LeaseLock{
+		LeaseMeta: metav1.ObjectMeta{
+			Name:      config.flags.leaderElectionConfig.LeaseLockName,
+			Namespace: config.flags.leaderElectionConfig.LeaseLockNamespace,
+		},
+		Client: config.clientsets.Core.CoordinationV1(),
+		LockConfig: resourcelock.ResourceLockConfig{
+			Identity: lockID,
+		},
+	}
+
+	controllerErrCh := make(chan error, 1)
+	callbacks := leaderelection.LeaderCallbacks{
+		OnStartedLeading: func(leaderCtx context.Context) {
+			klog.InfoS("Became leader, starting controller", "lockID", lockID)
+
+			// ARCHITECTURE NOTE:
+			// We use cancelElector() to ensure that if the controller logic exits
+			// (either gracefully or with an error), the entire leader election loop
+			// terminates. This triggers ReleaseOnCancel, clearing the lease holder
+			// identity and allowing standby replicas to take over immediately.
+			//
+			// By returning from run() after elector.Run() finishes, we rely on
+			// Kubernetes to restart the Pod, ensuring a clean in-memory state
+			// for the next leadership term.
+			defer cancelElector()
+
+			// NOTE: Use leaderCtx provided by the callback.
+			// It is automatically cancelled if leadership is lost.
+			if err := controller.Run(leaderCtx); err != nil {
+				select {
+				case controllerErrCh <- err:
+				default:
+				}
+				klog.ErrorS(err, "Controller exited with error", "lockID", lockID)
+			} else {
+				klog.InfoS("Controller exited gracefully", "lockID", lockID)
+			}
+		},
+		OnStoppedLeading: func() {
+			// ARCHITECTURE NOTE:
+			// We only log here. The actual shutdown of the controller is handled by the
+			// cancellation of the leaderCtx passed to OnStartedLeading.
+			// When leadership is lost, the library cancels that context, triggering
+			// the controller's graceful shutdown logic.
+			klog.Warningf("Stopped leading, lockID: %s", lockID)
+		},
+		OnNewLeader: func(identity string) {
+			// OnNewLeader is called when a new leader is observed.
+			// We ignore the case where the "new" leader is ourselves to avoid
+			// redundant logs during initial election or re-election.
+			if identity == lockID {
+				klog.V(6).InfoS("OnNewLeader callback: observed leader is still ourselves", "lockID", lockID)
+				return
+			}
+			klog.InfoS("New leader elected", "leader", identity, "currentCandidate", lockID)
+		},
+	}
+
+	elector, err := leaderelection.NewLeaderElector(leaderelection.LeaderElectionConfig{
+		Lock:            lock,
+		LeaseDuration:   config.flags.leaderElectionConfig.LeaseDuration,
+		RenewDeadline:   config.flags.leaderElectionConfig.RenewDeadline,
+		RetryPeriod:     config.flags.leaderElectionConfig.RetryPeriod,
+		Name:            config.flags.leaderElectionConfig.LeaseLockName,
+		Callbacks:       callbacks,
+		ReleaseOnCancel: true, // Steps down immediately by clearing the Lease holder
+	})
+	if err != nil {
+		return fmt.Errorf("failed to create leader elector: %w", err)
+	}
+
+	// Block until electorCtx is cancelled or leadership is lost
+	klog.InfoS("Starting leader election loop", "lockID", lockID)
+	elector.Run(electorCtx)
+
+	// If exiting due to a controller failure, propagate the error to main
+	select {
+	case err := <-controllerErrCh:
+		if err != nil {
+			klog.ErrorS(err, "Process exiting due to controller failure")
+			return fmt.Errorf("controller execution failed: %w", err)
+		}
+	default:
+	}
+	klog.InfoS("Leader election loop ended gracefully", "lockID", lockID)
+	return nil
 }
 
 func SetupHTTPEndpoint(config *Config) error {

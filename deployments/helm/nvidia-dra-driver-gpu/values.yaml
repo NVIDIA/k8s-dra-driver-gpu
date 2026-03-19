@@ -185,6 +185,12 @@ webhook:
       caBundle: ""
 
 controller:
+  replicas: 1
+  leaderElection:
+    enabled: false
+    leaseDuration: "15s"
+    renewDeadline: "10s"
+    retryPeriod: "2s"
   priorityClassName: "system-node-critical"
   podAnnotations: {}
   podSecurityContext: {}
@@ -208,6 +214,14 @@ controller:
         - matchExpressions:
           - key: "node-role.kubernetes.io/control-plane"
             operator: "Exists"
+    podAntiAffinity:
+      preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 100
+        podAffinityTerm:
+          labelSelector:
+            matchLabels:
+              nvidia-dra-driver-gpu-component: controller
+          topologyKey: kubernetes.io/hostname
   # Network policy settings
   networkPolicy:
     # If the network policy is enabled or not
