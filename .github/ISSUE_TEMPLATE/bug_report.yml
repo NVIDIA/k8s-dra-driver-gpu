@@ -1,0 +1,174 @@
+name: Bug Report
+description: Report a bug to help us improve the NVIDIA DRA Driver for GPUs
+title: "[Bug]: "
+labels: ["bug", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug. Please fill out the sections below so we can reproduce and fix the issue.
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      description: Which component is affected?
+      options:
+        - gpu-kubelet-plugin
+        - compute-domain-kubelet-plugin
+        - compute-domain-controller
+        - compute-domain-daemon
+        - webhook
+        - Helm chart / installation
+        - Documentation
+        - Other / unknown
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Bug Description
+      description: A clear and concise description of what the bug is.
+      placeholder: Describe what happened and what you expected to happen.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to Reproduce
+      description: Detailed steps to reproduce the issue.
+      placeholder: |
+        1. Deploy with Helm using values ...
+        2. Create a ResourceClaim with ...
+        3. Run a pod requesting ...
+        4. Observe error ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected Behavior
+      description: What did you expect to happen?
+    validations:
+      required: true
+
+  - type: input
+    id: driver-version
+    attributes:
+      label: DRA Driver Version
+      description: "Version of the NVIDIA DRA Driver (e.g., v25.8.0). Run: `helm list -n <namespace>`"
+      placeholder: "e.g., v25.6.0"
+    validations:
+      required: true
+
+  - type: input
+    id: k8s-version
+    attributes:
+      label: Kubernetes Version
+      description: "Kubernetes version and distribution. Run: `kubectl version`"
+      placeholder: "e.g., K8s v1.34, GKE, EKS, OpenShift"
+    validations:
+      required: true
+
+  - type: input
+    id: gpu-model
+    attributes:
+      label: GPU Model
+      description: "GPU model(s) in your cluster. Run: `nvidia-smi -L`"
+      placeholder: "e.g., NVIDIA A100-SXM4-80GB, NVIDIA H100"
+    validations:
+      required: true
+
+  - type: input
+    id: nvidia-driver
+    attributes:
+      label: NVIDIA Driver Version
+      description: "Host NVIDIA driver version. Run: `nvidia-smi --query-gpu=driver_version --format=csv`"
+      placeholder: "e.g., 570.86.16"
+    validations:
+      required: false
+
+  - type: input
+    id: os
+    attributes:
+      label: OS / Kernel
+      description: "Node OS and kernel version. Run: `uname -a`"
+      placeholder: "e.g., Ubuntu 24.04, kernel 6.8.0-generic"
+    validations:
+      required: false
+
+  - type: input
+    id: container-runtime
+    attributes:
+      label: Container Runtime
+      description: "Container runtime and version (e.g., containerd 2.0.0, CRI-O)"
+      placeholder: "e.g., containerd 2.0.0"
+    validations:
+      required: false
+
+  - type: dropdown
+    id: feature-gates
+    attributes:
+      label: Feature Gates (non-default settings)
+      description: Select any feature gates you have changed from their defaults (enabled Alpha gates, or disabled Beta gates).
+      multiple: true
+      options:
+        - "TimeSlicingSettings (disabled)"
+        - "MPSSupport (disabled)"
+        - "PassthroughSupport (enabled)"
+        - "DynamicMIG (disabled)"
+        - "NVMLDeviceHealthCheck (disabled)"
+        - "IMEXDaemonsWithDNSNames (disabled)"
+        - "ComputeDomainCliques (disabled)"
+        - "CrashOnNVLinkFabricErrors (disabled)"
+
+  - type: textarea
+    id: helm-values
+    attributes:
+      label: Helm Values (non-default)
+      description: Paste any non-default Helm values or flags used during installation.
+      render: yaml
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant Logs
+      description: |
+        Attach relevant logs. Common sources:
+        - Plugin logs: `kubectl logs -n <namespace> <plugin-pod> --all-containers`
+        - Kubelet logs: `journalctl -u kubelet`
+        - Events: `kubectl get events --sort-by=.metadata.creationTimestamp`
+      render: shell
+
+  - type: checkboxes
+    id: debug-info
+    attributes:
+      label: Debug Information Attached
+      description: Check any diagnostic data you have gathered and attached.
+      options:
+        - label: "`kubectl get pods -n nvidia-dra-driver-gpu -o wide`"
+        - label: "`kubectl get resourceclaims -n <namespace>`"
+        - label: "`kubectl get resourceslices.resource.k8s.io`"
+        - label: "`kubectl describe pod <pod>` or `kubectl events --for pod/<pod>`"
+        - label: "Kubelet plugin logs: `kubectl logs -n nvidia-dra-driver-gpu -l nvidia-dra-driver-gpu-component=kubelet-plugin --all-containers --prefix --tail=400`"
+        - label: "`nvidia-smi` output from the host"
+        - label: "Kubelet logs"
+
+  - type: checkboxes
+    id: imex-debug-info
+    attributes:
+      label: IMEX / ComputeDomain Debug Information (if applicable)
+      description: For issues related to ComputeDomains, IMEX, or Multi-Node NVLink (MNNVL).
+      options:
+        - label: "Host IMEX service disabled: `systemctl status nvidia-imex.service` (must be masked/disabled)"
+        - label: "Node clique labels: `kubectl get nodes -L nvidia.com/gpu.clique`"
+        - label: "Per-GPU clique info: `nvidia-smi -q | grep -E 'ClusterUUID|CliqueId'`"
+        - label: "NVLink/NVSwitch topology: `nvidia-smi topo -m`"
+        - label: "ComputeDomain status: `kubectl get computedomains.resource.nvidia.com -o yaml`"
+        - label: "ComputeDomainClique status: `kubectl get computedomaincliques.resource.nvidia.com -o yaml`"
+        - label: "IMEX daemon pods: `kubectl get pods -n <namespace> -l resource.nvidia.com/computeDomain`"
+        - label: "IMEX daemon logs: `kubectl logs -n nvidia-dra-driver-gpu -l resource.nvidia.com/computeDomain --all-containers --prefix --tail=-1`"
+        - label: "IMEX domain status: `nvidia-imex-ctl -c /etc/nvidia-imex/config.cfg -N`"
