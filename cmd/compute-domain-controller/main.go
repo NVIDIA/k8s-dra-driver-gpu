@@ -60,7 +60,8 @@ const (
 )
 
 type Flags struct {
-	kubeClientConfig pkgflags.KubeClientConfig
+	kubeClientConfig     pkgflags.KubeClientConfig
+	leaderElectionConfig pkgflags.LeaderElectionConfig
 
 	podName               string
 	namespace             string
@@ -74,8 +75,6 @@ type Flags struct {
 
 	additionalNamespaces cli.StringSlice
 	klogVerbosity        int
-
-	leaderElectionConfig pkgflags.LeaderElectionConfig
 }
 
 type Config struct {
@@ -217,17 +216,35 @@ func newApp() *cli.App {
 				}
 			}
 
-			ctx, cancel := context.WithCancel(c.Context)
-			defer cancel()
-
 			sigs := make(chan os.Signal, 1)
 			signal.Notify(sigs, syscall.SIGTERM, syscall.SIGINT)
+
+			errChan := make(chan error, 1)
+			controller := NewController(config)
+			ctx, cancel := context.WithCancel(c.Context)
 			go func() {
-				<-sigs
-				klog.Info("Received signal, shutting down")
-				cancel()
+				// Fallback to standalone mode if leader election is disabled
+				if !config.flags.leaderElectionConfig.Enabled {
+					klog.Info("Leader election disabled, starting controller directly")
+					errChan <- controller.Run(ctx)
+					return
+				}
+				errChan <- runWithLeaderElection(ctx, config, controller)
 			}()
-			return run(ctx, config)
+
+			for {
+				select {
+				case <-sigs:
+					klog.Info("Received signal, shutting down")
+					cancel()
+				case err := <-errChan:
+					cancel()
+					if err != nil {
+						return fmt.Errorf("run controller: %w", err)
+					}
+					return nil
+				}
+			}
 		},
 		After: func(c *cli.Context) error {
 			// Runs after `Action` (regardless of success/error). In urfave cli
@@ -247,18 +264,6 @@ func newApp() *cli.App {
 	}
 
 	return app
-}
-
-func run(ctx context.Context, config *Config) error {
-	controller := NewController(config)
-
-	// Fallback to standalone mode if leader election is disabled
-	if !config.flags.leaderElectionConfig.Enabled {
-		klog.Info("Leader election disabled, starting controller directly")
-		return controller.Run(ctx)
-	}
-
-	return runWithLeaderElection(ctx, config, controller)
 }
 
 func runWithLeaderElection(ctx context.Context, config *Config, controller *Controller) error {
