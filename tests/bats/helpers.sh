@@ -39,6 +39,7 @@ export NOARGS=()
 # 1st arg: helm chart repo
 # 2nd arg: helm chart version
 # 3rd arg: array with additional args (provide `NOARGS` if none)
+# 4th arg: (optional) namespace; defaults to nvidia-dra-driver-gpu
 iupgrade_wait() {
   # E.g. `nvidia/nvidia-dra-driver-gpu` or
   # `oci://ghcr.io/nvidia/k8s-dra-driver-gpu`
@@ -50,6 +51,9 @@ iupgrade_wait() {
   # Expect array as third argument.
   local -n ADDITIONAL_INSTALL_ARGS=$3
 
+  # Optional namespace; defaults to nvidia-dra-driver-gpu.
+  local NAMESPACE="${4:-nvidia-dra-driver-gpu}"
+
   log "iupgrade_wait: start"
   timeout -v 120 helm upgrade --install "${TEST_HELM_RELEASE_NAME}" \
     "${REPO}" \
@@ -57,12 +61,12 @@ iupgrade_wait() {
     --wait \
     --timeout=1m5s \
     --create-namespace \
-    --namespace nvidia-dra-driver-gpu \
+    --namespace "${NAMESPACE}" \
     --set gpuResourcesEnabledOverride=true \
     --set nvidiaDriverRoot="${TEST_NVIDIA_DRIVER_ROOT}" "${ADDITIONAL_INSTALL_ARGS[@]}"
 
   # Valueable output to have in the logs in case things went pearshaped.
-  kubectl get pods -n nvidia-dra-driver-gpu
+  kubectl get pods -n "${NAMESPACE}"
 
   # Some part of this waiting work is done by helm as of `--wait` with
   # `--timeout`. Note that the below in itself would not be sufficient: in case
@@ -82,7 +86,7 @@ iupgrade_wait() {
   kubectl wait --for=condition=READY pods -A -l nvidia-dra-driver-gpu-component=kubelet-plugin --timeout=15s
 
   # Again, log current state.
-  kubectl get pods -n nvidia-dra-driver-gpu
+  kubectl get pods -n "${NAMESPACE}"
 
   # That one should be obvious now, but make that guarantee explicit for
   # consuming tests.
