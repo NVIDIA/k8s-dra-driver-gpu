@@ -359,6 +359,20 @@ func IMEXDaemonUpdateLoopWithIPs(ctx context.Context, controller *Controller, cl
 	}
 }
 
+func shouldSendSIGUSR1(oldIPs, newIPs map[string]struct{}, updated, fresh bool) bool {
+	if !updated || fresh {
+		return false
+	}
+
+	for ip := range newIPs {
+		if _, existed := oldIPs[ip]; !existed {
+			return true
+		}
+	}
+
+	return false
+}
+
 // IMEXDaemonUpdateLoopWithDNSNames reacts to ComputeDomain status changes by
 // updating the /etc/hosts file with IP to DNS name mappings. This relies on
 // the IMEX daemon to pick up these changes automatically (and quickly) --
@@ -395,20 +409,7 @@ func IMEXDaemonUpdateLoopWithDNSNames(ctx context.Context, controller *Controlle
 
 			dnsNameManager.LogDNSNameMappings()
 
-			onlyRemovals := true
-			for ip := range dnsNameManager.ipToDNSName {
-				if _, existed := oldIPs[ip]; !existed {
-					onlyRemovals = false
-					break
-				}
-			}
-
-			// Skip sending SIGUSR1 when the process is fresh (has newly been
-			// created) or when this was a noop update. TODO: review skipping
-			// this also if the new set of IP addresses only strictly removes
-			// addresses compared to the old set (then we don't need to force
-			// the daemon to re-resolve & re-connect).
-			if !updated || fresh || onlyRemovals {
+			if !shouldSendSIGUSR1(oldIPs, dnsNameManager.ipToDNSName, updated, fresh) {
 				break
 			}
 
