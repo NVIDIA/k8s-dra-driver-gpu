@@ -96,36 +96,3 @@ bats::on_failure() {
   run kubectl exec -n nvidia-dra-driver-gpu "${PNAME}" -c compute-domains -- cat /tmp/goroutine-stacks.dump
   assert_output --partial 'main.RunPlugin'
 }
-
-
-# bats test_tags=fastfeedback
-@test "basics: upgrade: install-last-stable and upgrade-to-current-dev in gpu-operator ns with ADDITIONAL_NAMESPACES" {
-  # This test covers a GPU Operator-style deployment where the DRA driver runs
-  # in the gpu-operator namespace and watches nvidia-dra-driver-gpu for
-  # workloads via the ADDITIONAL_NAMESPACES env var.
-  local _iargs=(
-    "--set" "controller.containers.computeDomain.env[0].name=ADDITIONAL_NAMESPACES"
-    "--set" "controller.containers.computeDomain.env[0].value=nvidia-dra-driver-gpu"
-  )
-
-  # Uninstall from nvidia-dra-driver-gpu namespace (state from previous tests).
-  helm uninstall "${TEST_HELM_RELEASE_NAME}" -n nvidia-dra-driver-gpu --wait --timeout=30s
-  kubectl wait --for=delete pods -A -l app.kubernetes.io/name=nvidia-dra-driver-gpu --timeout=10s
-
-  # Install last-stable to gpu-operator namespace with ADDITIONAL_NAMESPACES.
-  iupgrade_wait "${TEST_CHART_LASTSTABLE_REPO}" "${TEST_CHART_LASTSTABLE_VERSION}" _iargs gpu-operator
-
-  # Update CRD
-  kubectl apply -f "${CRD_UPGRADE_URL}"
-
-  # Upgrade to current-dev, still in gpu-operator namespace.
-  iupgrade_wait "${TEST_CHART_REPO}" "${TEST_CHART_VERSION}" _iargs gpu-operator
-
-  # Verify CRD is present
-  kubectl get crd computedomains.resource.nvidia.com
-
-  # Restore state: uninstall from gpu-operator, reinstall to nvidia-dra-driver-gpu.
-  helm uninstall "${TEST_HELM_RELEASE_NAME}" -n gpu-operator --wait --timeout=30s
-  kubectl wait --for=delete pods -A -l app.kubernetes.io/name=nvidia-dra-driver-gpu --timeout=10s
-  iupgrade_wait "${TEST_CHART_REPO}" "${TEST_CHART_VERSION}" NOARGS
-}

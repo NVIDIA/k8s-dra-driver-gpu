@@ -190,6 +190,7 @@ tests-cd: runner-image
 tests: runner-image
 	$(call RUN_BATS, \
 		tests/bats/test_basics.bats \
+		tests/bats/test_namespace_switch.bats \
 		tests/bats/test_gpu_basic.bats \
 		tests/bats/test_gpu_extres.bats \
 		tests/bats/test_gpu_stress.bats \
