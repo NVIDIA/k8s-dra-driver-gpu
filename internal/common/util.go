@@ -29,15 +29,6 @@ import (
 
 const dumpPath = "/tmp/goroutine-stacks.dump"
 
-// CDIEditsAppliedEnvKey and CDIEditsAppliedEnvValue is a key/value
-// pair injected via CDI container edits into the CD daemon container. The CD
-// daemon checks for this key/value pair at startup to verify that CDI edits were
-// applied by the container runtime. If not present, CDI is likely disabled.
-const (
-	CDIEditsAppliedEnvKey   = "NVIDIA_CDI_EDITS_APPLIED"
-	CDIEditsAppliedEnvValue = "true"
-)
-
 // Set up SIGUSR2 handler: if triggered, acquire stack traces for all goroutines
 // in this process. Dump to file, and fall back to emitting to stderr if file
 // output didn't work.

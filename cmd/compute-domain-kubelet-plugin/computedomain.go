@@ -162,7 +162,6 @@ func (s *ComputeDomainDaemonSettings) GetCDIContainerEditsCommon(ctx context.Con
 	edits := &cdiapi.ContainerEdits{
 		ContainerEdits: &cdispec.ContainerEdits{
 			Env: []string{
-				fmt.Sprintf("%s=%s", common.CDIEditsAppliedEnvKey, common.CDIEditsAppliedEnvValue),
 				fmt.Sprintf("CLIQUE_ID=%s", s.manager.cliqueID),
 				fmt.Sprintf("COMPUTE_DOMAIN_UUID=%s", cd.UID),
 				fmt.Sprintf("COMPUTE_DOMAIN_NAME=%s", cd.Name),
