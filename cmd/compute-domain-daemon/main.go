@@ -204,6 +204,13 @@ func newApp() *cli.App {
 
 // Run invokes the IMEX daemon and manages its lifecycle.
 func run(ctx context.Context, cancel context.CancelFunc, flags *Flags) error {
+	// Verify that CDI container edits were applied by the container runtime.
+	// If the env var is not set to "true", CDI is likely disabled and the daemon
+	// cannot function correctly (e.g. the /imexd mount will be missing).
+	if os.Getenv(common.CDIEditsAppliedEnvKey) != common.CDIEditsAppliedEnvValue {
+		return fmt.Errorf("CDI container edits did not apply -- is CDI enabled in your container runtime?")
+	}
+
 	common.StartDebugSignalHandlers()
 
 	// Validate feature gate dependencies
