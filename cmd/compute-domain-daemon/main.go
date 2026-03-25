@@ -408,7 +408,10 @@ func IMEXDaemonUpdateLoopWithDNSNames(ctx context.Context, controller *Controlle
 			}
 
 			dnsNameManager.LogDNSNameMappings()
-
+			// Skip sending SIGUSR1 when:
+			// - the process is fresh (has newly been started), or
+			// - this was a noop update, or
+			// - no new peers were added (i.e. the update only removes nodes or keeps the set unchanged).
 			if !shouldSendSIGUSR1(oldIPs, dnsNameManager.ipToDNSName, updated, fresh) {
 				break
 			}
