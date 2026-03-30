@@ -86,26 +86,6 @@ RUN --mount=type=cache,target=/mc/go/build-cache,id=gocache \
     case "$TARGETARCH" in "$BUILDARCH") cc=gcc;; arm64) cc=aarch64-linux-gnu-gcc;; amd64) cc=x86_64-linux-gnu-gcc;; esac && \
     time make CC=${cc} GOARCH=${TARGETARCH} PREFIX=/artifacts cmds
 
-# Build static bash binary (against musl). Notes: cross-compilation isn't robust
-# (see non-deterministic segfaults tracked in issues/502; source code download
-# instabilities tracked in issues/743) and generally takes signifiant time even
-# on happy path (dominiates CI duration as of the time of writing). Do not build
-# this every time. Instead, consume it from a previous image in a registry -- also,
-# leave machinery (out-commented) in place.
-#
-# Choose: 1) fresh bash build or 2) use binary from previous image
-#
-# option 1:
-ARG BASH_STATIC_GIT_REF=021f5f29f665c92ca16a369d9f27e288c3aed0c6
-ENV BASH_STATIC_GIT_REF=${BASH_STATIC_GIT_REF}
-WORKDIR /bashbuild
-COPY hack/build-bash-static.sh .
-RUN bash /bashbuild/build-bash-static.sh
-RUN cd /bashbuild/bash-static/releases && ./bash*-static --version && mv bash-*-static /bashbuild/bash && file /bashbuild/bash
-
-# option 2:
-# FROM registry.k8s.io/nvidia/nvidia-dra-driver-gpu:v25.12.0-dev-839e966a AS bash
-
 # Pull the nvidia-cdi-hook binary out of the relevant toolkit container
 # (arch: TARGETPLATFORM, set via --platform).
 FROM ${TOOLKIT_CONTAINER_IMAGE} AS toolkit
@@ -114,9 +94,10 @@ FROM ${TOOLKIT_CONTAINER_IMAGE} AS toolkit
 # arg). Note that nvcr.io/nvidia/distroless/cc is based on
 # https://github.com/GoogleContainerTools/distroless; specifically on debian12.
 # For consistency, the build stage above derives from Debian 12 directly. The
-# `-dev` suffic is to get busybox as a shell added. For RUN directives to pick
+# `-dev` suffix is to get busybox as a shell added. For RUN directives to pick
 # that up, use `SHELL ["/busybox/sh", "-c"]`.
-FROM nvcr.io/nvidia/distroless/cc:v4.0.3-dev
+# FROM nvcr.io/nvidia/distroless/cc:v4.0.3-dev
+FROM nvcr.io/nvidia/distroless/cc:v4.0.3
 
 ENV NVIDIA_DISABLE_REQUIRE="true"
 ENV NVIDIA_VISIBLE_DEVICES=all
@@ -138,12 +119,6 @@ LABEL org.opencontainers.image.source="https://github.com/kubernetes-sigs/nvidia
 # Add top-level license (AL2) file into the container image
 COPY LICENSE /
 
-# option 1: fresh bash build
-COPY --from=build   /bashbuild/bash                           /bin/bash
-
-# option 2: bash from previous image
-# COPY --from=bash    /bin/bash                                 /bin/bash
-
 COPY --from=toolkit /artifacts/rpm/usr/bin/nvidia-cdi-hook    /usr/bin/nvidia-cdi-hook
 COPY --from=build   /artifacts/compute-domain-controller      /usr/bin/compute-domain-controller
 COPY --from=build   /artifacts/compute-domain-kubelet-plugin  /usr/bin/compute-domain-kubelet-plugin
@@ -151,9 +126,6 @@ COPY --from=build   /artifacts/compute-domain-daemon          /usr/bin/compute-d
 COPY --from=build   /artifacts/gpu-kubelet-plugin             /usr/bin/gpu-kubelet-plugin
 COPY --from=build   /artifacts/webhook                        /usr/bin/webhook
 
-COPY /scripts/bind_to_driver.sh                               /usr/bin/bind_to_driver.sh
-COPY /scripts/unbind_from_driver.sh                           /usr/bin/unbind_from_driver.sh
-COPY /hack/kubelet-plugin-prestart.sh                         /usr/bin/kubelet-plugin-prestart.sh
 COPY /templates /templates
 
 # Use root by default (for example, the init container as of now needs
@@ -164,4 +136,3 @@ USER root:root
 
 # Smoke-test executables (provide early build feedback).
 RUN ["/usr/bin/compute-domain-kubelet-plugin", "--version"]
-RUN ["/bin/bash", "--version"]
