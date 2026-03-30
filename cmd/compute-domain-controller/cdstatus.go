@@ -351,6 +351,22 @@ func (m *ComputeDomainStatusManager) getNonStaleFabricNodes(existingNodes []*nva
 	return result
 }
 
+func validateCDStatusNodes(cd *nvapi.ComputeDomain) {
+	type cliqueIndexKey struct {
+		cliqueID string
+		index    int
+	}
+	seen := make(map[cliqueIndexKey]string)
+	for _, node := range cd.Status.Nodes {
+		key := cliqueIndexKey{cliqueID: node.CliqueID, index: node.Index}
+		if prevNodeName, exists := seen[key]; exists {
+			klog.Fatalf("ComputeDomain %s/%s status invariant violated: node index %d in clique %q is used by both node %q and node %q",
+				cd.Namespace, cd.Name, node.Index, node.CliqueID, prevNodeName, node.Name)
+		}
+		seen[key] = node.Name
+	}
+}
+
 // nodesEqual checks if two slices of ComputeDomainNode are equal.
 func (m *ComputeDomainStatusManager) nodesEqual(a, b []*nvapi.ComputeDomainNode) bool {
 	aMap := make(map[string]nvapi.ComputeDomainNode)

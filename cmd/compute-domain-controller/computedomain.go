@@ -207,6 +207,9 @@ func (m *ComputeDomainManager) UpdateStatus(ctx context.Context, cd *nvapi.Compu
 	// Recalculate global status based on current state
 	cd.Status.Status = m.calculateGlobalStatus(cd)
 
+	// Validate status invariants: crash loudly if a node index is used more than once.
+	validateCDStatusNodes(cd)
+
 	updatedCD, err := m.config.clientsets.Nvidia.ResourceV1beta1().ComputeDomains(cd.Namespace).UpdateStatus(ctx, cd, metav1.UpdateOptions{})
 	if err != nil {
 		return nil, err
