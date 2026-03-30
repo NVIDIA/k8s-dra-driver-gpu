@@ -369,8 +369,8 @@ func IMEXDaemonUpdateLoopWithIPs(ctx context.Context, controller *Controller, cl
 // - the mapping was updated,
 // - the process is not fresh, and
 // - at least one new IP (peer) was added.
-func shouldSendSIGUSR1(oldIPs, newIPs IPSet, updated, fresh bool) bool {
-	if !updated || fresh {
+func shouldSendSIGUSR1(oldIPs, newIPs IPSet, fresh bool) bool {
+	if fresh {
 		return false
 	}
 
@@ -417,7 +417,7 @@ func IMEXDaemonUpdateLoopWithDNSNames(ctx context.Context, controller *Controlle
 			// - the process is fresh (has newly been started), or
 			// - this was a noop update, or
 			// - no new peers were added (i.e. the update only removes nodes or keeps the set unchanged).
-			if !shouldSendSIGUSR1(IPSet(oldIPs), IPSet(dnsNameManager.ipToDNSName), updated, fresh) {
+			if !updated || !shouldSendSIGUSR1(IPSet(oldIPs), IPSet(dnsNameManager.ipToDNSName), fresh) {
 				break
 			}
 
