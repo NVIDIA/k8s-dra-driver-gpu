@@ -362,7 +362,6 @@ func IMEXDaemonUpdateLoopWithIPs(ctx context.Context, controller *Controller, cl
 // shouldSendSIGUSR1 determines whether the IMEX daemon should be
 // signaled to re-resolve and reconnect to peers.
 //
-// updated indicates whether the DNS/IP mapping actually changed.
 // fresh indicates whether the IMEX daemon process was just started.
 //
 // The signal is sent only when:
@@ -417,7 +416,12 @@ func IMEXDaemonUpdateLoopWithDNSNames(ctx context.Context, controller *Controlle
 			// - the process is fresh (has newly been started), or
 			// - this was a noop update, or
 			// - no new peers were added (i.e. the update only removes nodes or keeps the set unchanged).
-			if !updated || !shouldSendSIGUSR1(IPSet(oldIPs), IPSet(dnsNameManager.ipToDNSName), fresh) {
+			newIPs := make(IPSet, len(dnsNameManager.ipToDNSName))
+			for ip := range dnsNameManager.ipToDNSName {
+				newIPs[ip] = struct{}{}
+			}
+
+			if !updated || !shouldSendSIGUSR1(IPSet(oldIPs), newIPs, fresh) {
 				break
 			}
 
