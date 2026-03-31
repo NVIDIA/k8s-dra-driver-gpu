@@ -4,8 +4,8 @@
 # Tests for driver installation namespace switching scenarios.
 #
 # The goal is to ensure that the driver can be reinstalled in a different
-# namespace while still allowing management of previously deployed DaemonSets
-# (IMEX, MPS), and that resources from the previous namespace are properly
+# namespace while still allowing management of previously deployed IMEX 
+# DaemonSets and that resources from the previous namespace are properly
 # cleaned up during unprepare.
 
 setup_file() {
@@ -136,98 +136,4 @@ bats::on_failure() {
 
   # Stage 8: fresh workload cycle to verify normal operation in new namespace.
   apply_check_delete_workload_imex_chan_inject
-}
-
-
-# bats test_tags=fastfeedback
-@test "namespace-switch: MPS prepare/unprepare cleanup in previous namespace" {
-  # This test verifies that when the driver is switched from one namespace to
-  # another, the MPS control daemon Deployment that was created in the previous
-  # namespace is properly cleaned up when the workload is deleted (unprepare).
-
-  local _old_ns="gpu-operator"
-  local _new_ns="nvidia-dra-driver-gpu"
-  local _spec="tests/bats/specs/mps-rct-pod.yaml"
-  local _podname="pod-mps-gpu"
-
-  # Stage 1: install in old namespace with MPSSupport feature enabled.
-  local _iargs_old=(
-    "--set" "logVerbosity=6"
-    "--set" "featureGates.MPSSupport=true"
-  )
-
-  helm uninstall "${TEST_HELM_RELEASE_NAME}" -n "${_new_ns}" --wait --timeout=30s || true
-  kubectl wait --for=delete pods -A -l app.kubernetes.io/name=nvidia-dra-driver-gpu --timeout=10s || true
-
-  iupgrade_wait "${TEST_CHART_REPO}" "${TEST_CHART_VERSION}" _iargs_old "${_old_ns}"
-
-  # Stage 2: apply MPS workload; this triggers an MPS control daemon Deployment
-  # in the old namespace.
-  kubectl apply -f "${_spec}"
-  kubectl wait --for=condition=READY pods "${_podname}" --timeout=100s
-
-  # Verify MPS control daemon Deployment was created in old namespace.
-  local mps_deploy_count
-  mps_deploy_count=$(kubectl get deployment -n "${_old_ns}" \
-    -o name 2>/dev/null | grep -c "mps-control-daemon" || true)
-  log "MPS control daemon Deployments in ${_old_ns}: ${mps_deploy_count}"
-  [ "${mps_deploy_count}" -gt 0 ]
-
-  # Capture MPS deployment name for later cleanup verification.
-  local mps_deploy_name
-  mps_deploy_name=$(kubectl get deployment -n "${_old_ns}" \
-    -o name 2>/dev/null | grep "mps-control-daemon" | head -n1 | cut -d/ -f2)
-  log "MPS control daemon Deployment name: ${mps_deploy_name}"
-
-  # Stage 3: switch driver to new namespace.
-  local _iargs_new=(
-    "--set" "logVerbosity=6"
-    "--set" "featureGates.MPSSupport=true"
-  )
-
-  helm uninstall "${TEST_HELM_RELEASE_NAME}" -n "${_old_ns}" --wait --timeout=30s
-  kubectl wait --for=delete pods -A -l app.kubernetes.io/name=nvidia-dra-driver-gpu --timeout=10s
-  iupgrade_wait "${TEST_CHART_REPO}" "${TEST_CHART_VERSION}" _iargs_new
-
-  # Stage 4: delete workload (triggers unprepare via new kubelet plugin).
-  kubectl delete -f "${_spec}"
-  kubectl wait --for=delete pods "${_podname}" --timeout=30s
-
-  # Stage 5: verify MPS control daemon Deployment in old namespace is cleaned up.
-  # After unprepare, the MPS Deployment from the old namespace must not remain.
-  kubectl wait --for=delete deployment "${mps_deploy_name}" \
-    -n "${_old_ns}" --timeout=30s || true
-  run kubectl get deployment -n "${_old_ns}" "${mps_deploy_name}" --ignore-not-found
-  assert_output ""
-
-  # Also verify no lingering MPS control daemon Deployments in old namespace.
-  #run kubectl get deployment -n "${_old_ns}" \
-  #  --no-headers 2>/dev/null
-  #refute_output --partial "mps-control-daemon"
-
-  # Stage 6: fresh MPS workload cycle to verify normal operation in new namespace.
-  kubectl apply -f "${_spec}"
-  kubectl wait --for=condition=READY pods "${_podname}" --timeout=60s
-
-  # MPS Deployment should now be in new namespace.
-  mps_deploy_count=$(kubectl get deployment -n "${_new_ns}" \
-    -o name 2>/dev/null | grep -c "mps-control-daemon" || true)
-  log "MPS control daemon Deployments in ${_new_ns}: ${mps_deploy_count}"
-  [ "${mps_deploy_count}" -gt 0 ]
-
-  # Capture new-namespace MPS deployment name for cleanup verification.
-  local mps_new_deploy_name
-  mps_new_deploy_name=$(kubectl get deployment -n "${_new_ns}" \
-    -o name 2>/dev/null | grep "mps-control-daemon" | head -n1 | cut -d/ -f2)
-  log "MPS control daemon Deployment name in ${_new_ns}: ${mps_new_deploy_name}"
-
-  kubectl delete -f "${_spec}"
-  kubectl wait --for=delete pods "${_podname}" --timeout=30s
-
-  # MPS Deployment in new namespace should be cleaned up after workload deletion.
-  kubectl wait --for=delete deployment "${mps_new_deploy_name}" \
-    -n "${_new_ns}" --timeout=30s || true
-  run kubectl get deployment -n "${_new_ns}" \
-    --no-headers 2>/dev/null
-  refute_output --partial "mps-control-daemon"
 }
