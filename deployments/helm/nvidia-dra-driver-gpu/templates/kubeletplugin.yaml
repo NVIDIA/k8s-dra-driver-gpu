@@ -54,7 +54,7 @@ spec:
         image: {{ include "nvidia-dra-driver-gpu.fullimage" . }}
         securityContext:
           privileged: true
-        command: [/usr/bin/gpu-kubelet-plugin, prestart-init]
+        command: [/usr/bin/gpu-kubelet-plugin, prestart]
         env:
         - name: NVIDIA_DRIVER_ROOT
           value: "{{ .Values.nvidiaDriverRoot }}"

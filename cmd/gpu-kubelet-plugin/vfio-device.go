@@ -260,7 +260,7 @@ func (vm *VfioPciManager) acquireUnbindLock(gpu string) error {
 		klog.Infof("[retry %d/%d] Attempting to acquire unbindLock for %s", attempt, lockRetries, gpu)
 
 		// Try to write 1 to acquire the lock
-		err := os.WriteFile(unbindLockFile, []byte("1\n"), 0200)
+		err := os.WriteFile(unbindLockFile, []byte("1\n"), 0644)
 		if err != nil {
 			klog.Warningf("failed to write to unbindLock file %s: %v", unbindLockFile, err)
 		}
@@ -300,8 +300,7 @@ func (vm *VfioPciManager) unbindFromDriver(pciAddress string) error {
 		}
 	}
 
-	unbindFile := filepath.Join(existingDriver, "unbind")
-	if err := os.WriteFile(unbindFile, []byte(pciAddress+"\n"), 0200); err != nil {
+	if err := os.WriteFile(filepath.Join(existingDriver, "unbind"), []byte(pciAddress+"\n"), 0644); err != nil {
 		klog.Errorf("Attempting to unbind %s from its driver failed; err: %v", pciAddress, err)
 		return err
 	}
@@ -318,7 +317,7 @@ func (vm *VfioPciManager) bindToDriver(pciAddress, driver string) error {
 		return fmt.Errorf("driver_override file not found: %v", err)
 	}
 
-	if err := os.WriteFile(driverOverrideFile, []byte(driver+"\n"), 0200); err != nil {
+	if err := os.WriteFile(driverOverrideFile, []byte(driver+"\n"), 0644); err != nil {
 		klog.Errorf("failed to write '%s' to %s", driver, driverOverrideFile)
 		return fmt.Errorf("failed to write to driver_override: %v", err)
 	}
@@ -328,10 +327,10 @@ func (vm *VfioPciManager) bindToDriver(pciAddress, driver string) error {
 		return fmt.Errorf("bind file not found: %v", err)
 	}
 
-	if err := os.WriteFile(bindFile, []byte(pciAddress+"\n"), 0200); err != nil {
-		klog.Errorf("Attempting to bind %s to %s driver failed; err: %v", pciAddress, driver, err)
+	if err := os.WriteFile(bindFile, []byte(pciAddress+"\n"), 0644); err != nil {
+		klog.Errorf("failed to write %s to %s; err: %v", pciAddress, bindFile, err)
 		// attempt to revert driver_override
-		_ = os.WriteFile(driverOverrideFile, []byte("\n"), 0200)
+		_ = os.WriteFile(driverOverrideFile, []byte("\n"), 0644)
 		return fmt.Errorf("failed to write to bind file: %v", err)
 	}
 	return nil

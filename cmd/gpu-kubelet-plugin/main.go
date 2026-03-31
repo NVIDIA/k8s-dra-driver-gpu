@@ -73,11 +73,11 @@ func main() {
 		fmt.Fprintf(os.Stderr, "Error masking NVIDIA driver params: %v\n", err)
 	}
 
-	if len(os.Args) > 1 && os.Args[1] == "prestart-init" {
+	if len(os.Args) > 1 && os.Args[1] == "prestart" {
 		ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGTERM)
 		defer cancel()
 
-		if err := runPrestartInit(ctx); err != nil {
+		if err := runPrestart(ctx); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}

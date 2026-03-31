@@ -29,11 +29,9 @@ import (
 
 // Main intent: help users to self-troubleshoot when the GPU driver is not set up
 // properly before installing this DRA driver. In that case, the log of the init
-// container running this script is meant to yield an actionable error message.
+// container running the prestart code is meant to yield an actionable error message.
 // For now, rely on k8s to implement a high-level retry with back-off.
-func runPrestartInit(ctx context.Context) error {
-	// Design goal: long-running init container that retries at constant frequency,
-	// and leaves only upon success (with code 0).
+func runPrestart(ctx context.Context) error {
 	waitS := 10 * time.Second
 	attempt := 0
 
@@ -45,7 +43,7 @@ func runPrestartInit(ctx context.Context) error {
 	}
 
 	driverRootParent := "/driver-root-parent"
-	// Remove trailing slash (if existing) and get last path element.
+	// filepath.Base removes trailing slash (if existing) and get last path element.
 	driverRootPath := filepath.Join(driverRootParent, filepath.Base(nvidiaDriverRoot))
 
 	// Ensure the /driver-root-parent directory exists
@@ -58,7 +56,7 @@ func runPrestartInit(ctx context.Context) error {
 	// once the driver becomes mounted (e.g., once GPU operator provides the driver
 	// on the host at /run/nvidia/driver).
 	fmt.Printf("create symlink: /driver-root -> %s\n", driverRootPath)
-	_ = os.Remove("/driver-root")
+
 	if err := os.Symlink(driverRootPath, "/driver-root"); err != nil {
 		klog.Warningf("Failed to create symlink: %v", err)
 	}
@@ -96,6 +94,10 @@ func validateAndExitOnSuccess(ctx context.Context, nvidiaDriverRoot string, atte
 	// Search specific set of directories (not recursively: not required, and
 	// /driver-root may be a big tree). Limit to first result (multiple results
 	// are a bit of a pathological state, but continue with validation logic).
+
+	// original script does not follow symlink for nvpath but since symlinkm
+	// can also execute so reuse findFirstFile to avoid new func that's largely
+	// duplicative.
 	nvPath := findFirstFile(
 		"nvidia-smi",
 		"/driver-root/opt/bin",
@@ -105,7 +107,6 @@ func validateAndExitOnSuccess(ctx context.Context, nvidiaDriverRoot string, atte
 		"/driver-root/sbin",
 	)
 
-	// Follow symlinks (-L), because `libnvidia-ml.so.1` is typically a link.
 	nvLibPath := findFirstFile(
 		"libnvidia-ml.so.1",
 		"/driver-root/usr/lib64",
@@ -145,6 +146,7 @@ func validateAndExitOnSuccess(ctx context.Context, nvidiaDriverRoot string, atte
 		// hang).
 		fmt.Printf("invoke: env -i LD_PRELOAD=%s %s\n", nvLibPath, nvPath)
 
+		// override default env to just LD_PRELOAD
 		cmd := exec.CommandContext(ctx, nvPath)
 		cmd.Env = []string{"LD_PRELOAD=" + nvLibPath}
 		cmd.Stdout = os.Stdout
@@ -162,6 +164,7 @@ func validateAndExitOnSuccess(ctx context.Context, nvidiaDriverRoot string, atte
 		if exitErr, ok := err.(*exec.ExitError); ok {
 			fmt.Printf("exit code: %d\n", exitErr.ExitCode())
 		} else {
+			// nvidia-smi fails to start. e.g. permission denied etc.
 			fmt.Printf("execution failed: %v, exit code: -1\n", err)
 		}
 	}
@@ -209,6 +212,9 @@ func validateAndExitOnSuccess(ctx context.Context, nvidiaDriverRoot string, atte
 	return false
 }
 
+// findFirstFile finds the first occurrence of filename in the provided
+// directories not recursively.
+// It follows symlinks (similar to find -L).
 func findFirstFile(filename string, dirs ...string) string {
 	for _, dir := range dirs {
 		path := filepath.Join(dir, filename)
