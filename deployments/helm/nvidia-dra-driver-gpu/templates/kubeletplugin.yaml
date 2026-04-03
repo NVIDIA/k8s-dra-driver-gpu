@@ -54,7 +54,7 @@ spec:
         image: {{ include "nvidia-dra-driver-gpu.fullimage" . }}
         securityContext:
           privileged: true
-        command: [bash, /usr/bin/kubelet-plugin-prestart.sh]
+        command: [/usr/bin/gpu-kubelet-plugin, prestart]
         env:
         - name: NVIDIA_DRIVER_ROOT
           value: "{{ .Values.nvidiaDriverRoot }}"
@@ -87,19 +87,8 @@ spec:
           {{- toYaml .Values.kubeletPlugin.containers.computeDomains.securityContext | nindent 10 }}
         image: {{ include "nvidia-dra-driver-gpu.fullimage" . }}
         imagePullPolicy: {{ .Values.image.pullPolicy }}
-        command: ["bash", "-c"]
-        args:
-        - |-
-          # Conditionally mask the params file to prevent this container from
-          # recreating any missing GPU device nodes. This is necessary, for
-          # example, when running under nvkind to limit the set GPUs governed
-          # by the plugin even though it has cgroup access to all of them.
-          if [ "${MASK_NVIDIA_DRIVER_PARAMS}" = "true" ]; then
-            cp /proc/driver/nvidia/params root/gpu-params
-            sed -i 's/^ModifyDeviceFiles: 1$/ModifyDeviceFiles: 0/' root/gpu-params
-            mount --bind root/gpu-params /proc/driver/nvidia/params
-          fi
-          compute-domain-kubelet-plugin -v $(LOG_VERBOSITY)
+        command: ["compute-domain-kubelet-plugin"]
+        args: ["-v", "$(LOG_VERBOSITY)"]
         resources:
           {{- toYaml .Values.kubeletPlugin.containers.computeDomains.resources | nindent 10 }}
         {{/*
@@ -188,19 +177,8 @@ spec:
           {{- end }}
         image: {{ include "nvidia-dra-driver-gpu.fullimage" . }}
         imagePullPolicy: {{ .Values.image.pullPolicy }}
-        command: ["bash", "-c"]
-        args:
-        - |-
-          # Conditionally mask the params file to prevent this container from
-          # recreating any missing GPU device nodes. This is necessary, for
-          # example, when running under nvkind to limit the set GPUs governed
-          # by the plugin even though it has cgroup access to all of them.
-          if [ "${MASK_NVIDIA_DRIVER_PARAMS}" = "true" ]; then
-            cp /proc/driver/nvidia/params root/gpu-params
-            sed -i 's/^ModifyDeviceFiles: 1$/ModifyDeviceFiles: 0/' root/gpu-params
-            mount --bind root/gpu-params /proc/driver/nvidia/params
-          fi
-          gpu-kubelet-plugin -v $(LOG_VERBOSITY)
+        command: ["gpu-kubelet-plugin"]
+        args: ["-v", "$(LOG_VERBOSITY)"]
         resources:
           {{- toYaml .Values.kubeletPlugin.containers.gpus.resources | nindent 10 }}
         {{/*

@@ -69,6 +69,21 @@ func (c Config) DriverPluginPath() string {
 }
 
 func main() {
+	if err := common.MaskNvidiaDriverParams(); err != nil {
+		fmt.Fprintf(os.Stderr, "Error masking NVIDIA driver params: %v\n", err)
+	}
+
+	if len(os.Args) > 1 && os.Args[1] == "prestart" {
+		ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGTERM)
+		defer cancel()
+
+		if err := runPrestart(ctx); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+		os.Exit(0)
+	}
+
 	if err := newApp().Run(os.Args); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)

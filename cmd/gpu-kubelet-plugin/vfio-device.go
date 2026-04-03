@@ -23,6 +23,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"k8s.io/klog/v2"
@@ -31,19 +32,17 @@ import (
 )
 
 const (
-	kernelIommuGroupPath   = "/sys/kernel/iommu_groups"
-	vfioPciModule          = "vfio_pci"
-	vfioPciDriver          = "vfio-pci"
-	nvidiaDriver           = "nvidia"
-	hostRoot               = "/host-root"
-	sysModulesRoot         = "/sys/module"
-	pciDevicesRoot         = "/sys/bus/pci/devices"
-	vfioDevicesRoot        = "/dev/vfio"
-	unbindFromDriverScript = "/usr/bin/unbind_from_driver.sh"
-	bindToDriverScript     = "/usr/bin/bind_to_driver.sh"
-	driverResetRetries     = "5"
-	gpuFreeCheckInterval   = 1 * time.Second
-	gpuFreeCheckTimeout    = 60 * time.Second
+	kernelIommuGroupPath = "/sys/kernel/iommu_groups"
+	vfioPciModule        = "vfio_pci"
+	vfioPciDriver        = "vfio-pci"
+	nvidiaDriver         = "nvidia"
+	hostRoot             = "/host-root"
+	sysModulesRoot       = "/sys/module"
+	pciDevicesRoot       = "/sys/bus/pci/devices"
+	vfioDevicesRoot      = "/dev/vfio"
+	driverResetRetries   = "5"
+	gpuFreeCheckInterval = 1 * time.Second
+	gpuFreeCheckTimeout  = 60 * time.Second
 )
 
 type VfioPciManager struct {
@@ -248,20 +247,91 @@ func (vm *VfioPciManager) changeDriver(pciAddress, driver string) error {
 	return nil
 }
 
+func (vm *VfioPciManager) acquireUnbindLock(gpu string) error {
+	lockRetries := 5
+	unbindLockFile := filepath.Join("/proc/driver/nvidia/gpus", gpu, "unbindLock")
+
+	if _, err := os.Stat(unbindLockFile); err != nil {
+		// If the lock file doesn't exist, we assume no lock is needed.
+		return nil
+	}
+
+	for attempt := 1; attempt <= lockRetries; attempt++ {
+		klog.Infof("[retry %d/%d] Attempting to acquire unbindLock for %s", attempt, lockRetries, gpu)
+
+		// Try to write 1 to acquire the lock
+		err := os.WriteFile(unbindLockFile, []byte("1\n"), 0644)
+		if err != nil {
+			klog.Warningf("failed to write to unbindLock file %s: %v", unbindLockFile, err)
+		}
+
+		// Read the lock file to verify
+		content, err := os.ReadFile(unbindLockFile)
+		if err == nil {
+			val := strings.TrimSpace(string(content))
+			if val == "1" {
+				klog.Infof("UnbindLock acquired for %s", gpu)
+				return nil
+			}
+		}
+
+		time.Sleep(time.Duration(attempt) * time.Second)
+	}
+
+	return fmt.Errorf("cannot obtain unbindLock for %s", gpu)
+}
+
 func (vm *VfioPciManager) unbindFromDriver(pciAddress string) error {
-	out, err := execCommand(unbindFromDriverScript, []string{pciAddress}) //nolint:gosec
+	driverPath := filepath.Join(pciDevicesRoot, pciAddress, "driver")
+	if _, err := os.Stat(driverPath); err != nil {
+		// Not bound to any driver
+		return nil
+	}
+
+	existingDriver, err := filepath.EvalSymlinks(driverPath)
 	if err != nil {
-		klog.Errorf("Attempting to unbind %s from its driver failed; stdout: %s, err: %v", pciAddress, string(out), err)
+		return fmt.Errorf("failed to resolve driver symlink for %s: %v", pciAddress, err)
+	}
+
+	existingDriverName := filepath.Base(existingDriver)
+	if existingDriverName == "nvidia" {
+		if err := vm.acquireUnbindLock(pciAddress); err != nil {
+			return err
+		}
+	}
+
+	if err := os.WriteFile(filepath.Join(existingDriver, "unbind"), []byte(pciAddress+"\n"), 0644); err != nil {
+		klog.Errorf("Attempting to unbind %s from its driver failed; err: %v", pciAddress, err)
 		return err
 	}
 	return nil
 }
 
 func (vm *VfioPciManager) bindToDriver(pciAddress, driver string) error {
-	out, err := execCommand(bindToDriverScript, []string{pciAddress, driver}) //nolint:gosec
-	if err != nil {
-		klog.Errorf("Attempting to bind %s to %s driver failed; stdout: %s, err: %v", pciAddress, driver, string(out), err)
-		return err
+	driversPath := "/sys/bus/pci/drivers"
+	driverOverrideFile := filepath.Join(pciDevicesRoot, pciAddress, "driver_override")
+	bindFile := filepath.Join(driversPath, driver, "bind")
+
+	if _, err := os.Stat(driverOverrideFile); err != nil {
+		klog.Errorf("'%s' file does not exist", driverOverrideFile)
+		return fmt.Errorf("driver_override file not found: %v", err)
+	}
+
+	if err := os.WriteFile(driverOverrideFile, []byte(driver+"\n"), 0644); err != nil {
+		klog.Errorf("failed to write '%s' to %s", driver, driverOverrideFile)
+		return fmt.Errorf("failed to write to driver_override: %v", err)
+	}
+
+	if _, err := os.Stat(bindFile); err != nil {
+		klog.Errorf("'%s' file does not exist", bindFile)
+		return fmt.Errorf("bind file not found: %v", err)
+	}
+
+	if err := os.WriteFile(bindFile, []byte(pciAddress+"\n"), 0644); err != nil {
+		klog.Errorf("failed to write %s to %s; err: %v", pciAddress, bindFile, err)
+		// attempt to revert driver_override
+		_ = os.WriteFile(driverOverrideFile, []byte("\n"), 0644)
+		return fmt.Errorf("failed to write to bind file: %v", err)
 	}
 	return nil
 }
