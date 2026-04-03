@@ -1,0 +1,9 @@
+# See https://cloud.google.com/cloud-build/docs/build-config
+
+options:
+  substitutionOption: ALLOW_LOOSE
+steps:
+  - name: gcr.io/k8s-staging-test-infra/gcb-docker-gcloud:v20260127-c1affcc8de
+    entrypoint: ./scripts/build-and-publish-image.sh
+    env:
+    - IMG_PREFIX=us-central1-docker.pkg.dev/k8s-staging-images/nvidia-dra-driver-gpu
