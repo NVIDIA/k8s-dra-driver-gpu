@@ -24,9 +24,13 @@ const (
 	ComputeDomainStatusNone     = ""
 	ComputeDomainStatusReady    = "Ready"
 	ComputeDomainStatusNotReady = "NotReady"
+	ComputeDomainStatusFailed   = "Failed"
 
 	ComputeDomainChannelAllocationModeSingle = "Single"
 	ComputeDomainChannelAllocationModeAll    = "All"
+
+	ComputeDomainBindingConditions        = "ComputeDomainReady"
+	ComputeDomainBindingFailureConditions = "ComputeDomainNotReady"
 )
 
 // +genclient
@@ -134,7 +138,7 @@ type ComputeDomainNode struct {
 	// it is not. It is marked as optional in order to support downgrades
 	// and avoid an API bump.
 	// +kubebuilder:validation:Optional
-	// +kubebuilder:validation:Enum=Ready;NotReady
+	// +kubebuilder:validation:Enum=Ready;NotReady;Failed
 	// +kubebuilder:default:=NotReady
 	Status string `json:"status,omitempty"`
 }

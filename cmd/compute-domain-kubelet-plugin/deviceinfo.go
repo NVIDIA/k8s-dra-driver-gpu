@@ -21,6 +21,8 @@ import (
 
 	resourceapi "k8s.io/api/resource/v1"
 	"k8s.io/utils/ptr"
+	nvapi "sigs.k8s.io/nvidia-dra-driver-gpu/api/nvidia.com/resource/v1beta1"
+	"sigs.k8s.io/nvidia-dra-driver-gpu/pkg/featuregates"
 )
 
 type ComputeDomainChannelInfo struct {
@@ -58,6 +60,10 @@ func (d *ComputeDomainChannelInfo) GetDevice() resourceapi.Device {
 				IntValue: ptr.To(int64(d.ID)),
 			},
 		},
+	}
+	if featuregates.Enabled(featuregates.ComputeDomainBindingConditions) {
+		device.BindingConditions = []string{nvapi.ComputeDomainBindingConditions}
+		device.BindingFailureConditions = []string{nvapi.ComputeDomainBindingFailureConditions}
 	}
 	return device
 }
