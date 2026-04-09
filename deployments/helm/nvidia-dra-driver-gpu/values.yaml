@@ -26,6 +26,10 @@ nvidiaDriverRoot: /
 # If not specified, the default path inferred from the nvidia-container-toolkit library version will be used.
 nvidiaCDIHookPath: ""
 
+# CDI root directory path.
+# This is where CDI spec files are stored and accessed by the runtime.
+cdiRoot: "/var/run/cdi"
+
 nameOverride: ""
 fullnameOverride: ""
 namespaceOverride: ""

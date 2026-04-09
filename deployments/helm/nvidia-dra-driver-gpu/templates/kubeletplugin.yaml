@@ -144,7 +144,7 @@ spec:
         - name: NVIDIA_VISIBLE_DEVICES
           value: void
         - name: CDI_ROOT
-          value: /var/run/cdi
+          value: {{ .Values.cdiRoot | quote }}
         - name: NVIDIA_MIG_CONFIG_DEVICES
           value: all
         - name: NODE_NAME
@@ -181,7 +181,7 @@ spec:
           mountPath: {{ .Values.kubeletPlugin.kubeletPluginsDirectoryPath | quote }}
           mountPropagation: Bidirectional
         - name: cdi
-          mountPath: /var/run/cdi
+          mountPath: {{ .Values.cdiRoot | quote }}
         - name: driver-root
           mountPath: /driver-root
           readOnly: true
@@ -252,7 +252,7 @@ spec:
         - name: NVIDIA_VISIBLE_DEVICES
           value: void
         - name: CDI_ROOT
-          value: /var/run/cdi
+          value: {{ .Values.cdiRoot | quote }}
         - name: NVIDIA_MIG_CONFIG_DEVICES
           value: all
         - name: NODE_NAME
@@ -291,7 +291,7 @@ spec:
           mountPath: {{ .Values.kubeletPlugin.kubeletPluginsDirectoryPath | quote }}
           mountPropagation: Bidirectional
         - name: cdi
-          mountPath: /var/run/cdi
+          mountPath: {{ .Values.cdiRoot | quote }}
         - name: driver-root
           mountPath: /driver-root
           mountPropagation: HostToContainer
@@ -317,7 +317,7 @@ spec:
           path: {{ .Values.kubeletPlugin.kubeletPluginsDirectoryPath | quote }}
       - name: cdi
         hostPath:
-          path: /var/run/cdi
+          path: {{ .Values.cdiRoot | quote }}
       - name: driver-root-parent
         hostPath:
           # If nvidiaDriverRoot == "/" then its parent is itself. Otherwise, get
