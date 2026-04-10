@@ -17,6 +17,7 @@ limitations under the License.
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -417,8 +418,14 @@ func (l deviceLib) obliterateStaleMIGDevices(expectedDeviceNames []DeviceName) e
 
 		// If no MIG device was found on this GPU, MIG mode might still be
 		// enabled. Disable it in this case.
+		// Note: On virtualized platforms where GPU reset is not supported,
+		// this will be skipped with a warning rather than putting the GPU into an unrecoverable state.
 		if err := l.maybeDisableMigMode(ginfo.UUID, d); err != nil {
-			return fmt.Errorf("maybeDisableMigMode failed for GPU %s: %w", ginfo.UUID, err)
+			if errors.Is(err, errGPUResetNotSupported) {
+				klog.Warningf("Skipping MIG mode disable for GPU %s during startup cleanup: %s", ginfo.UUID, err)
+			} else {
+				return fmt.Errorf("maybeDisableMigMode failed for GPU %s: %w", ginfo.UUID, err)
+			}
 		}
 		return nil
 	})
@@ -911,6 +918,18 @@ func (l deviceLib) createMigDevice(migspec *MigSpec) (*MigDeviceInfo, error) {
 	logpfx := fmt.Sprintf("Create %s", migspec.CanonicalName())
 
 	if !migEnabled {
+		// On virtualized platforms (GPU passthrough, vGPU), GPU reset is
+		// typically blocked by the hypervisor. SetMigMode would set a pending
+		// mode that can't be activated, leaving the GPU stuck in "requires
+		// reset" state.
+		if unsupported, reason := isGPUResetLikelyUnsupported(device); unsupported {
+			return nil, fmt.Errorf(
+				"%w: cannot enable MIG mode for GPU %s: the GPU is operating in a "+
+					"virtualized environment (%s) where GPU reset is typically not supported; "+
+					"pre-configure MIG mode at the host/hypervisor level before starting the driver",
+				errGPUResetNotSupported, gpu.String(), reason,
+			)
+		}
 		klog.V(6).Infof("%s: Attempting to enable MIG mode for to-be parent %s", logpfx, gpu.String())
 		// If this is newer than A100 and if device unused: enable MIG.
 		tem0 := time.Now()
@@ -1045,7 +1064,11 @@ func (l deviceLib) deleteMigDevice(miglt *MigLiveTuple) error {
 		// hierarchy) and proceed with attempt-to-disable-MIG-mode
 		klog.Infof("Delete %s: GI was not found skip CI cleanup", migStr)
 		if err := l.maybeDisableMigMode(parentUUID, parentNvmlDev); err != nil {
-			return fmt.Errorf("failed maybeDisableMigMode: %w", err)
+			if errors.Is(err, errGPUResetNotSupported) {
+				klog.Warningf("Skipping MIG mode disable after MIG device deletion: %s", err)
+			} else {
+				return fmt.Errorf("failed maybeDisableMigMode: %w", err)
+			}
 		}
 		return nil
 	}
@@ -1101,10 +1124,40 @@ func (l deviceLib) deleteMigDevice(miglt *MigLiveTuple) error {
 	klog.V(6).Infof("t_delete_mig_device %.3f s", time.Since(t0).Seconds())
 
 	if err := l.maybeDisableMigMode(parentUUID, parentNvmlDev); err != nil {
-		return fmt.Errorf("failed maybeDisableMigMode: %w", err)
+		if errors.Is(err, errGPUResetNotSupported) {
+			klog.Warningf("Skipping MIG mode disable after MIG device deletion: %s", err)
+		} else {
+			return fmt.Errorf("failed maybeDisableMigMode: %w", err)
+		}
 	}
 
 	return nil
+}
+
+// errGPUResetNotSupported is returned when a MIG mode change would require a
+// GPU reset that is not supported on this platform (e.g., cloud VMs with GPU
+// passthrough where the hypervisor blocks GPU reset).
+var errGPUResetNotSupported = errors.New("GPU reset is not supported in this environment")
+
+// isGPUResetLikelyUnsupported checks whether the GPU is operating in a
+// virtualized environment where GPU reset is typically blocked by the
+// hypervisor. On such platforms, MIG mode changes via SetMigMode() set a
+// pending mode that requires a GPU reset to activate — leaving the GPU in
+// an unrecoverable "GPU requires reset" state.
+func isGPUResetLikelyUnsupported(dev nvml.Device) (bool, string) {
+	vMode, ret := dev.GetVirtualizationMode()
+	if ret != nvml.SUCCESS {
+		klog.Warningf("GetVirtualizationMode failed: %s (assuming GPU reset is supported)", ret)
+		return false, ""
+	}
+	switch vMode {
+	case nvml.GPU_VIRTUALIZATION_MODE_PASSTHROUGH:
+		return true, "GPU-Passthrough"
+	case nvml.GPU_VIRTUALIZATION_MODE_VGPU:
+		return true, "vGPU"
+	default:
+		return false, ""
+	}
 }
 
 func (l deviceLib) maybeDisableMigMode(uuid string, nvmldev nvml.Device) error {
@@ -1123,6 +1176,48 @@ func (l deviceLib) maybeDisableMigMode(uuid string, nvmldev nvml.Device) error {
 	if len(migs) > 0 {
 		klog.V(6).Infof("Leaving MIG mode enabled for device %s (currently present MIG devices: %d)", gpu.String(), len(migs))
 		return nil
+	}
+
+	// Pre-check: read current and pending MIG modes. If they already
+	// differ, a previous MIG mode change is pending activation via GPU
+	// reset — don't compound the problem by issuing another SetMigMode.
+	currentMode, pendingMode, migRet := nvmldev.GetMigMode()
+	if migRet == nvml.ERROR_NOT_SUPPORTED {
+		klog.V(6).Infof("GetMigMode not supported for device %s, skipping MIG mode disable", gpu.String())
+		return nil
+	}
+	if migRet != nvml.SUCCESS {
+		return fmt.Errorf("error getting MIG mode for device %s: %v", gpu.String(), migRet)
+	}
+
+	if currentMode == nvml.DEVICE_MIG_DISABLE {
+		klog.V(6).Infof("MIG mode already disabled for device %s", gpu.String())
+		return nil
+	}
+
+	if currentMode != pendingMode {
+		return fmt.Errorf(
+			"%w: GPU %s has a pending MIG mode change (current=%d, pending=%d) that requires "+
+				"a GPU reset to activate; on platforms where GPU reset is not supported "+
+				"(e.g., cloud VMs with GPU passthrough), a node reboot may be required to recover",
+			errGPUResetNotSupported, gpu.String(), currentMode, pendingMode,
+		)
+	}
+
+	// On virtualized platforms (GPU passthrough, vGPU), GPU reset is
+	// typically blocked by the hypervisor. Calling SetMigMode would set a
+	// pending mode change that requires a GPU reset to activate, leaving
+	// the GPU in an unrecoverable "GPU requires reset" state.
+	if unsupported, reason := isGPUResetLikelyUnsupported(nvmldev); unsupported {
+		return fmt.Errorf(
+			"%w: refusing to disable MIG mode for GPU %s: the GPU is operating in a "+
+				"virtualized environment (%s) where GPU reset is typically not supported; "+
+				"calling SetMigMode would leave the GPU in an unrecoverable 'requires reset' "+
+				"state; MIG mode will remain enabled — either use only MIG workloads on this "+
+				"node, or pre-configure the desired MIG mode at the host/hypervisor level "+
+				"before starting the driver",
+			errGPUResetNotSupported, gpu.String(), reason,
+		)
 	}
 
 	klog.V(6).Infof("Attempting to disable MIG mode for device %s", gpu.String())
