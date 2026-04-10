@@ -34,7 +34,12 @@ IMAGE_TAG ?= $(IMAGE_VERSION)
 IMAGE = $(IMAGE_NAME):$(IMAGE_TAG)
 
 ##### Public rules #####
-.PHONY: build
+INIT_BUILDX_SCRIPT ?= $(CURDIR)/hack/init-buildx.sh
+
+.PHONY: build init-buildx
+
+init-buildx:
+	DOCKER=$(DOCKER) $(INIT_BUILDX_SCRIPT)
 
 # Multi-arch without registry push (e.g. GitHub Actions): BUILD_MULTI_ARCH_GH=true
 # writes an OCI layout tarball. Image push to staging/promotion is done by Prow.
@@ -85,7 +90,7 @@ ifeq ($(CI), true)
 	GOMODCACHE=/go/pkg/mod
 endif
 
-build:
+build: init-buildx
 	mkdir -p $(DIST_DIR)
 	DOCKER_BUILDKIT=1 \
 		$(DOCKER) buildx build --pull \
