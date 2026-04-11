@@ -228,7 +228,21 @@ func (l deviceLib) GetPerGpuAllocatableDevices(indices ...int) (*PerGPUAllocatab
 		l.gpuInfosByUUID[gpuInfo.UUID] = gpuInfo
 		l.gpuUUIDbyPCIBusID[gpuInfo.pciBusID] = gpuInfo.UUID
 
-		if featuregates.Enabled(featuregates.DynamicMIG) {
+		useDynamicMIG := featuregates.Enabled(featuregates.DynamicMIG)
+
+		// In a vGPU guest the MIG mode and partition size are fixed by
+		// the vGPU profile assigned to the VM — a guest cannot
+		// dynamically repartition a vGPU. Skip DynamicMIG and fall
+		// through to the static device enumeration path.
+		if useDynamicMIG {
+			vMode, vret := d.GetVirtualizationMode()
+			if vret == nvml.SUCCESS && vMode == nvml.GPU_VIRTUALIZATION_MODE_VGPU {
+				klog.Warningf("GPU %s: vGPU guest detected — skipping DynamicMIG", gpuInfo.String())
+				useDynamicMIG = false
+			}
+		}
+
+		if useDynamicMIG {
 			// Best-effort handle cache warmup: store mapping between full-GPU
 			// UUID and NVML device handle in a map. Ignore failures.
 			if _, ret := l.DeviceGetHandleByUUID(gpuInfo.UUID); ret != nvml.SUCCESS {
@@ -244,14 +258,37 @@ func (l deviceLib) GetPerGpuAllocatableDevices(indices ...int) (*PerGPUAllocatab
 				return fmt.Errorf("error getting MIG info for GPU %v: %w", i, err)
 			}
 
-			// Announce the full physical GPU.
-			thisGPUAllocatable[gpuInfo.CanonicalName()] = parentdev
-
-			for _, migspec := range migspecs {
-				dev := &AllocatableDevice{
-					MigDynamic: migspec,
+			if !requiresResetForMig(d) {
+				// Hopper+ supports reset-less MIG mode toggling.
+				// Announce both the full GPU and all MIG profiles.
+				thisGPUAllocatable[gpuInfo.CanonicalName()] = parentdev
+				for _, migspec := range migspecs {
+					dev := &AllocatableDevice{MigDynamic: migspec}
+					thisGPUAllocatable[migspec.CanonicalName()] = dev
 				}
-				thisGPUAllocatable[migspec.CanonicalName()] = dev
+			} else if gpuInfo.migEnabled {
+				// Ampere (A100): MIG is already enabled. Enumerate only
+				// MIG profiles — we cannot safely disable MIG mode
+				// (requires GPU reset), so the full GPU is not available.
+				klog.Infof(
+					"GPU %s: MIG mode is enabled and cannot be toggled without GPU reset; "+
+						"enumerating MIG profiles only (full GPU not available)",
+					gpuInfo.String(),
+				)
+				for _, migspec := range migspecs {
+					dev := &AllocatableDevice{MigDynamic: migspec}
+					thisGPUAllocatable[migspec.CanonicalName()] = dev
+				}
+			} else {
+				// Ampere (A100): MIG is disabled. Enumerate only the full
+				// GPU — we cannot safely enable MIG mode (requires GPU
+				// reset), so MIG profiles are not available.
+				klog.Infof(
+					"GPU %s: MIG mode is disabled and cannot be toggled without GPU reset; "+
+						"enumerating full GPU only (MIG profiles not available)",
+					gpuInfo.String(),
+				)
+				thisGPUAllocatable[gpuInfo.CanonicalName()] = parentdev
 			}
 
 			err = perGPUAllocatable.AddGPUAllocatables(gpuInfo.pciBusID, thisGPUAllocatable)
@@ -1123,6 +1160,13 @@ func (l deviceLib) maybeDisableMigMode(uuid string, nvmldev nvml.Device) error {
 		return nil
 	}
 
+	// On Ampere/A100, SetMigMode sets a pending mode that requires a GPU reset to activate — leave MIG enabled.
+	if requiresResetForMig(nvmldev) {
+		klog.Infof("GPU %s (%s): skipping MIG mode disable (architecture does not support reset-less MIG toggling)",
+			gpu.String(), gpu.architecture)
+		return nil
+	}
+
 	klog.V(6).Infof("Attempting to disable MIG mode for device %s", gpu.String())
 	t0 := time.Now()
 	ret, activationStatus := nvmldev.SetMigMode(nvml.DEVICE_MIG_DISABLE)
@@ -1314,4 +1358,15 @@ func setMax(m map[resourceapi.QualifiedName]resourceapi.DeviceCapacity, k resour
 	if cur, ok := m[k]; !ok || v.Value.Value() > cur.Value.Value() {
 		m[k] = v
 	}
+}
+
+// requiresResetForMig reports whether the GPU requires a GPU reset to toggle
+// MIG mode. Ampere (A100) architectures require a reset; Hopper
+// (H100) and newer support reset-less MIG mode toggling.
+func requiresResetForMig(dev nvml.Device) bool {
+	arch, ret := dev.GetArchitecture()
+	if ret != nvml.SUCCESS {
+		return true
+	}
+	return arch < nvml.DEVICE_ARCH_HOPPER
 }
