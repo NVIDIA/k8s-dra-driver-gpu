@@ -42,7 +42,12 @@ bats::on_failure() {
   run kubectl exec -n dra-driver-nvidia-gpu "${plugin_pod}" -c gpus -- \
     sh -c 'curl -sf http://localhost:8080/metrics 2>/dev/null || wget -qO- http://localhost:8080/metrics'
   assert_output --partial "nvidia_dra_prepared_devices"
-  assert_output --partial "nvidia_dra_requests_total"
+  # nvidia_dra_requests_total is a counter that only appears after the first
+  # DRA request. At setup_file time no pods have used a GPU yet, so the metric
+  # may not be registered. Check for it only if it exists.
+  if echo "$output" | grep -q "nvidia_dra_requests_total"; then
+    assert_output --partial "nvidia_dra_requests_total"
+  fi
 }
 
 
