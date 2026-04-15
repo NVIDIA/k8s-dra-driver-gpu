@@ -126,9 +126,6 @@ func (vm *VfioPciManager) verifyDisabledVFs(pciBusID string) error {
 
 // Configure binds the GPU to the vfio-pci driver.
 func (vm *VfioPciManager) Configure(ctx context.Context, info *VfioDeviceInfo) error {
-	perGpuLock.Get(info.PciBusID).Lock()
-	defer perGpuLock.Get(info.PciBusID).Unlock()
-
 	driver, err := getDriver(pciDevicesRoot, info.PciBusID)
 	if err != nil {
 		return err
@@ -157,9 +154,6 @@ func (vm *VfioPciManager) Configure(ctx context.Context, info *VfioDeviceInfo) e
 
 // Unconfigure binds the GPU to the nvidia driver.
 func (vm *VfioPciManager) Unconfigure(ctx context.Context, info *VfioDeviceInfo) error {
-	perGpuLock.Get(info.PciBusID).Lock()
-	defer perGpuLock.Get(info.PciBusID).Unlock()
-
 	// Do nothing if we dont expect to switch to nvidia driver.
 	if !vm.nvidiaEnabled {
 		return nil
