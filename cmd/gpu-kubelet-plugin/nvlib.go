@@ -228,67 +228,39 @@ func (l deviceLib) GetPerGpuAllocatableDevices(indices ...int) (*PerGPUAllocatab
 		l.gpuInfosByUUID[gpuInfo.UUID] = gpuInfo
 		l.gpuUUIDbyPCIBusID[gpuInfo.pciBusID] = gpuInfo.UUID
 
-		useDynamicMIG := featuregates.Enabled(featuregates.DynamicMIG)
-
-		// In a vGPU guest the MIG mode and partition size are fixed by
-		// the vGPU profile assigned to the VM — a guest cannot
-		// dynamically repartition a vGPU. Skip DynamicMIG and fall
-		// through to the static device enumeration path.
-		if useDynamicMIG {
-			vMode, vret := d.GetVirtualizationMode()
-			if vret == nvml.SUCCESS && vMode == nvml.GPU_VIRTUALIZATION_MODE_VGPU {
-				klog.Warningf("GPU %s: vGPU guest detected — skipping DynamicMIG", gpuInfo.String())
-				useDynamicMIG = false
-			}
-		}
-
-		if useDynamicMIG {
-			// Best-effort handle cache warmup: store mapping between full-GPU
-			// UUID and NVML device handle in a map. Ignore failures.
-			if _, ret := l.DeviceGetHandleByUUID(gpuInfo.UUID); ret != nvml.SUCCESS {
-				klog.Warningf("DeviceGetHandleByUUIDCached failed: %s", ret)
-			}
-
-			// For this full device, inspect all MIG profiles and their possible
-			// placements. Side effect: this enriches `gpuInfo` with additional
-			// properties (such as the memory slice count, and the maximum
-			// capacities as reported by individual MIG profiles).
-			migspecs, err := l.inspectMigProfilesAndPlacements(gpuInfo, d)
+		if featuregates.Enabled(featuregates.DynamicMIG) {
+			supportsDynamicMIG, err := supportsDynamicMIGDiscovery(gpuInfo, d)
 			if err != nil {
-				return fmt.Errorf("error getting MIG info for GPU %v: %w", i, err)
+				return fmt.Errorf("error determining DynamicMIG support for GPU %v: %w", i, err)
 			}
 
-			if !requiresResetForMig(d) {
-				// Hopper+ supports reset-less MIG mode toggling.
-				// Announce both the full GPU and all MIG profiles.
-				thisGPUAllocatable[gpuInfo.CanonicalName()] = parentdev
-				for _, migspec := range migspecs {
-					dev := &AllocatableDevice{MigDynamic: migspec}
-					thisGPUAllocatable[migspec.CanonicalName()] = dev
+			if supportsDynamicMIG {
+				// Best-effort handle cache warmup: store mapping between full-GPU
+				// UUID and NVML device handle in a map. Ignore failures.
+				if _, ret := l.DeviceGetHandleByUUID(gpuInfo.UUID); ret != nvml.SUCCESS {
+					klog.Warningf("DeviceGetHandleByUUIDCached failed: %s", ret)
 				}
-			} else if gpuInfo.migEnabled {
-				// Ampere (A100): MIG is already enabled. Enumerate only
-				// MIG profiles — we cannot safely disable MIG mode
-				// (requires GPU reset), so the full GPU is not available.
-				klog.Infof(
-					"GPU %s: MIG mode is enabled and cannot be toggled without GPU reset; "+
-						"enumerating MIG profiles only (full GPU not available)",
-					gpuInfo.String(),
-				)
+
+				// For this full device, inspect all MIG profiles and their possible
+				// placements. Side effect: this enriches `gpuInfo` with additional
+				// properties (such as the memory slice count, and the maximum
+				// capacities as reported by individual MIG profiles).
+				migspecs, err := l.inspectMigProfilesAndPlacements(gpuInfo, d)
+				if err != nil {
+					return fmt.Errorf("error getting MIG info for GPU %v: %w", i, err)
+				}
+
+				if !gpuInfo.migEnabled {
+					thisGPUAllocatable[gpuInfo.CanonicalName()] = parentdev
+				}
 				for _, migspec := range migspecs {
 					dev := &AllocatableDevice{MigDynamic: migspec}
 					thisGPUAllocatable[migspec.CanonicalName()] = dev
 				}
 			} else {
-				// Ampere (A100): MIG is disabled. Enumerate only the full
-				// GPU — we cannot safely enable MIG mode (requires GPU
-				// reset), so MIG profiles are not available.
-				klog.Infof(
-					"GPU %s: MIG mode is disabled and cannot be toggled without GPU reset; "+
-						"enumerating full GPU only (MIG profiles not available)",
-					gpuInfo.String(),
-				)
-				thisGPUAllocatable[gpuInfo.CanonicalName()] = parentdev
+				if !gpuInfo.migEnabled {
+					thisGPUAllocatable[gpuInfo.CanonicalName()] = parentdev
+				}
 			}
 
 			err = perGPUAllocatable.AddGPUAllocatables(gpuInfo.pciBusID, thisGPUAllocatable)
@@ -1161,7 +1133,7 @@ func (l deviceLib) maybeDisableMigMode(uuid string, nvmldev nvml.Device) error {
 	}
 
 	// On Ampere/A100, SetMigMode sets a pending mode that requires a GPU reset to activate — leave MIG enabled.
-	if requiresResetForMig(nvmldev) {
+	if !supportsMIGModeToggle(nvmldev) {
 		klog.Infof("GPU %s (%s): skipping MIG mode disable (architecture does not support reset-less MIG toggling)",
 			gpu.String(), gpu.architecture)
 		return nil
@@ -1360,13 +1332,53 @@ func setMax(m map[resourceapi.QualifiedName]resourceapi.DeviceCapacity, k resour
 	}
 }
 
-// requiresResetForMig reports whether the GPU requires a GPU reset to toggle
-// MIG mode. Ampere (A100) architectures require a reset; Hopper
-// (H100) and newer support reset-less MIG mode toggling.
-func requiresResetForMig(dev nvml.Device) bool {
+// supportsMIGModeToggle reports whether the GPU supports toggling MIG mode
+// without requiring a GPU reset. Hopper (H100) and newer support reset-less
+// MIG mode toggling. Ampere (A100) does not.
+func supportsMIGModeToggle(dev nvml.Device) bool {
 	arch, ret := dev.GetArchitecture()
 	if ret != nvml.SUCCESS {
-		return true
+		return false
 	}
-	return arch < nvml.DEVICE_ARCH_HOPPER
+	return arch >= nvml.DEVICE_ARCH_HOPPER
+}
+
+func supportsDynamicMIGDiscovery(gpuInfo *GpuInfo, dev nvdev.Device) (bool, error) {
+	vMode, vret := dev.GetVirtualizationMode()
+	if vret != nvml.SUCCESS {
+		return false, fmt.Errorf("error getting GPU virtualization mode: %v", vret)
+	}
+
+	// In a vGPU guest the MIG mode and partition size are fixed by the vGPU
+	// profile assigned to the VM — a guest cannot dynamically repartition a
+	// vGPU. Skip DynamicMIG and fall through to the static device enumeration
+	// path.
+	if vMode == nvml.GPU_VIRTUALIZATION_MODE_VGPU {
+		klog.Warningf("GPU %s: vGPU guest detected — skipping DynamicMIG", gpuInfo.String())
+		return false, nil
+	}
+
+	// Hopper+ supports reset-less MIG mode toggling, so advertise both the full
+	// GPU and the dynamic MIG profiles irrespective of current MIG state.
+	if supportsMIGModeToggle(dev) {
+		return true, nil
+	}
+
+	// On Ampere/A100, once MIG is enabled we can still advertise the dynamic MIG
+	// profiles, but not the full GPU because disabling MIG would require a GPU reset.
+	if gpuInfo.migEnabled {
+		klog.Infof(
+			"GPU %s: MIG mode is enabled and cannot be toggled without GPU reset; "+
+				"enumerating MIG profiles only (full GPU not available)",
+			gpuInfo.String(),
+		)
+		return true, nil
+	}
+
+	klog.Infof(
+		"GPU %s: MIG mode is disabled and cannot be toggled without GPU reset; "+
+			"enumerating full GPU only (MIG profiles not available)",
+		gpuInfo.String(),
+	)
+	return false, nil
 }
