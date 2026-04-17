@@ -245,6 +245,7 @@ bats::on_failure() {
 
 # bats test_tags=fastfeedback
 @test "CDs: daemon Ready -> NotReady transition (not in context of shutdown)" {
+  if [ "${MOCK_NVML:-}" = "true" ]; then skip "requires IMEX daemon"; fi
   kubectl apply -f demo/specs/imex/channel-injection.yaml
   kubectl wait --for=condition=READY pods imex-channel-injection --timeout=100s
   run kubectl logs imex-channel-injection
