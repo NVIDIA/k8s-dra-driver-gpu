@@ -22,6 +22,8 @@ set -o errexit
 set -o nounset
 set -o pipefail
 
+echo "$GPU_TYPE"
+
 # Locate shared library from test-infra checkout (Prow extra_refs).
 TESTINFRA_DIR="$(go env GOPATH)/src/k8s.io/test-infra"
 source "${TESTINFRA_DIR}/experiment/lambda/lib/lambda-common.sh"
