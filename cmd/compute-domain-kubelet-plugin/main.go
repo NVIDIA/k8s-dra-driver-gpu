@@ -39,8 +39,12 @@ import (
 )
 
 const (
-	DriverName                              = "compute-domain.nvidia.com"
-	DriverPluginCheckpointFileBasename      = "checkpoint.json"
+	DriverName                         = "compute-domain.nvidia.com"
+	DriverPluginCheckpointFileBasename = "checkpoint.json"
+	// DriverPluginBootIDFileBasename is written next to the checkpoint; it holds
+	// the kernel boot_id for which checkpoint.json is valid.
+	DriverPluginBootIDFileBasename = "node_boot_id"
+
 	IMEXDaemonsWithDNSNamesMinDriverVersion = "570.158.01"
 )
 

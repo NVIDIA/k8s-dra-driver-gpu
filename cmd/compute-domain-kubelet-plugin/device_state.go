@@ -34,6 +34,7 @@ import (
 
 	configapi "sigs.k8s.io/dra-driver-nvidia-gpu/api/nvidia.com/resource/v1beta1"
 	"sigs.k8s.io/dra-driver-nvidia-gpu/internal/common"
+	"sigs.k8s.io/dra-driver-nvidia-gpu/pkg/bootid"
 	"sigs.k8s.io/dra-driver-nvidia-gpu/pkg/featuregates"
 	drametrics "sigs.k8s.io/dra-driver-nvidia-gpu/pkg/metrics"
 )
@@ -126,6 +127,11 @@ func NewDeviceState(ctx context.Context, config *Config) (*DeviceState, error) {
 	}
 	state.checkpointCleanupManager = NewCheckpointCleanupManager(state, config.clientsets.Resource)
 
+	currentBootID, err := bootid.CurrentBootID()
+	if err != nil {
+		return nil, fmt.Errorf("read node boot id: %w", err)
+	}
+
 	checkpoints, err := state.checkpointManager.ListCheckpoints()
 	if err != nil {
 		return nil, fmt.Errorf("unable to list checkpoints: %v", err)
@@ -134,12 +140,18 @@ func NewDeviceState(ctx context.Context, config *Config) (*DeviceState, error) {
 	for _, c := range checkpoints {
 		if c == DriverPluginCheckpointFileBasename {
 			klog.Infof("Found previous checkpoint: %s", c)
-			cp, err := state.getCheckpoint()
+			cp, storedBootID, err := state.getCheckpoint()
 			if err != nil {
 				return nil, fmt.Errorf("unable to get checkpoint: %w", err)
 			}
-			syncPreparedDevicesGaugeFromCheckpoint(config.flags.nodeName, cp)
-			return state, nil
+			if storedBootID != "" && storedBootID != currentBootID {
+				// older DRA version might not have the bootID sidecar file.
+				// treat empty stored bootID as valid
+				klog.Infof("Checkpoint boot id sidecar %q does not match current boot %q; replacing checkpoint (node reboot or sidecar missing/stale)", storedBootID, currentBootID)
+			} else {
+				syncPreparedDevicesGaugeFromCheckpoint(config.flags.nodeName, cp)
+				return state, nil
+			}
 		}
 	}
 
@@ -157,16 +169,13 @@ func (s *DeviceState) Prepare(ctx context.Context, claim *resourceapi.ResourceCl
 
 	claimUID := string(claim.UID)
 
-	checkpoint, err := s.getCheckpoint()
+	checkpoint, _, err := s.getCheckpoint()
 	if err != nil {
 		return nil, fmt.Errorf("unable to get checkpoint: %w", err)
 	}
 
 	preparedClaim, exists := checkpoint.V2.PreparedClaims[claimUID]
 	if exists && preparedClaim.CheckpointState == ClaimCheckpointStatePrepareCompleted {
-		// Associated device(s) has/ave been prepared by us. Prepare() must be
-		// idempotent, as it may be invoked more than once per claim (and actual
-		// device preparation must happen at most once).
 		klog.V(4).Infof("Skip prepare: claim already in PrepareCompleted state: %s", ResourceClaimToString(claim))
 		return preparedClaim.PreparedDevices.GetDevices(), nil
 	}
@@ -229,7 +238,7 @@ func (s *DeviceState) Unprepare(ctx context.Context, claimRef kubeletplugin.Name
 	klog.V(6).Infof("Unprepare() for claim '%s'", claimRef.String())
 
 	// Rely on local checkpoint state for ability to clean up.
-	checkpoint, err := s.getCheckpoint()
+	checkpoint, _, err := s.getCheckpoint()
 	if err != nil {
 		return fmt.Errorf("unable to get checkpoint: %w", err)
 	}
@@ -298,16 +307,32 @@ func (s *DeviceState) createCheckpoint(cp *Checkpoint) error {
 	if err := s.checkpointManager.CreateCheckpoint(DriverPluginCheckpointFileBasename, cp); err != nil {
 		return err
 	}
+	if err := s.writeCheckpointBootID(); err != nil {
+		return fmt.Errorf("write checkpoint boot id sidecar: %w", err)
+	}
 	syncPreparedDevicesGaugeFromCheckpoint(s.config.flags.nodeName, cp)
 	return nil
 }
 
-func (s *DeviceState) getCheckpoint() (*Checkpoint, error) {
+func (s *DeviceState) writeCheckpointBootID() error {
+	current, err := bootid.CurrentBootID()
+	if err != nil {
+		return fmt.Errorf("read node boot id: %w", err)
+	}
+	return bootid.WriteStoredBootID(s.config.DriverPluginPath(), DriverPluginBootIDFileBasename, current)
+}
+
+// getCheckpoint loads checkpoint.json and the boot id sidecar file stored alongside it.
+func (s *DeviceState) getCheckpoint() (*Checkpoint, string, error) {
 	checkpoint := &Checkpoint{}
 	if err := s.checkpointManager.GetCheckpoint(DriverPluginCheckpointFileBasename, checkpoint); err != nil {
-		return nil, err
+		return nil, "", err
 	}
-	return checkpoint.ToLatestVersion(), nil
+	storedBootID, err := bootid.ReadStoredBootID(s.config.DriverPluginPath(), DriverPluginBootIDFileBasename)
+	if err != nil {
+		return nil, "", fmt.Errorf("read checkpoint boot id sidecar: %w", err)
+	}
+	return checkpoint.ToLatestVersion(), storedBootID, nil
 }
 
 // Read checkpoint from store, perform mutation, and write checkpoint back. Any
@@ -317,7 +342,7 @@ func (s *DeviceState) getCheckpoint() (*Checkpoint, error) {
 // Currently, it is assumed that any caller gets here by first acquiring
 // driver's `pulock`.
 func (s *DeviceState) updateCheckpoint(mutate func(*Checkpoint)) error {
-	checkpoint, err := s.getCheckpoint()
+	checkpoint, _, err := s.getCheckpoint()
 	if err != nil {
 		return fmt.Errorf("unable to get checkpoint: %w", err)
 	}
@@ -661,7 +686,7 @@ func (s *DeviceState) getConfigResultsMap(rcs *resourceapi.ResourceClaimStatus, 
 // The implementation may become more involved when the same IMEX channel may be
 // shared across pods on the same node).
 func (s *DeviceState) assertImexChannelNotAllocated(id int) error {
-	cp, err := s.getCheckpoint()
+	cp, _, err := s.getCheckpoint()
 	if err != nil {
 		return fmt.Errorf("unable to get checkpoint: %w", err)
 	}
