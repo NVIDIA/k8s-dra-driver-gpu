@@ -46,4 +46,5 @@ nav:
   - Contributing:
     - How to Contribute: contributing/contributing.md
     - Development Guide: contributing/development.md
-    - Proposals: proposals/index.md
+    - Contributing to Docs: contributing/docs.md
+    - Proposals: contributing/proposals/README.md
