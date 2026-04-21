@@ -1,3 +1,6 @@
 [build]
-publish = "site"
-command = "pip install mkdocs && mkdocs build"
+  publish = "site"
+  command = "pip install mkdocs-material pymdown-extensions && mkdocs build"
+
+[build.environment]
+  PYTHON_VERSION = "3.12"
