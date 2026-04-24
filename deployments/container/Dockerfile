@@ -111,12 +111,11 @@ RUN cd /bashbuild/bash-static/releases && ./bash*-static --version && mv bash-*-
 FROM ${TOOLKIT_CONTAINER_IMAGE} AS toolkit
 
 # Construct production image (arch: TARGETPLATFORM, set via the `--platform` CLI
-# arg). Note that nvcr.io/nvidia/distroless/cc is based on
-# https://github.com/GoogleContainerTools/distroless; specifically on debian12.
-# For consistency, the build stage above derives from Debian 12 directly. The
-# `-dev` suffic is to get busybox as a shell added. For RUN directives to pick
-# that up, use `SHELL ["/busybox/sh", "-c"]`.
-FROM nvcr.io/nvidia/distroless/cc:v4.0.4-dev
+# arg). gcr.io/distroless/cc:debug is distroless/cc plus busybox at /busybox/
+# (PATH includes /busybox). The scripts bundled in this image (kubelet-plugin-
+# prestart.sh, bind_to_driver.sh, unbind_from_driver.sh) require coreutils
+# (ln, find, date, sleep, head, env, readlink, basename) provided by busybox.
+FROM gcr.io/distroless/cc:debug
 
 ENV NVIDIA_DISABLE_REQUIRE="true"
 ENV NVIDIA_VISIBLE_DEVICES=all

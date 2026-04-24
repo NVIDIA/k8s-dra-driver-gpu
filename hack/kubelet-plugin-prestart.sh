@@ -79,7 +79,7 @@ validate_and_exit_on_success () {
     fi
 
     # Log top-level entries in /driver-root (this may be valuable debug info).
-    echo "current contents: [$(/bin/ls -1xAw0 /driver-root 2>/dev/null)]."
+    echo "current contents: [$(ls -1xAw0 /driver-root 2>/dev/null)]."
 
     if [ -n "${NV_PATH}" ] && [ -n "${NV_LIB_PATH}" ]; then
         # Run with clean environment (only LD_PRELOAD; nvidia-smi has only this
