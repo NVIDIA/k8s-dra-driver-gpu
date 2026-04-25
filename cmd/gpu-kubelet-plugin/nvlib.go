@@ -234,6 +234,13 @@ func (l deviceLib) GetPerGpuAllocatableDevices(indices ...int) (*PerGPUAllocatab
 				return fmt.Errorf("error determining DynamicMIG support for GPU %v: %w", i, err)
 			}
 
+			// gpuInfo.migEnabled is captured once during enumeration and is
+			// never re-read. The branches below rely on this snapshot:
+			// toggling MIG mode on Ampere requires a GPU reset that this
+			// plugin does not initiate, so within a single plugin lifetime
+			// the value cannot change underneath us. A future refactor that
+			// moves the migEnabled read past enumeration (or starts
+			// re-reading it) must reconsider these branches.
 			if supportsDynamicMIG {
 				// Best-effort handle cache warmup: store mapping between full-GPU
 				// UUID and NVML device handle in a map. Ignore failures.
@@ -250,26 +257,35 @@ func (l deviceLib) GetPerGpuAllocatableDevices(indices ...int) (*PerGPUAllocatab
 					return fmt.Errorf("error getting MIG info for GPU %v: %w", i, err)
 				}
 
-				if !gpuInfo.migEnabled {
+				// When migEnabled is true, parentdev is intentionally NOT added
+				// to thisGPUAllocatable — the full GPU is not allocatable on
+				// Ampere when MIG cannot be toggled without a GPU reset. The
+				// per-GPU shared CounterSet that MIG partitions reference by
+				// name is still emitted by the ResourceSlice generators in
+				// driver.go, which derive the parent GpuInfo from
+				// MigDynamic.Parent when no full-GPU entry exists.
+
+				// We're inside the supportsDynamicMIG=true branch, which already excludes
+				// vGPUs, so supportsMIGModeToggle(d) here precisely means
+				// "non-vGPU Hopper+".
+				if !gpuInfo.migEnabled || supportsMIGModeToggle(d) {
 					thisGPUAllocatable[gpuInfo.CanonicalName()] = parentdev
 				}
 				for _, migspec := range migspecs {
-					dev := &AllocatableDevice{MigDynamic: migspec}
+					dev := &AllocatableDevice{
+						MigDynamic: migspec,
+					}
 					thisGPUAllocatable[migspec.CanonicalName()] = dev
 				}
-			} else {
-				if !gpuInfo.migEnabled {
-					thisGPUAllocatable[gpuInfo.CanonicalName()] = parentdev
+
+				err = perGPUAllocatable.AddGPUAllocatables(gpuInfo.pciBusID, thisGPUAllocatable)
+				if err != nil {
+					return fmt.Errorf("error adding allocatables for PCI bus ID %q: %w", gpuInfo.pciBusID, err)
 				}
-			}
 
-			err = perGPUAllocatable.AddGPUAllocatables(gpuInfo.pciBusID, thisGPUAllocatable)
-			if err != nil {
-				return fmt.Errorf("error adding allocatables for PCI bus ID %q: %w", gpuInfo.pciBusID, err)
+				// Terminate this function -- this is mutually exclusive with static MIG and vfio/passthrough.
+				return nil
 			}
-
-			// Terminate this function -- this is mutually exclusive with static MIG and vfio/passthrough.
-			return nil
 		}
 
 		migdevs, err := l.discoverMigDevicesByGPU(gpuInfo)
