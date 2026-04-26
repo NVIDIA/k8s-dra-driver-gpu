@@ -136,3 +136,10 @@ func (cp *Checkpoint) VerifyChecksumV2() error {
 	}
 	return ck.Verify(out)
 }
+
+func (cp *Checkpoint) GetNodeBootID() string {
+	if cp.V2 != nil {
+		return cp.V2.NodeBootID
+	}
+	return ""
+}
