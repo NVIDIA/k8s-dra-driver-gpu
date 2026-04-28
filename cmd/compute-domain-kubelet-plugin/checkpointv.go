@@ -40,6 +40,10 @@ type PreparedClaim = PreparedClaimV2
 type CheckpointV2 struct {
 	Checksum       checksum.Checksum     `json:"checksum"`
 	PreparedClaims PreparedClaimsByUIDV2 `json:"preparedClaims,omitempty"`
+	// NodeBootID is the Linux kernel boot_id
+	// for the node when this checkpoint was last validated at plugin startup.
+	// If it differs from the current boot id, prepared claims are invalid (reboot).
+	NodeBootID string `json:"nodeBootID,omitempty"`
 }
 
 type PreparedClaimsByUIDV2 map[string]PreparedClaimV2

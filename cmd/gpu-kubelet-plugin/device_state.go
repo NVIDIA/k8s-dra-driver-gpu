@@ -35,6 +35,7 @@ import (
 	"github.com/sirupsen/logrus"
 
 	configapi "sigs.k8s.io/dra-driver-nvidia-gpu/api/nvidia.com/resource/v1beta1"
+	"sigs.k8s.io/dra-driver-nvidia-gpu/pkg/bootid"
 	"sigs.k8s.io/dra-driver-nvidia-gpu/pkg/featuregates"
 	"sigs.k8s.io/dra-driver-nvidia-gpu/pkg/flock"
 	drametrics "sigs.k8s.io/dra-driver-nvidia-gpu/pkg/metrics"
@@ -175,18 +176,32 @@ func NewDeviceState(ctx context.Context, config *Config) (*DeviceState, error) {
 		return nil, fmt.Errorf("unable to list checkpoints: %v", err)
 	}
 
+	currentBootID, err := bootid.GetCurrentBootID()
+	if err != nil {
+		return nil, fmt.Errorf("read node boot id: %w", err)
+	}
+
 	for _, c := range checkpoints {
 		if c == DriverPluginCheckpointFileBasename {
 			cp, err := state.getCheckpoint(ctx)
 			if err != nil {
 				return nil, fmt.Errorf("unable to get checkpoint: %w", err)
 			}
-			syncPreparedDevicesGaugeFromCheckpoint(config.flags.nodeName, cp)
-			return state, nil
+			storedBootID := cp.GetNodeBootID()
+			if storedBootID != "" && storedBootID != currentBootID {
+				// If the checkpoint was written for a different node boot (reboot), or stamps NodeBootID on an
+				// empty checkpoint that predates the field.
+				// proceed to create an empty checkpoint below
+				klog.Infof("Invalidating checkpoint: checkpoint nodeBootID %q != current %q", storedBootID, currentBootID)
+			} else {
+				syncPreparedDevicesGaugeFromCheckpoint(config.flags.nodeName, cp)
+				return state, nil
+			}
 		}
 	}
 
-	if err := state.createCheckpoint(ctx, &Checkpoint{}); err != nil {
+	newCheckpoint := &Checkpoint{V2: &CheckpointV2{NodeBootID: currentBootID}}
+	if err := state.createCheckpoint(ctx, newCheckpoint); err != nil {
 		return nil, fmt.Errorf("unable to create fresh checkpoint: %v", err)
 	}
 
