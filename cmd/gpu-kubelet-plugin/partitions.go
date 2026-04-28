@@ -28,8 +28,21 @@ type PartCapacityMap map[resourceapi.QualifiedName]resourceapi.DeviceCapacity
 
 // KEP 4815 device announcement: return the full device capacity for this device
 // (uses information from looking at all MIG profiles beforehand).
+//
+// When MIG profiles have not been inspected for Full GPU (e.g. on Ampere
+// with MIG disabled), maxCapacities is empty. Fall back to advertising
+// at least the GPU's total memory, matching the
+// legacy non-DynamicMIG GetDevice() path so that the full GPU device is
+// announced with quantitative capacity in both paths.
 func (d *GpuInfo) PartCapacities() PartCapacityMap {
-	return d.maxCapacities
+	if len(d.maxCapacities) > 0 {
+		return d.maxCapacities
+	}
+	return PartCapacityMap{
+		"memory": resourceapi.DeviceCapacity{
+			Value: *resource.NewQuantity(int64(d.memoryBytes), resource.BinarySI),
+		},
+	}
 }
 
 // KEP 4815 device announcement: return the name for the shared counter
