@@ -65,7 +65,7 @@ type ComputeDomainSpec struct {
 	// ComputeDomain. Must be zero or greater.
 	//
 	// With `featureGates.IMEXDaemonsWithDNSNames=true` (the default), this is
-	// recommended to be set to zero. Workload must implement and consult its
+	// recommended to be set to zero (default). Workload must implement and consult its
 	// own source of truth for the number of workers online before trying to
 	// share GPU memory (and hence triggering IMEX interaction). When non-zero,
 	// `numNodes` is used only for automatically updating the global
@@ -85,7 +85,10 @@ type ComputeDomainSpec struct {
 	//
 	// The `numNodes` parameter is deprecated and will be removed in the next
 	// API version.
-	NumNodes int                       `json:"numNodes"`
+	// +kubebuilder:default:=0
+	// +kubebuilder:validation:Minimum=0
+	// +kubebuilder:validation:Optional
+	NumNodes int                       `json:"numNodes,omitempty"`
 	Channel  *ComputeDomainChannelSpec `json:"channel"`
 }
 
