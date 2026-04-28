@@ -1,2 +1,50 @@
 site_name: DRA Driver for NVIDIA GPUs
+site_description: Kubernetes Dynamic Resource Allocation driver for NVIDIA GPUs.
+repo_url: https://github.com/kubernetes-sigs/dra-driver-nvidia-gpu
+repo_name: kubernetes-sigs/dra-driver-nvidia-gpu
+edit_uri: edit/main/docs/
 docs_dir: docs
+
+theme:
+  name: material
+  features:
+    - navigation.top
+    - search.highlight
+    - content.code.copy
+
+plugins:
+  - search
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - toc:
+      permalink: true
+
+nav:
+  - Home: index.md
+  - Get Started: get-started.md
+  - Architecture: architecture.md
+  - GPU Allocation: gpu-allocation.md
+  - ComputeDomains: compute-domains.md
+  - Configure GPU Sharing: configure-sharing.md
+  - Configure MIG: configure-mig.md
+  - Upgrade: upgrade.md
+  - Troubleshooting: troubleshooting.md
+  - Uninstall: uninstall.md
+  - Reference:
+    - API Reference: reference/api.md
+    - Helm Chart Values: reference/helm-values.md
+    - Feature Gates: reference/feature-gates.md
+  - Contributing:
+    - How to Contribute: contributing/contributing.md
+    - Development Guide: contributing/development.md
+    - Contributing to Docs: contributing/docs.md
+    - Proposals: contributing/proposals/README.md
