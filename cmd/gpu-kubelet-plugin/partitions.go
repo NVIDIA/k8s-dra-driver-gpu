@@ -26,6 +26,19 @@ import (
 
 type PartCapacityMap map[resourceapi.QualifiedName]resourceapi.DeviceCapacity
 
+// This is the single source of truth for the non-MIG full-GPU capacity
+// field and MUST be used by both the GetDevice() path and the
+// partitions PartCapacities(). The two publish paths are
+// dispatched separately (feature-gate-gated in publishResources()), so
+// without a shared helper they may silently drift.
+func (d *GpuInfo) fullGpuCapacity() PartCapacityMap {
+	return PartCapacityMap{
+		"memory": resourceapi.DeviceCapacity{
+			Value: *resource.NewQuantity(int64(d.memoryBytes), resource.BinarySI),
+		},
+	}
+}
+
 // KEP 4815 device announcement: return the full device capacity for this device
 // (uses information from looking at all MIG profiles beforehand).
 //
@@ -38,11 +51,7 @@ func (d *GpuInfo) PartCapacities() PartCapacityMap {
 	if len(d.maxCapacities) > 0 {
 		return d.maxCapacities
 	}
-	return PartCapacityMap{
-		"memory": resourceapi.DeviceCapacity{
-			Value: *resource.NewQuantity(int64(d.memoryBytes), resource.BinarySI),
-		},
-	}
+	return d.fullGpuCapacity()
 }
 
 // KEP 4815 device announcement: return the name for the shared counter
