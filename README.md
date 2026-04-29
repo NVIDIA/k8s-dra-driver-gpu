@@ -1,3 +1,9 @@
+# dra-driver-nvidia-kvcache (WIP)
+
+Experimental fork of `dra-driver-nvidia-gpu` exploring Kubernetes-native distributed KV cache primitives.
+
+Work in progress. Documentation will evolve alongside implementation.
+
 # DRA Driver for NVIDIA GPUs
 
 Enables
