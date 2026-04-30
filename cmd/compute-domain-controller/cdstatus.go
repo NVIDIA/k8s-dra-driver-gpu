@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"maps"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -155,14 +156,9 @@ func (m *ComputeDomainStatusManager) sync(ctx context.Context) {
 			klog.Errorf("CDStatusSync: error listing cliques: %v", err)
 			return
 		}
-
-		// Clean up stale entries from cliques in parallel
-		for _, clique := range cliques {
-			go m.cleanupClique(ctx, clique, pods)
-		}
 	}
 
-	// Group cliques by CD UID
+	// Group cliques by CD UID (used for status sync and per-clique daemon cleanup)
 	cliquesByCD := make(map[string][]*nvapi.ComputeDomainClique)
 	for _, clique := range cliques {
 		cdUID := clique.Labels[computeDomainLabelKey]
@@ -170,6 +166,17 @@ func (m *ComputeDomainStatusManager) sync(ctx context.Context) {
 			continue
 		}
 		cliquesByCD[cdUID] = append(cliquesByCD[cdUID], clique)
+	}
+
+	if m.cliqueManager != nil {
+		// Clean up stale entries from cliques in parallel (pods scoped per clique)
+		for _, clique := range cliques {
+			cdUID := clique.Labels[computeDomainLabelKey]
+			if cdUID == "" {
+				continue
+			}
+			go m.cleanupClique(ctx, clique, pods, len(cliquesByCD[cdUID]))
+		}
 	}
 
 	// Group pods by CD UID and type (fabric-attached vs non-fabric-attached)
@@ -282,12 +289,61 @@ func (m *ComputeDomainStatusManager) buildNodesFromPods(pods []*corev1.Pod) []*n
 	return nodes
 }
 
+// fabricCliqueIDFromClique returns the fabric clique ID from object labels, or from
+// metadata name "<computeDomainUID>.<cliqueID>" when the clique ID label is unset.
+func fabricCliqueIDFromClique(clique *nvapi.ComputeDomainClique) string {
+	if clique == nil {
+		return ""
+	}
+	if id := clique.Labels[computeDomainCliqueLabelKey]; id != "" {
+		return id
+	}
+	cdUID := clique.Labels[computeDomainLabelKey]
+	if cdUID == "" {
+		return ""
+	}
+	prefix := cdUID + "."
+	if strings.HasPrefix(clique.Name, prefix) {
+		return strings.TrimPrefix(clique.Name, prefix)
+	}
+	return ""
+}
+
+// podCountsForCliqueFabricDaemon is true when this pod is the fabric-attached daemon
+// for the same ComputeDomain and fabric clique as clique. Non-fabric pods (explicit
+// empty clique label) are excluded. Pods without a clique label only match when the
+// CD has a single fabric clique so attribution is unambiguous.
+func podCountsForCliqueFabricDaemon(pod *corev1.Pod, clique *nvapi.ComputeDomainClique, fabricCliqueCountForCD int) bool {
+	if pod == nil || clique == nil {
+		return false
+	}
+	cdUID := clique.Labels[computeDomainLabelKey]
+	if cdUID == "" || pod.Labels[computeDomainLabelKey] != cdUID {
+		return false
+	}
+	podCliqueID, podHasCliqueLabel := pod.Labels[computeDomainCliqueLabelKey]
+	if podHasCliqueLabel && podCliqueID == "" {
+		return false
+	}
+	expected := fabricCliqueIDFromClique(clique)
+	if expected == "" {
+		return false
+	}
+	if podHasCliqueLabel && podCliqueID != "" {
+		return podCliqueID == expected
+	}
+	return fabricCliqueCountForCD == 1
+}
+
 // cleanupClique removes stale daemon entries from a single clique.
-func (m *ComputeDomainStatusManager) cleanupClique(ctx context.Context, clique *nvapi.ComputeDomainClique, pods []*corev1.Pod) {
-	// Build set of node names that have running daemon pods
+func (m *ComputeDomainStatusManager) cleanupClique(ctx context.Context, clique *nvapi.ComputeDomainClique, pods []*corev1.Pod, fabricCliqueCountForCD int) {
+	// Build set of node names that have a running fabric daemon pod for this clique.
 	runningNodes := make(map[string]struct{})
 	for _, pod := range pods {
-		if pod.Spec.NodeName != "" {
+		if pod.Spec.NodeName == "" {
+			continue
+		}
+		if podCountsForCliqueFabricDaemon(pod, clique, fabricCliqueCountForCD) {
 			runningNodes[pod.Spec.NodeName] = struct{}{}
 		}
 	}
