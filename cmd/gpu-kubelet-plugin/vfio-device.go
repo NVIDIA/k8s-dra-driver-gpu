@@ -133,6 +133,7 @@ func (vm *VfioPciManager) Configure(ctx context.Context, info *VfioDeviceInfo) e
 	if err != nil {
 		return err
 	}
+	info.preConfigureDriver = driver
 	if driver == vm.driver {
 		return nil
 	}
@@ -162,6 +163,14 @@ func (vm *VfioPciManager) Unconfigure(ctx context.Context, info *VfioDeviceInfo)
 
 	// Do nothing if we dont expect to switch to nvidia driver.
 	if !vm.nvidiaEnabled {
+		return nil
+	}
+
+	// If the GPU was already on vfio-pci before Configure (pre-bound at
+	// boot), leave it on vfio-pci. Rebinding to nvidia on NVLink systems
+	// hangs indefinitely during fabric reconfiguration.
+	if info.preConfigureDriver == vfioPciDriver {
+		klog.Infof("GPU %s was pre-bound to vfio-pci, leaving on vfio-pci", info.PciBusID)
 		return nil
 	}
 
