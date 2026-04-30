@@ -23,6 +23,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -193,10 +194,10 @@ func (vm *VfioPciManager) Unconfigure(ctx context.Context, info *VfioDeviceInfo)
 		return nil
 	}
 
-	// If the GPU was already on vfio-pci before Configure (pre-bound at
-	// boot), leave it on vfio-pci. Rebinding to nvidia on NVLink systems
-	// hangs indefinitely during fabric reconfiguration.
-	if info.preConfigureDriver == vfioPciDriver {
+	// If the GPU was pre-bound to vfio-pci (either tracked from Configure
+	// or detected via kernel cmdline vfio-pci.ids), leave it on vfio-pci.
+	// Rebinding to nvidia on NVLink systems hangs indefinitely.
+	if info.preConfigureDriver == vfioPciDriver || isVfioPciPrebound(info.deviceID) {
 		klog.Infof("GPU %s was pre-bound to vfio-pci, leaving on vfio-pci", info.PciBusID)
 		return nil
 	}
@@ -304,19 +305,19 @@ func (vm *VfioPciManager) disableGPUPersistenceMode(pciAddress string) error {
 
 // Check if the vfio_pci module is loaded.
 func checkVfioPCIModuleLoaded() (bool, error) {
-	f, err := os.Stat(filepath.Join(hostRoot, sysModulePath, vfioPciModule))
-	if err != nil {
-		if os.IsNotExist(err) {
-			return false, nil
+	for _, root := range []string{hostRoot, ""} {
+		f, err := os.Stat(filepath.Join(root, sysModulePath, vfioPciModule))
+		if err != nil {
+			if os.IsNotExist(err) {
+				continue
+			}
+			return false, fmt.Errorf("failed to check if vfio_pci module is loaded: %w", err)
 		}
-		return false, fmt.Errorf("failed to check if vfio_pci module is loaded: %w", err)
+		if f.IsDir() {
+			return true, nil
+		}
 	}
-
-	if !f.IsDir() {
-		return false, nil
-	}
-
-	return true, nil
+	return false, nil
 }
 
 // Load the vfio_pci module.
@@ -331,23 +332,54 @@ func loadVfioPciModule() error {
 
 // Check if IOMMU is enabled.
 func checkIommuEnabled() (bool, error) {
-	f, err := os.Open(filepath.Join(hostRoot, kernelIommuGroupPath))
-	if os.IsNotExist(err) {
-		return false, nil
+	for _, root := range []string{hostRoot, ""} {
+		f, err := os.Open(filepath.Join(root, kernelIommuGroupPath))
+		if os.IsNotExist(err) {
+			continue
+		}
+		if err != nil {
+			continue
+		}
+		defer f.Close()
+		_, err = f.Readdirnames(1)
+		if err == io.EOF {
+			continue
+		}
+		if err != nil {
+			return false, err
+		}
+		return true, nil
 	}
-	if err != nil {
-		return false, err
-	}
-	defer f.Close()
-	_, err = f.Readdirnames(1)
-	if err == io.EOF {
-		return false, nil
-	}
-	if err != nil {
-		return false, err
-	}
+	return false, nil
+}
 
-	return true, nil
+// isVfioPciPrebound checks if a device ID is in the kernel cmdline
+// vfio-pci.ids parameter, indicating the GPU was pre-bound to vfio-pci
+// at boot and should not be rebound to nvidia during Unconfigure.
+func isVfioPciPrebound(deviceID string) bool {
+	if deviceID == "" {
+		return false
+	}
+	cmdline, err := os.ReadFile(filepath.Join(hostRoot, "/proc/cmdline"))
+	if err != nil {
+		return false
+	}
+	// Strip 0x prefix for comparison (vfio-pci.ids uses bare hex).
+	id := strings.TrimPrefix(deviceID, "0x")
+	for _, param := range strings.Fields(string(cmdline)) {
+		if !strings.HasPrefix(param, "vfio-pci.ids=") {
+			continue
+		}
+		ids := strings.TrimPrefix(param, "vfio-pci.ids=")
+		for _, entry := range strings.Split(ids, ",") {
+			// Entries are vendor:device, e.g. 10de:2330
+			parts := strings.Split(entry, ":")
+			if len(parts) == 2 && strings.EqualFold(parts[1], id) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // Check if IOMMUFD is enabled.
