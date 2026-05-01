@@ -145,16 +145,25 @@ func NewDeviceState(ctx context.Context, config *Config) (*DeviceState, error) {
 				return nil, fmt.Errorf("unable to get checkpoint: %w", err)
 			}
 			storedBootID := cp.GetNodeBootID()
-			if storedBootID != "" && storedBootID != currentBootID {
-				// If the checkpoint was written for a different node boot (reboot), or stamps NodeBootID on an
-				// empty checkpoint that predates the field.
-				// proceed to create an empty checkpoint below
-				klog.Infof("Invalidating checkpoint: checkpoint nodeBootID %q != current %q", storedBootID, currentBootID)
-			} else {
+			if storedBootID == "" {
+				// legacy checkpoint file does not contain a boot ID, inject current boot ID
+				// note: this is a temporary workaround to ensure that the checkpoint file is always updated with the current boot ID
+				// note: this will temporary break the assertion that its prepared devices are prepared by the same boot ID
+				klog.V(4).Info("The existing checkpoint file does not contain a boot ID, injecting current boot ID")
+				err := state.updateCheckpoint(func(checkpoint *Checkpoint) {
+					checkpoint.V2.NodeBootID = currentBootID
+				})
+				if err != nil {
+					return nil, fmt.Errorf("unable to update checkpoint: %w", err)
+				}
 				syncPreparedDevicesGaugeFromCheckpoint(config.flags.nodeName, cp)
 				return state, nil
+			} else if storedBootID == currentBootID {
+				syncPreparedDevicesGaugeFromCheckpoint(config.flags.nodeName, cp)
+				return state, nil
+			} else {
+				klog.Infof("Invalidating checkpoint: checkpoint nodeBootID %q != current %q", storedBootID, currentBootID)
 			}
-
 		}
 	}
 
