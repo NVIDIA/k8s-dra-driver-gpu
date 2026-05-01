@@ -333,24 +333,31 @@ func loadVfioPciModule() error {
 // Check if IOMMU is enabled.
 func checkIommuEnabled() (bool, error) {
 	for _, root := range []string{hostRoot, ""} {
-		f, err := os.Open(filepath.Join(root, kernelIommuGroupPath))
-		if os.IsNotExist(err) {
-			continue
-		}
+		enabled, err := checkIommuEnabledAt(filepath.Join(root, kernelIommuGroupPath))
 		if err != nil {
 			continue
 		}
-		defer f.Close()
-		_, err = f.Readdirnames(1)
-		if err == io.EOF {
-			continue
+		if enabled {
+			return true, nil
 		}
-		if err != nil {
-			return false, err
-		}
-		return true, nil
 	}
 	return false, nil
+}
+
+func checkIommuEnabledAt(path string) (bool, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return false, err
+	}
+	defer f.Close()
+	_, err = f.Readdirnames(1)
+	if err == io.EOF {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 // isVfioPciPrebound checks if a device ID is in the kernel cmdline
