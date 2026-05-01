@@ -47,12 +47,13 @@ type ComputeDomainStatusManager struct {
 	cliqueManager *ComputeDomainCliqueManager
 	podManager    *DaemonSetPodManager
 
+	getComputeDomain          GetComputeDomainFunc
 	listComputeDomains        ListComputeDomainsFunc
 	updateComputeDomainStatus UpdateComputeDomainStatusFunc
 }
 
 // NewComputeDomainStatusManager creates a new ComputeDomainStatusManager.
-func NewComputeDomainStatusManager(config *ManagerConfig, listComputeDomains ListComputeDomainsFunc, updateComputeDomainStatus UpdateComputeDomainStatusFunc) *ComputeDomainStatusManager {
+func NewComputeDomainStatusManager(config *ManagerConfig, getComputeDomain GetComputeDomainFunc, listComputeDomains ListComputeDomainsFunc, updateComputeDomainStatus UpdateComputeDomainStatusFunc) *ComputeDomainStatusManager {
 	// Create cliqueManager if feature gate is enabled
 	var cliqueManager *ComputeDomainCliqueManager
 	if featuregates.Enabled(featuregates.ComputeDomainCliques) {
@@ -66,6 +67,7 @@ func NewComputeDomainStatusManager(config *ManagerConfig, listComputeDomains Lis
 		config:                    config,
 		cliqueManager:             cliqueManager,
 		podManager:                podManager,
+		getComputeDomain:          getComputeDomain,
 		listComputeDomains:        listComputeDomains,
 		updateComputeDomainStatus: updateComputeDomainStatus,
 	}
@@ -213,6 +215,15 @@ func (m *ComputeDomainStatusManager) sync(ctx context.Context) {
 
 // syncCD synchronizes node information to a single ComputeDomain's status.
 func (m *ComputeDomainStatusManager) syncCD(ctx context.Context, cd *nvapi.ComputeDomain, cliques []*nvapi.ComputeDomainClique, fabricPods []*corev1.Pod, nonFabricPods []*corev1.Pod) {
+	latestCD, err := m.getComputeDomain(string(cd.UID))
+	if err != nil {
+		klog.Errorf("CDStatusSync: error getting ComputeDomain %s: %v", cd.Name, err)
+		return
+	}
+	if latestCD == nil {
+		return
+	}
+
 	var fabricNodes, nonFabricNodes, newNodes []*nvapi.ComputeDomainNode
 
 	if m.cliqueManager != nil {
@@ -222,27 +233,26 @@ func (m *ComputeDomainStatusManager) syncCD(ctx context.Context, cd *nvapi.Compu
 		newNodes = slices.Concat(fabricNodes, nonFabricNodes)
 	} else {
 		// Feature gate disabled: filter stale fabric nodes + rebuild non-fabric nodes
-		fabricNodes = m.getNonStaleFabricNodes(cd.Status.Nodes, fabricPods)
+		fabricNodes = m.getNonStaleFabricNodes(latestCD.Status.Nodes, fabricPods)
 		nonFabricNodes = m.buildNodesFromPods(nonFabricPods)
 		newNodes = slices.Concat(fabricNodes, nonFabricNodes)
 	}
 
-	// Check if update is needed
-	if m.nodesEqual(cd.Status.Nodes, newNodes) {
+	if m.nodesEqual(latestCD.Status.Nodes, newNodes) {
 		return
 	}
 
-	klog.V(6).Infof("CDStatusSync: syncing ComputeDomain %s/%s: fabric=%d non-fabric=%d", cd.Namespace, cd.Name, len(fabricNodes), len(nonFabricNodes))
+	klog.V(6).Infof("CDStatusSync: syncing ComputeDomain %s/%s: fabric=%d non-fabric=%d", latestCD.Namespace, latestCD.Name, len(fabricNodes), len(nonFabricNodes))
 
-	// Update status
-	newCD := cd.DeepCopy()
+	// Update status (use latest object for resourceVersion)
+	newCD := latestCD.DeepCopy()
 	newCD.Status.Nodes = newNodes
 	if _, err := m.updateComputeDomainStatus(ctx, newCD); err != nil {
-		klog.Errorf("CDStatusSync: error updating ComputeDomain %s status: %v", cd.Name, err)
+		klog.Errorf("CDStatusSync: error updating ComputeDomain %s status: %v", latestCD.Name, err)
 		return
 	}
 
-	klog.V(4).Infof("CDStatusSync: updated ComputeDomain %s/%s: total nodes=%d", cd.Namespace, cd.Name, len(newNodes))
+	klog.V(4).Infof("CDStatusSync: updated ComputeDomain %s/%s: total nodes=%d", latestCD.Namespace, latestCD.Name, len(newNodes))
 }
 
 // buildNodesFromCliques builds a nodes list from fabric-attached cliques.
@@ -337,13 +347,24 @@ func podCountsForCliqueFabricDaemon(pod *corev1.Pod, clique *nvapi.ComputeDomain
 
 // cleanupClique removes stale daemon entries from a single clique.
 func (m *ComputeDomainStatusManager) cleanupClique(ctx context.Context, clique *nvapi.ComputeDomainClique, pods []*corev1.Pod, fabricCliqueCountForCD int) {
+	cdUID := clique.Labels[computeDomainLabelKey]
+	cliqueID := fabricCliqueIDFromClique(clique)
+	if cdUID == "" || cliqueID == "" {
+		return
+	}
+
+	latest := m.cliqueManager.Get(cdUID, cliqueID)
+	if latest == nil {
+		latest = clique
+	}
+
 	// Build set of node names that have a running fabric daemon pod for this clique.
 	runningNodes := make(map[string]struct{})
 	for _, pod := range pods {
 		if pod.Spec.NodeName == "" {
 			continue
 		}
-		if podCountsForCliqueFabricDaemon(pod, clique, fabricCliqueCountForCD) {
+		if podCountsForCliqueFabricDaemon(pod, latest, fabricCliqueCountForCD) {
 			runningNodes[pod.Spec.NodeName] = struct{}{}
 		}
 	}
@@ -351,7 +372,7 @@ func (m *ComputeDomainStatusManager) cleanupClique(ctx context.Context, clique *
 	var updatedDaemons []*nvapi.ComputeDomainDaemonInfo
 	var removedNodes []string
 
-	for _, daemon := range clique.Daemons {
+	for _, daemon := range latest.Daemons {
 		if _, exists := runningNodes[daemon.NodeName]; exists {
 			updatedDaemons = append(updatedDaemons, daemon)
 		} else {
@@ -359,23 +380,22 @@ func (m *ComputeDomainStatusManager) cleanupClique(ctx context.Context, clique *
 		}
 	}
 
-	// Nothing to clean up
-	if len(removedNodes) == 0 {
+	if daemonsEqual(latest.Daemons, updatedDaemons) {
 		return
 	}
 
-	klog.Infof("CliqueCleanup: removing stale daemon entries from clique %s/%s: %v", clique.Namespace, clique.Name, removedNodes)
+	klog.Infof("CliqueCleanup: removing stale daemon entries from clique %s/%s: %v", latest.Namespace, latest.Name, removedNodes)
 
-	// Update the clique with the filtered daemon list
-	newClique := clique.DeepCopy()
+	// Update the clique with the filtered daemon list (use latest for resourceVersion)
+	newClique := latest.DeepCopy()
 	newClique.Daemons = updatedDaemons
 
 	if _, err := m.cliqueManager.Update(ctx, newClique); err != nil {
-		klog.Errorf("CliqueCleanup: error updating ComputeDomainClique %s/%s: %v", clique.Namespace, clique.Name, err)
+		klog.Errorf("CliqueCleanup: error updating ComputeDomainClique %s/%s: %v", latest.Namespace, latest.Name, err)
 		return
 	}
 
-	klog.Infof("CliqueCleanup: successfully removed %d stale daemon entries from clique %s/%s", len(removedNodes), clique.Namespace, clique.Name)
+	klog.Infof("CliqueCleanup: successfully removed %d stale daemon entries from clique %s/%s", len(removedNodes), latest.Namespace, latest.Name)
 }
 
 // filterStaleNodes removes nodes from CD status if their pod no longer exists.
@@ -405,6 +425,23 @@ func (m *ComputeDomainStatusManager) getNonStaleFabricNodes(existingNodes []*nva
 	}
 
 	return result
+}
+
+// daemonsEqual checks if two daemon slices are semantically equal (per nodeName key).
+func daemonsEqual(a, b []*nvapi.ComputeDomainDaemonInfo) bool {
+	aMap := make(map[string]nvapi.ComputeDomainDaemonInfo)
+	for _, d := range a {
+		if d != nil {
+			aMap[d.NodeName] = *d
+		}
+	}
+	bMap := make(map[string]nvapi.ComputeDomainDaemonInfo)
+	for _, d := range b {
+		if d != nil {
+			bMap[d.NodeName] = *d
+		}
+	}
+	return maps.Equal(aMap, bMap)
 }
 
 // nodesEqual checks if two slices of ComputeDomainNode are equal.
