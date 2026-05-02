@@ -26,6 +26,7 @@ import (
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/client-go/util/retry"
 	"k8s.io/klog/v2"
 
 	nvapi "sigs.k8s.io/dra-driver-nvidia-gpu/api/nvidia.com/resource/v1beta1"
@@ -353,49 +354,81 @@ func (m *ComputeDomainStatusManager) cleanupClique(ctx context.Context, clique *
 		return
 	}
 
-	latest := m.cliqueManager.Get(cdUID, cliqueID)
-	if latest == nil {
-		latest = clique
+	ns, name := clique.Namespace, clique.Name
+	if ns == "" || name == "" {
+		return
 	}
 
-	// Build set of node names that have a running fabric daemon pod for this clique.
+	// Quick exit if cache already matches desired state (avoids live Get on every tick).
+	if cached := m.cliqueManager.Get(cdUID, cliqueID); cached != nil {
+		if running := runningFabricNodesForClique(pods, cached, fabricCliqueCountForCD); daemonsEqual(cached.Daemons, filterDaemonsByRunningNodes(cached.Daemons, running)) {
+			return
+		}
+	}
+
+	var removedLogged bool
+	var lastRemoved []string
+	var updateSucceeded bool
+	err := retry.RetryOnConflict(retry.DefaultBackoff, func() error {
+		live, err := m.cliqueManager.GetLive(ctx, name)
+		if err != nil {
+			return err
+		}
+		runningNodes := runningFabricNodesForClique(pods, live, fabricCliqueCountForCD)
+		updatedDaemons := filterDaemonsByRunningNodes(live.Daemons, runningNodes)
+		if daemonsEqual(live.Daemons, updatedDaemons) {
+			return nil
+		}
+		var removedNodes []string
+		for _, daemon := range live.Daemons {
+			if _, exists := runningNodes[daemon.NodeName]; !exists {
+				removedNodes = append(removedNodes, daemon.NodeName)
+			}
+		}
+		if !removedLogged {
+			klog.Infof("CliqueCleanup: removing stale daemon entries from clique %s/%s: %v", ns, name, removedNodes)
+			removedLogged = true
+		}
+		lastRemoved = removedNodes
+
+		newClique := live.DeepCopy()
+		newClique.Daemons = updatedDaemons
+		_, err = m.cliqueManager.Update(ctx, newClique)
+		if err == nil {
+			updateSucceeded = true
+		}
+		return err
+	})
+	if err != nil {
+		klog.Errorf("CliqueCleanup: error updating ComputeDomainClique %s/%s: %v", ns, name, err)
+		return
+	}
+	if updateSucceeded {
+		klog.Infof("CliqueCleanup: successfully removed %d stale daemon entries from clique %s/%s", len(lastRemoved), ns, name)
+	}
+}
+
+func runningFabricNodesForClique(pods []*corev1.Pod, clique *nvapi.ComputeDomainClique, fabricCliqueCountForCD int) map[string]struct{} {
 	runningNodes := make(map[string]struct{})
 	for _, pod := range pods {
 		if pod.Spec.NodeName == "" {
 			continue
 		}
-		if podCountsForCliqueFabricDaemon(pod, latest, fabricCliqueCountForCD) {
+		if podCountsForCliqueFabricDaemon(pod, clique, fabricCliqueCountForCD) {
 			runningNodes[pod.Spec.NodeName] = struct{}{}
 		}
 	}
+	return runningNodes
+}
 
-	var updatedDaemons []*nvapi.ComputeDomainDaemonInfo
-	var removedNodes []string
-
-	for _, daemon := range latest.Daemons {
+func filterDaemonsByRunningNodes(daemons []*nvapi.ComputeDomainDaemonInfo, runningNodes map[string]struct{}) []*nvapi.ComputeDomainDaemonInfo {
+	var out []*nvapi.ComputeDomainDaemonInfo
+	for _, daemon := range daemons {
 		if _, exists := runningNodes[daemon.NodeName]; exists {
-			updatedDaemons = append(updatedDaemons, daemon)
-		} else {
-			removedNodes = append(removedNodes, daemon.NodeName)
+			out = append(out, daemon)
 		}
 	}
-
-	if daemonsEqual(latest.Daemons, updatedDaemons) {
-		return
-	}
-
-	klog.Infof("CliqueCleanup: removing stale daemon entries from clique %s/%s: %v", latest.Namespace, latest.Name, removedNodes)
-
-	// Update the clique with the filtered daemon list (use latest for resourceVersion)
-	newClique := latest.DeepCopy()
-	newClique.Daemons = updatedDaemons
-
-	if _, err := m.cliqueManager.Update(ctx, newClique); err != nil {
-		klog.Errorf("CliqueCleanup: error updating ComputeDomainClique %s/%s: %v", latest.Namespace, latest.Name, err)
-		return
-	}
-
-	klog.Infof("CliqueCleanup: successfully removed %d stale daemon entries from clique %s/%s", len(removedNodes), latest.Namespace, latest.Name)
+	return out
 }
 
 // filterStaleNodes removes nodes from CD status if their pod no longer exists.
