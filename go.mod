@@ -3,7 +3,7 @@ module sigs.k8s.io/dra-driver-nvidia-gpu
 go 1.26.0
 
 require (
-	github.com/Masterminds/semver/v3 v3.4.0
+	github.com/Masterminds/semver/v3 v3.5.0
 	github.com/NVIDIA/go-nvlib v0.10.0
 	github.com/NVIDIA/go-nvml v0.13.0-1.0.20260212130905-92cf8c963449
 	github.com/NVIDIA/nvidia-container-toolkit v1.19.0
