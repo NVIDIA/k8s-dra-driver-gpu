@@ -73,6 +73,12 @@ func NewVfioPciManager(containerDriverRoot string, hostDriverRoot string, nvlib 
 		return nil, fmt.Errorf("IOMMU is not enabled in the kernel")
 	}
 
+	if _, err := os.Stat(hostRoot); os.IsNotExist(err) {
+		return nil, fmt.Errorf("%s volume mount is missing: the kubelet-plugin container requires a hostPath volume "+
+			"mounted at %s to check GPU device availability via fuser. Ensure the helm chart has "+
+			"featureGates.PassthroughSupport=true or add the volume mount manually", hostRoot, hostRoot)
+	}
+
 	vm := &VfioPciManager{
 		containerDriverRoot: containerDriverRoot,
 		hostDriverRoot:      hostDriverRoot,
@@ -103,10 +109,12 @@ func (vm *VfioPciManager) WaitForGPUFree(ctx context.Context, info *VfioDeviceIn
 				if exitErr, ok := err.(*exec.ExitError); ok && exitErr.ExitCode() == 1 {
 					return nil
 				}
-				klog.Errorf("Unexpected error checking if gpu device %q is free: %v", info.PciBusID, err)
+				klog.Errorf("Error checking if gpu device %q is free (exit code may indicate fuser/chroot misconfiguration; "+
+					"verify %s is mounted and contains fuser): %v, output: %s", info.PciBusID, hostRoot, err, string(out))
 				continue
 			}
-			klog.Infof("gpu device %q has open fds by process(es): %s", info.PciBusID, string(out))
+			klog.Infof("gpu device %q has open fds by process(es): %s -- external processes (e.g. dcgm-exporter) "+
+				"holding GPU device handles will block VFIO passthrough (see issue #1076)", info.PciBusID, string(out))
 		}
 	}
 }
