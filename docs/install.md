@@ -1,8 +1,9 @@
-# Get started
+# Install
 
 This page walks through installing the DRA Driver for NVIDIA GPUs and validating that GPU or ComputeDomain allocation is working correctly on your cluster.
 
 Before starting, make sure all [prerequisites](prerequisites.md) are met.
+If you have the NVIDIA GPU Operator installed, its recommended that you following the [GPU Operator install guide](https://docs.nvidia.com/datacenter/cloud-native/gpu-operator/latest/dra-intro-install.html) instead.
 
 ---
 
@@ -93,8 +94,30 @@ If you installed with only GPU allocation support, `compute-domain-daemon.nvidia
 kubectl get resourceslice -o wide
 ```
 
-When GPU allocation support is enabled, each GPU node should appear with a slice listing its available devices. If no slices appear, the kubelet plugin is not communicating with the API server.
+Example output:
 
+```
+NAME                                              NODE          DRIVER                      POOL          AGE
+00-gpu.nvidia.com-worker-gpu-01-kx9f2             worker-gpu-01 gpu.nvidia.com              worker-gpu-01 3m
+00-compute-domain.nvidia.com-worker-gpu-01-ab3d7  worker-gpu-01 compute-domain.nvidia.com   worker-gpu-01 3m
+```
+
+The ResourceSlice name is auto-generated from the driver name, node name, and a random suffix.
+The pool name matches the node name, since each node gets its own pool.
+
+When GPU allocation support is enabled, each GPU node should appear with `gpu.nvidia.com` slices listing its available devices.
+
+When ComputeDomain support is enabled, each GPU node should also appear with `compute-domain.nvidia.com` slices listing
+its available IMEX daemon and channel devices.
+
+If no slices appear, the kubelet plugin is not communicating with the API server.
+Check that the driver pods are running and your GPUs are in a healthy state.
+
+```bash
+kubectl logs nvidia-dra-driver-gpu-kubelet-plugin-<hash> -n nvidia-dra-driver-gpus
+```
+
+For additional help, consider filing an [issue in the DRA Driver repository](https://github.com/kubernetes-sigs/dra-driver-nvidia-gpu/issues).
 
 ## Optional: Configure Helm
 
@@ -152,6 +175,9 @@ To use a pre-existing TLS secret instead of cert-manager, set `webhook.tls.mode=
 
 
 ## Run a sample GPU allocation workload
+
+This section inlcude steps for deploying a sample application for GPU allocation and ComputeDomains on your cluster.
+For additional examples, refer to the `/demo folder`[https://github.com/kubernetes-sigs/dra-driver-nvidia-gpu/tree/main/demo] in the repository.
 
 > **Note:** GPU resource allocation must be enabled at install time (`--set gpuResourcesEnabledOverride=true`). If you installed with `--set resources.gpus.enabled=false`, skip this section.
 

@@ -46,46 +46,41 @@ systemctl disable --now nvidia-imex.service && systemctl mask nvidia-imex.servic
 
 On Kubernetes v1.34 and later, `DynamicResourceAllocation` is enabled by default and no additional configuration is required.
 
-On Kubernetes v1.32 and v1.33, the feature gate must be manually enabled on four components: the API server, scheduler, controller manager, and each kubelet.
+On Kubernetes v1.32 and v1.33, enable the following on each component:
 
-### kubeadm
+| Component | Requirement |
+|---|---|
+| kube-apiserver | Enable the `DynamicResourceAllocation` feature gate and the `resource.k8s.io/v1beta1` and `resource.k8s.io/v1beta2` API groups |
+| kube-controller-manager | Enable the `DynamicResourceAllocation` feature gate |
+| kube-scheduler | Enable the `DynamicResourceAllocation` feature gate |
+| kubelet | Enable the `DynamicResourceAllocation` feature gate |
 
-1. Add `--feature-gates=DynamicResourceAllocation=true` to the `command` section of each control plane manifest:
+How you apply these depends on your cluster setup. For managed Kubernetes distributions (EKS, GKE, AKS, and others), refer to your provider's documentation. Not all providers support enabling `DynamicResourceAllocation` on v1.32 or v1.33 clusters.
 
-```bash
-sudo vi /etc/kubernetes/manifests/kube-apiserver.yaml
-sudo vi /etc/kubernetes/manifests/kube-scheduler.yaml
-sudo vi /etc/kubernetes/manifests/kube-controller-manager.yaml
-```
+### Example: kubeadm
 
-In each file, add the flag to the existing `command` list:
-
-```yaml
-spec:
-  containers:
-  - command:
-    - kube-apiserver          # (or kube-scheduler / kube-controller-manager)
-    - --feature-gates=DynamicResourceAllocation=true
-    # ... other existing flags ...
-```
-
-2. On each node, open the kubelet configuration file:
-
-```bash
-sudo vi /var/lib/kubelet/config.yaml
-```
-
-3. Add the feature gate:
+The following `kubeadm-init.yaml` enables DRA for a new cluster using [kubeadm](https://kubernetes.io/docs/setup/production-environment/tools/kubeadm/control-plane-flags/):
 
 ```yaml
+apiVersion: kubeadm.k8s.io/v1beta4
+kind: ClusterConfiguration
+apiServer:
+  extraArgs:
+  - name: "feature-gates"
+    value: "DynamicResourceAllocation=true"
+  - name: "runtime-config"
+    value: "resource.k8s.io/v1beta1=true,resource.k8s.io/v1beta2=true"
+controllerManager:
+  extraArgs:
+  - name: "feature-gates"
+    value: "DynamicResourceAllocation=true"
+scheduler:
+  extraArgs:
+  - name: "feature-gates"
+    value: "DynamicResourceAllocation=true"
+---
+apiVersion: kubelet.config.k8s.io/v1beta1
+kind: KubeletConfiguration
 featureGates:
   DynamicResourceAllocation: true
 ```
-
-4. Restart the kubelet on each node:
-
-```bash
-sudo systemctl restart kubelet
-```
-
-> **Note:** For managed Kubernetes distributions (EKS, GKE, AKS, and others), refer to your provider's documentation for enabling feature gates. Not all providers support enabling `DynamicResourceAllocation` on v1.32 or v1.33 clusters.
