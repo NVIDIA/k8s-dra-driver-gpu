@@ -18,6 +18,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"path/filepath"
@@ -27,6 +28,7 @@ import (
 
 	resourceapi "k8s.io/api/resource/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/dynamic-resource-allocation/kubeletplugin"
 	"k8s.io/klog/v2"
 	"k8s.io/kubernetes/pkg/kubelet/checkpointmanager"
@@ -34,11 +36,21 @@ import (
 
 	"github.com/sirupsen/logrus"
 
+	"github.com/NVIDIA/go-nvml/pkg/nvml"
+
 	configapi "sigs.k8s.io/dra-driver-nvidia-gpu/api/nvidia.com/resource/v1beta1"
 	"sigs.k8s.io/dra-driver-nvidia-gpu/pkg/featuregates"
 	"sigs.k8s.io/dra-driver-nvidia-gpu/pkg/flock"
 	drametrics "sigs.k8s.io/dra-driver-nvidia-gpu/pkg/metrics"
 )
+
+// ErrDeviceEnumerationTimeout is returned by enumerateDevicesWithRetry
+// when the retry budget is exhausted without discovering any devices.
+var ErrDeviceEnumerationTimeout = errors.New("device enumeration timed out before any GPU was discovered")
+
+type deviceEnumerator interface {
+	enumerateAllPossibleDevices() (*PerGPUAllocatableDevices, error)
+}
 
 type OpaqueDeviceConfig struct {
 	Requests []string
@@ -65,6 +77,10 @@ type DeviceState struct {
 	// (e.g., when announcing one ResourceSlice per physical GPU).
 	perGPUAllocatable *PerGPUAllocatableDevices
 
+	// allocatableReady is closed exactly once when perGPUAllocatable has been populated.
+	allocatableReady     chan struct{}
+	allocatableReadyOnce sync.Once
+
 	nvdevlib          *deviceLib
 	checkpointManager checkpointmanager.CheckpointManager
 
@@ -80,11 +96,6 @@ func NewDeviceState(ctx context.Context, config *Config) (*DeviceState, error) {
 	nvdevlib, err := newDeviceLib(containerDriverRoot)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create device library: %w", err)
-	}
-
-	perGPUAllocatable, err := nvdevlib.enumerateAllPossibleDevices()
-	if err != nil {
-		return nil, fmt.Errorf("error enumerating all possible devices: %w", err)
 	}
 
 	hostDriverRoot := config.flags.hostDriverRoot
@@ -120,18 +131,6 @@ func NewDeviceState(ctx context.Context, config *Config) (*DeviceState, error) {
 		return nil, fmt.Errorf("unable to create CDI handler: %w", err)
 	}
 
-	var fullGPUuuids []string
-	for _, devices := range perGPUAllocatable.allocatablesMap {
-		for _, dev := range devices {
-			if dev.Gpu != nil {
-				fullGPUuuids = append(fullGPUuuids, dev.Gpu.UUID)
-			}
-		}
-	}
-
-	klog.V(2).Infof("Warming up CDI device spec cache for GPUs %v", fullGPUuuids)
-	cdi.WarmupDevSpecCache(fullGPUuuids)
-
 	var tsManager *TimeSlicingManager
 	if featuregates.Enabled(featuregates.TimeSlicingSettings) {
 		tsManager = NewTimeSlicingManager(nvdevlib)
@@ -162,11 +161,12 @@ func NewDeviceState(ctx context.Context, config *Config) (*DeviceState, error) {
 		tsManager:         tsManager,
 		mpsManager:        mpsManager,
 		vfioPciManager:    vfioPciManager,
-		perGPUAllocatable: perGPUAllocatable,
+		perGPUAllocatable: &PerGPUAllocatableDevices{allocatablesMap: map[PCIBusID]AllocatableDevices{}},
 		config:            config,
 		nvdevlib:          nvdevlib,
 		checkpointManager: checkpointManager,
 		cplock:            flock.NewFlock(cpLockPath),
+		allocatableReady:  make(chan struct{}),
 	}
 	state.checkpointCleanupManager = NewCheckpointCleanupManager(state, config.clientsets.Resource)
 
@@ -175,21 +175,34 @@ func NewDeviceState(ctx context.Context, config *Config) (*DeviceState, error) {
 		return nil, fmt.Errorf("unable to list checkpoints: %v", err)
 	}
 
+	var cp *Checkpoint
 	for _, c := range checkpoints {
 		if c == DriverPluginCheckpointFileBasename {
-			cp, err := state.getCheckpoint(ctx)
+			cp, err = state.getCheckpoint(ctx)
 			if err != nil {
 				return nil, fmt.Errorf("unable to get checkpoint: %w", err)
 			}
 			syncPreparedDevicesGaugeFromCheckpoint(config.flags.nodeName, cp)
-			return state, nil
+			break
 		}
 	}
 
-	if err := state.createCheckpoint(ctx, &Checkpoint{}); err != nil {
-		return nil, fmt.Errorf("unable to create fresh checkpoint: %v", err)
+	if cp == nil {
+		if err := state.createCheckpoint(ctx, &Checkpoint{}); err != nil {
+			return nil, fmt.Errorf("unable to create fresh checkpoint: %v", err)
+		}
 	}
 
+	// Try enumerating devices
+	// If nothing is discovered yet, background retries take over via InitAllocatableBackground.
+	perGPUAllocatable, err := enumerateDevices(nvdevlib, cp, featuregates.Enabled(featuregates.PassthroughSupport))
+	if err != nil {
+		return nil, err
+	}
+	if perGPUAllocatable != nil {
+		warmupCDICache(cdi, perGPUAllocatable)
+		state.finalizeAllocatable(perGPUAllocatable)
+	}
 	return state, nil
 }
 
@@ -1247,4 +1260,166 @@ func (s *DeviceState) AddDeviceTaint(d *AllocatableDevice, taint *resourceapi.De
 	s.Lock()
 	defer s.Unlock()
 	return d.AddOrUpdateTaint(taint)
+}
+
+// AllocatableReady reports whether perGPUAllocatable has been populated with at least one device.
+func (s *DeviceState) AllocatableReady() bool {
+	select {
+	case <-s.allocatableReady:
+		return true
+	default:
+		return false
+	}
+}
+
+// InitAllocatableBackground runs the enumeration retry loop, on success populates perGPUAllocatable and closes allocatableReady.
+func (s *DeviceState) InitAllocatableBackground(ctx context.Context, backoff wait.Backoff) error {
+	if s.AllocatableReady() {
+		return nil
+	}
+	passthroughEnabled := featuregates.Enabled(featuregates.PassthroughSupport)
+	var cp *Checkpoint
+	var err error
+	if passthroughEnabled {
+		cp, err = s.getCheckpoint(ctx)
+		if err != nil {
+			return fmt.Errorf("unable to read checkpoint before background enumeration: %w", err)
+		}
+	}
+	var perGPU *PerGPUAllocatableDevices
+	perGPU, err = enumerateDevicesWithRetry(ctx, s.nvdevlib, backoff, cp, passthroughEnabled)
+	if err != nil {
+		return err
+	}
+	warmupCDICache(s.cdi, perGPU)
+	s.finalizeAllocatable(perGPU)
+	return nil
+}
+
+// finalizeAllocatable stores the enumeration result and marks the state ready.
+// Safe to call multiple times, only the first call has effect.
+func (s *DeviceState) finalizeAllocatable(perGPU *PerGPUAllocatableDevices) {
+	s.allocatableReadyOnce.Do(func() {
+		s.Lock()
+		s.perGPUAllocatable = perGPU
+		s.Unlock()
+		close(s.allocatableReady)
+	})
+}
+
+// enumerateDevices performs GPU enumeration attempt.
+func enumerateDevices(nvdevlib deviceEnumerator, cp *Checkpoint, passthroughEnabled bool) (*PerGPUAllocatableDevices, error) {
+	perGPU, err := nvdevlib.enumerateAllPossibleDevices()
+	if err != nil {
+		if isTransientNVMLError(err) {
+			klog.Infof("Transient NVML error on enumeration attempt; will retry in background: %v", err)
+			return nil, nil
+		}
+		return nil, fmt.Errorf("error enumerating all possible devices: %w", err)
+	}
+	if len(perGPU.allocatablesMap) == 0 {
+		klog.Infof("No GPU devices discovered on enumeration attempt; will retry in background")
+		return nil, nil
+	}
+	if hasOrphanVfioDevices(perGPU, cp, passthroughEnabled) {
+		klog.Infof("Orphan vfio devices found on enumeration attempt; will retry in background")
+		return nil, nil
+	}
+	return perGPU, nil
+}
+
+// enumerateDevicesWithRetry retries until at least one device is found, the context is cancelled, or the retry budget is exhausted.
+// Transient NVML errors are retried, all other errors propagate immediately.
+func enumerateDevicesWithRetry(ctx context.Context, nvdevlib deviceEnumerator, backoff wait.Backoff, cp *Checkpoint, passthroughEnabled bool) (*PerGPUAllocatableDevices, error) {
+	totalSteps := backoff.Steps
+	var perGPUAllocatable *PerGPUAllocatableDevices
+	err := wait.ExponentialBackoffWithContext(ctx, backoff, func(ctx context.Context) (bool, error) {
+		var err error
+		perGPUAllocatable, err = enumerateDevices(nvdevlib, cp, passthroughEnabled)
+		if err != nil {
+			return false, err
+		}
+		return perGPUAllocatable != nil, nil
+	})
+	switch {
+	case err == nil:
+		return perGPUAllocatable, nil
+	case errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):
+		return nil, fmt.Errorf("context cancelled while waiting for GPU devices: %w", err)
+	case wait.Interrupted(err):
+		klog.Errorf("No GPU devices found after %d attempts; failing startup to avoid publishing an empty ResourceSlice", totalSteps)
+		return nil, ErrDeviceEnumerationTimeout
+	default:
+		return nil, err
+	}
+}
+
+// warmupCDICache populates the CDI device spec cache for every full GPU in perGPU.
+func warmupCDICache(cdi *CDIHandler, perGPU *PerGPUAllocatableDevices) {
+	var fullGPUuuids []string
+	for _, devices := range perGPU.allocatablesMap {
+		for _, dev := range devices {
+			if dev.Gpu != nil {
+				fullGPUuuids = append(fullGPUuuids, dev.Gpu.UUID)
+			}
+		}
+	}
+	klog.V(2).Infof("Warming up CDI device spec cache for GPUs %v", fullGPUuuids)
+	cdi.WarmupDevSpecCache(fullGPUuuids)
+}
+
+// isTransientNVMLError reports whether err is an NVML "not ready yet" error expected during early driver init.
+// Errors that may indicate real hardware problems are treated as permanent.
+func isTransientNVMLError(err error) bool {
+	return errors.Is(err, nvml.ERROR_UNINITIALIZED) || errors.Is(err, nvml.ERROR_DRIVER_NOT_LOADED)
+}
+
+// deviceEnumerationBackoff builds the retry cadence for background GPU enumeration.
+func deviceEnumerationBackoff(flags *Flags) wait.Backoff {
+	return wait.Backoff{
+		Duration: 1 * time.Second,
+		Factor:   2.0,
+		Jitter:   0.2,
+		Cap:      flags.deviceEnumerationRetryMaxInterval,
+		Steps:    flags.deviceEnumerationRetrySteps,
+	}
+}
+
+// hasOrphanVfioDevices returns true when there are vfio devices with a nil parent GPU (nvml not yet initialized)
+// that are not covered by a PrepareCompleted checkpoint entry (which means they were legitimately handed to a VM).
+func hasOrphanVfioDevices(perGPU *PerGPUAllocatableDevices, cp *Checkpoint, passthroughEnabled bool) bool {
+	if !passthroughEnabled {
+		return false
+	}
+	// Build set of vfio device names that have a PrepareCompleted checkpoint entry.
+	prepared := make(map[DeviceName]struct{})
+	if cp != nil && cp.V2 != nil {
+		for _, claim := range cp.V2.PreparedClaims {
+			if claim.CheckpointState != ClaimCheckpointStatePrepareCompleted {
+				continue
+			}
+			for _, group := range claim.PreparedDevices {
+				for _, dev := range group.Devices {
+					if dev.Type() == VfioDeviceType {
+						prepared[dev.Vfio.Device.DeviceName] = struct{}{}
+					}
+				}
+			}
+		}
+	}
+	for _, devices := range perGPU.allocatablesMap {
+		for _, dev := range devices {
+			if dev.Type() != VfioDeviceType {
+				continue
+			}
+			if dev.Vfio.parent != nil {
+				continue
+			}
+			// Parentless vfio device — check if it was legitimately prepared.
+			if _, ok := prepared[dev.CanonicalName()]; !ok {
+				return true
+			}
+		}
+	}
+	return false
 }
