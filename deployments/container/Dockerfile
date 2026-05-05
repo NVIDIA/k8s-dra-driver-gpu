@@ -96,15 +96,15 @@ RUN --mount=type=cache,target=/mc/go/build-cache,id=gocache \
 # Choose: 1) fresh bash build or 2) use binary from previous image
 #
 # option 1:
-ARG BASH_STATIC_GIT_REF=021f5f29f665c92ca16a369d9f27e288c3aed0c6
-ENV BASH_STATIC_GIT_REF=${BASH_STATIC_GIT_REF}
-WORKDIR /bashbuild
-COPY hack/build-bash-static.sh .
-RUN bash /bashbuild/build-bash-static.sh
-RUN cd /bashbuild/bash-static/releases && ./bash*-static --version && mv bash-*-static /bashbuild/bash && file /bashbuild/bash
+#ARG BASH_STATIC_GIT_REF=021f5f29f665c92ca16a369d9f27e288c3aed0c6
+#ENV BASH_STATIC_GIT_REF=${BASH_STATIC_GIT_REF}
+#WORKDIR /bashbuild
+#COPY hack/build-bash-static.sh .
+#RUN bash /bashbuild/build-bash-static.sh
+#RUN cd /bashbuild/bash-static/releases && ./bash*-static --version && mv bash-*-static /bashbuild/bash && file /bashbuild/bash
 
 # option 2:
-# FROM registry.k8s.io/dra-driver-nvidia/dra-driver-nvidia-gpu:v25.12.0-dev-839e966a AS bash
+FROM us-central1-docker.pkg.dev/k8s-staging-images/dra-driver-nvidia/dra-driver-nvidia-gpu:v26.4.0-dev-69c95240 AS bash
 
 # Pull the nvidia-cdi-hook binary out of the relevant toolkit container
 # (arch: TARGETPLATFORM, set via --platform).
@@ -138,10 +138,10 @@ LABEL org.opencontainers.image.source="https://github.com/kubernetes-sigs/dra-dr
 COPY LICENSE /
 
 # option 1: fresh bash build
-COPY --from=build   /bashbuild/bash                           /bin/bash
+#COPY --from=build   /bashbuild/bash                           /bin/bash
 
 # option 2: bash from previous image
-# COPY --from=bash    /bin/bash                                 /bin/bash
+COPY --from=bash    /bin/bash                                 /bin/bash
 
 COPY --from=toolkit /artifacts/rpm/usr/bin/nvidia-cdi-hook    /usr/bin/nvidia-cdi-hook
 COPY --from=build   /artifacts/compute-domain-controller      /usr/bin/compute-domain-controller
