@@ -1,0 +1,99 @@
+# Copyright The Kubernetes Authors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#    https://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+name: Release Automation
+
+on:
+  push:
+    branches:
+      - main
+      - 'release-*'
+    paths:
+      # Only root VERSION bumps trigger releases, versions.mk holds other build metadata.
+      - 'VERSION'
+
+permissions:
+  contents: write
+
+jobs:
+  cut-release:
+    name: Cut Release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          fetch-depth: 0
+
+      - name: Read Version
+        id: version
+        run: |
+          VERSION="$(tr -d '[:space:]' < VERSION)"
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+
+          # Basic semver validation (e.g. v1.2.3)
+          if ! [[ "$VERSION" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?(\+[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$ ]]; then
+            echo "Error: Invalid semver format in VERSION file: $VERSION"
+            exit 1
+          fi
+
+          # Extract patch number to determine if we need to cut a new release branch
+          PATCH_NUM=$(echo "$VERSION" | sed -n 's/^v[0-9]*\.[0-9]*\.\([0-9]*\).*/\1/p')
+          echo "patch_num=${PATCH_NUM}" >> $GITHUB_OUTPUT
+
+          # Extract the vMAJOR.MINOR to create release branches, expose it as env var
+          VERSION_XY=$(echo "$VERSION" | sed -n 's/\(^v[0-9]*\.[0-9]*\)\.[0-9]*.*/\1/p')
+          echo "VERSION_XY=${VERSION_XY}" >> $GITHUB_ENV
+
+          # Pre-release / dev streams: do not tag or cut release branches.
+          if [[ "$VERSION" == *"-dev"* ]]; then
+            echo "skip_release=true" >> $GITHUB_OUTPUT
+            echo "Skipping tag and release branch for dev version: $VERSION"
+          else
+            echo "skip_release=false" >> $GITHUB_OUTPUT
+            echo "Cutting release for version: $VERSION (Branch: $VERSION_XY Patch: $PATCH_NUM)"
+          fi
+
+      - name: Configure Git
+        if: steps.version.outputs.skip_release != 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Create and Push Tag
+        if: steps.version.outputs.skip_release != 'true'
+        run: |
+          VERSION=${{ steps.version.outputs.version }}
+          echo "tagging: ${VERSION}"
+          if git ls-remote --tags origin refs/tags/${VERSION} | grep -q "refs/tags/${VERSION}$"; then
+            echo "Tag ${VERSION} already exists. Skipping tag creation."
+          else
+            git tag -a "${VERSION}" -m "Release ${VERSION}"
+            git push origin "${VERSION}"
+            echo "Successfully pushed tag ${VERSION}"
+          fi
+
+      - name: Create and Push Release Branch
+        if: steps.version.outputs.patch_num == '0' && steps.version.outputs.skip_release != 'true'
+        run: |
+          BRANCH_NAME="release-${VERSION_XY}"
+          echo "branching: ${BRANCH_NAME}"
+          if git ls-remote --heads origin refs/heads/${BRANCH_NAME} | grep -q "refs/heads/${BRANCH_NAME}$"; then
+            echo "Branch ${BRANCH_NAME} already exists. Skipping branch creation."
+          else
+            # We are already on the commit that triggered the workflow (the merge commit).
+            git checkout -b "${BRANCH_NAME}"
+            git push origin "${BRANCH_NAME}"
+            echo "Successfully pushed branch ${BRANCH_NAME}"
+          fi
