@@ -143,6 +143,7 @@ helm show values nvidia/nvidia-dra-driver-gpu
 ## Optional: Admission webhook
 
 The admission webhook validates opaque configuration in `ResourceClaim` and `ResourceClaimTemplate` specs, providing early feedback on invalid values. It is disabled by default.
+Refer to the [API reference](reference/api.md) page for more details on this configuration.
 
 Prerequisite: [cert-manager](https://cert-manager.io/) must be installed in your cluster.
 
