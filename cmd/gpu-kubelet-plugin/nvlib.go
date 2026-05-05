@@ -229,7 +229,7 @@ func (l deviceLib) GetPerGpuAllocatableDevices(indices ...int) (*PerGPUAllocatab
 		l.gpuUUIDbyPCIBusID[gpuInfo.pciBusID] = gpuInfo.UUID
 
 		if featuregates.Enabled(featuregates.DynamicMIG) {
-			supportsDynamicMIG, err := supportsDynamicMIGDiscovery(gpuInfo, d)
+			dynamicMIGCapable, err := isDynamicMIGCapable(gpuInfo, d)
 			if err != nil {
 				return fmt.Errorf("error determining DynamicMIG support for GPU %v: %w", i, err)
 			}
@@ -241,7 +241,7 @@ func (l deviceLib) GetPerGpuAllocatableDevices(indices ...int) (*PerGPUAllocatab
 			// the value cannot change underneath us. A future refactor that
 			// moves the migEnabled read past enumeration (or starts
 			// re-reading it) must reconsider these branches.
-			if supportsDynamicMIG {
+			if dynamicMIGCapable {
 				// Best-effort handle cache warmup: store mapping between full-GPU
 				// UUID and NVML device handle in a map. Ignore failures.
 				if _, ret := l.DeviceGetHandleByUUID(gpuInfo.UUID); ret != nvml.SUCCESS {
@@ -265,8 +265,8 @@ func (l deviceLib) GetPerGpuAllocatableDevices(indices ...int) (*PerGPUAllocatab
 				// driver.go, which derive the parent GpuInfo from
 				// MigDynamic.Parent when no full-GPU entry exists.
 
-				// We're inside the supportsDynamicMIG=true branch, which already excludes
-				// vGPUs, so supportsMIGModeToggle(d) here precisely means
+				// We're inside the dynamicMIGCapable=true branch, which already excludes
+				// vGPUs masquerading as full GPUs, so supportsMIGModeToggle(d) here precisely means
 				// "non-vGPU Hopper+".
 				if !gpuInfo.migEnabled || supportsMIGModeToggle(d) {
 					thisGPUAllocatable[gpuInfo.CanonicalName()] = parentdev
@@ -1348,10 +1348,19 @@ func setMax(m map[resourceapi.QualifiedName]resourceapi.DeviceCapacity, k resour
 	}
 }
 
+// For testing on non-Ampere hardware, set the environment variable
+// NVIDIA_DRA_TEST_FORCE_GPU_ARCH=ampere to force GPU arch to be Ampere.
+// This exercises the prevent-MIG-toggle code paths on any
+// MIG-capable GPU, which is otherwise only reachable on A100.
+var forceToBeAmpere = strings.EqualFold(strings.TrimSpace(os.Getenv("NVIDIA_DRA_TEST_FORCE_GPU_ARCH")), "ampere")
+
 // supportsMIGModeToggle reports whether the GPU supports toggling MIG mode
 // without requiring a GPU reset. Hopper (H100) and newer support reset-less
 // MIG mode toggling. Ampere (A100) does not.
 func supportsMIGModeToggle(dev nvml.Device) bool {
+	if forceToBeAmpere {
+		return false
+	}
 	arch, ret := dev.GetArchitecture()
 	if ret != nvml.SUCCESS {
 		return false
@@ -1359,7 +1368,7 @@ func supportsMIGModeToggle(dev nvml.Device) bool {
 	return arch >= nvml.DEVICE_ARCH_HOPPER
 }
 
-func supportsDynamicMIGDiscovery(gpuInfo *GpuInfo, dev nvdev.Device) (bool, error) {
+func isDynamicMIGCapable(gpuInfo *GpuInfo, dev nvdev.Device) (bool, error) {
 	vMode, vret := dev.GetVirtualizationMode()
 	if vret != nvml.SUCCESS {
 		return false, fmt.Errorf("error getting GPU virtualization mode: %v", vret)
