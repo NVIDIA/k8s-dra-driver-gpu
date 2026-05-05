@@ -20,11 +20,12 @@ REGISTRY ?= registry.k8s.io/dra-driver-nvidia
 # See cloudbuild.yaml and https://github.com/kubernetes/k8s.io (k8s-staging-nv-dra-driver-gpu).
 STAGING_REGISTRY ?= us-central1-docker.pkg.dev/k8s-staging-images/dra-driver-nvidia
 
-VERSION  ?= v26.4.0-dev
+# Driver release semver: single line in repository root VERSION (triggers release automation on change).
+VERSION ?= $(shell tr -d '[:space:]' < $(CURDIR)/VERSION)
 
 # vVERSION represents the version with a guaranteed v-prefix
 # Note: this is probably not consumed in our build chain.
-# `VERSION` above is expected to have a `v` prefix, which is
+# `VERSION` (from the VERSION file) is expected to have a `v` prefix, which is
 # then automatically stripped in places that must not have it
 # (e.g., in context of Helm).
 vVERSION := v$(VERSION:v%=%)
