@@ -32,11 +32,14 @@ type Checkpoint struct {
 	Checksum checksum.Checksum `json:"checksum"`
 	V1       *CheckpointV1     `json:"v1,omitempty"`
 	V2       *CheckpointV2     `json:"v2,omitempty"`
+	V3       *CheckpointV3     `json:"v3,omitempty"`
 }
 
 func (cp *Checkpoint) ToLatestVersion() *Checkpoint {
 	latest := &Checkpoint{}
 	switch {
+	case cp.V3 != nil:
+		latest.V2 = cp.V3.ToV2()
 	case cp.V2 != nil:
 		latest.V2 = cp.V2
 	case cp.V1 != nil:
@@ -53,20 +56,27 @@ func (cp *Checkpoint) ToLatestVersion() *Checkpoint {
 func (cp *Checkpoint) MarshalCheckpoint() ([]byte, error) {
 	cp = cp.ToLatestVersion()
 	cp.V1 = cp.V2.ToV1()
+	cp.V3 = cp.V2.ToV3()
 	if err := cp.SetChecksumV1(); err != nil {
 		return nil, fmt.Errorf("error setting v1 checksum: %v", err)
 	}
 	if err := cp.SetChecksumV2(); err != nil {
 		return nil, fmt.Errorf("error setting v2 checksum: %v", err)
 	}
+	if err := cp.SetChecksumV3(); err != nil {
+		return nil, fmt.Errorf("error setting v3 checksum: %v", err)
+	}
 	return json.Marshal(*cp)
 }
 
 func (cp *Checkpoint) SetChecksumV1() error {
 	v2 := cp.V2
+	v3 := cp.V3
 	cp.V2 = nil
+	cp.V3 = nil
 	defer func() {
 		cp.V2 = v2
+		cp.V3 = v3
 	}()
 
 	cp.Checksum = 0
@@ -88,11 +98,24 @@ func (cp *Checkpoint) SetChecksumV2() error {
 	return nil
 }
 
+func (cp *Checkpoint) SetChecksumV3() error {
+	cp.V3.Checksum = 0
+	out, err := json.Marshal(*cp.V3)
+	if err != nil {
+		return err
+	}
+	cp.V3.Checksum = checksum.New(out)
+	return nil
+}
+
 func (cp *Checkpoint) UnmarshalCheckpoint(data []byte) error {
 	return json.Unmarshal(data, cp)
 }
 
 func (cp *Checkpoint) VerifyChecksum() error {
+	if cp.V3 != nil {
+		return cp.VerifyChecksumV3()
+	}
 	if err := cp.VerifyChecksumV1(); err != nil {
 		return err
 	}
@@ -105,10 +128,13 @@ func (cp *Checkpoint) VerifyChecksum() error {
 func (cp *Checkpoint) VerifyChecksumV1() error {
 	ck := cp.Checksum
 	v2 := cp.V2
+	v3 := cp.V3
 	cp.V2 = nil
+	cp.V3 = nil
 	defer func() {
 		cp.Checksum = ck
 		cp.V2 = v2
+		cp.V3 = v3
 	}()
 
 	cp.Checksum = 0
@@ -131,6 +157,23 @@ func (cp *Checkpoint) VerifyChecksumV2() error {
 	}()
 	cp.V2.Checksum = 0
 	out, err := json.Marshal(*cp.V2)
+	if err != nil {
+		return err
+	}
+	return ck.Verify(out)
+}
+
+func (cp *Checkpoint) VerifyChecksumV3() error {
+	if cp.V3 == nil {
+		return nil
+	}
+
+	ck := cp.V3.Checksum
+	defer func() {
+		cp.V3.Checksum = ck
+	}()
+	cp.V3.Checksum = 0
+	out, err := json.Marshal(*cp.V3)
 	if err != nil {
 		return err
 	}
