@@ -30,12 +30,12 @@ type PreparedDevice struct {
 
 type PreparedComputeDomainChannel struct {
 	Info   *ComputeDomainChannelInfo `json:"info"`
-	Device *kubeletplugin.Device     `json:"device"`
+	Device *CheckpointedDevice       `json:"device"`
 }
 
 type PreparedComputeDomainDaemon struct {
 	Info   *ComputeDomainDaemonInfo `json:"info"`
-	Device *kubeletplugin.Device    `json:"device"`
+	Device *CheckpointedDevice      `json:"device"`
 }
 
 type PreparedDeviceGroup struct {
@@ -106,9 +106,9 @@ func (g *PreparedDeviceGroup) GetDevices() []kubeletplugin.Device {
 	for _, device := range g.Devices {
 		switch device.Type() {
 		case ComputeDomainChannelType:
-			devices = append(devices, *device.Channel.Device)
+			devices = append(devices, kubeletplugin.Device(*device.Channel.Device))
 		case ComputeDomainDaemonType:
-			devices = append(devices, *device.Daemon.Device)
+			devices = append(devices, kubeletplugin.Device(*device.Daemon.Device))
 		}
 	}
 	return devices
