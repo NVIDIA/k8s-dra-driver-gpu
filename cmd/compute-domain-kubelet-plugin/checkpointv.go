@@ -17,10 +17,44 @@ limitations under the License.
 package main
 
 import (
+	"encoding/json"
+
 	resourceapi "k8s.io/api/resource/v1"
+	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/dynamic-resource-allocation/kubeletplugin"
 
 	"k8s.io/kubernetes/pkg/kubelet/checkpointmanager/checksum"
 )
+
+// CheckpointedDevice shares kubeletplugin.Device's layout, i.e.
+// kubeletplugin.Device(c) can be done as a no-op cast. We can't serialize
+// `kubeletplugin.Device` directly anymore for creating a checkpoint or for
+// deserializing from a checkpoint: a field added upstream to `Device` without
+// `omitempty` causes re-serialization of an older checkpoint to include that
+// field with an empty value. That changes the newly computed checksum compared
+// to the one encoded in the checkpoint, resulting in the old checkpoint being
+// rejected by the new binary. Circumvent that by adding the `omitempty`
+// annotations here for `ShareID` and `Metadata` which were added as part of the
+// k8s 1.36 release cycle. Also see issue 1080.
+type CheckpointedDevice kubeletplugin.Device
+
+func (c CheckpointedDevice) MarshalJSON() ([]byte, error) {
+	return json.Marshal(struct {
+		Requests     []string                      `json:"Requests"`
+		PoolName     string                        `json:"PoolName"`
+		DeviceName   string                        `json:"DeviceName"`
+		CDIDeviceIDs []string                      `json:"CDIDeviceIDs"`
+		ShareID      *types.UID                    `json:"ShareID,omitempty"`
+		Metadata     *kubeletplugin.DeviceMetadata `json:"Metadata,omitempty"`
+	}{
+		Requests:     c.Requests,
+		PoolName:     c.PoolName,
+		DeviceName:   c.DeviceName,
+		CDIDeviceIDs: c.CDIDeviceIDs,
+		ShareID:      c.ShareID,
+		Metadata:     c.Metadata,
+	})
+}
 
 type ClaimCheckpointState string
 

@@ -19,7 +19,6 @@ package main
 import (
 	"encoding/json"
 
-	"k8s.io/dynamic-resource-allocation/kubeletplugin"
 	drapbv1 "k8s.io/kubelet/pkg/apis/dra/v1beta1"
 	"k8s.io/kubernetes/pkg/kubelet/checkpointmanager/checksum"
 )
@@ -104,7 +103,7 @@ func (c *PreparedComputeDomainChannel2503RC2) ToV1() *PreparedComputeDomainChann
 		channel.Info = c.Info
 	}
 	if c.Device != nil {
-		channel.Device = &kubeletplugin.Device{
+		channel.Device = &CheckpointedDevice{
 			Requests:     c.Device.RequestNames,
 			PoolName:     c.Device.PoolName,
 			DeviceName:   c.Device.DeviceName,
@@ -121,7 +120,7 @@ func (d *PreparedComputeDomainDaemon2503RC2) ToV1() *PreparedComputeDomainDaemon
 		daemon.Info = d.Info
 	}
 	if d.Device != nil {
-		daemon.Device = &kubeletplugin.Device{
+		daemon.Device = &CheckpointedDevice{
 			Requests:     d.Device.RequestNames,
 			PoolName:     d.Device.PoolName,
 			DeviceName:   d.Device.DeviceName,
