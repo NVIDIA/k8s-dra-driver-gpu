@@ -96,7 +96,7 @@ func TestAddOrUpdateTaint_UpdateEffect(t *testing.T) {
 	dev.AddOrUpdateTaint(&resourceapi.DeviceTaint{
 		Key:    TaintKeyXID,
 		Value:  "48",
-		Effect: DeviceTaintEffectNone,
+		Effect: resourceapi.DeviceTaintEffectNone,
 	})
 
 	changed := dev.AddOrUpdateTaint(&resourceapi.DeviceTaint{
@@ -132,7 +132,7 @@ func TestAddOrUpdateTaint_TimeAddedResetOnChange(t *testing.T) {
 	dev.AddOrUpdateTaint(&resourceapi.DeviceTaint{
 		Key:    TaintKeyXID,
 		Value:  "48",
-		Effect: DeviceTaintEffectNone,
+		Effect: resourceapi.DeviceTaintEffectNone,
 	})
 
 	dev.AddOrUpdateTaint(&resourceapi.DeviceTaint{
@@ -177,7 +177,7 @@ func TestHealthEventToTaint(t *testing.T) {
 			monitor:        monitor,
 			expectedKey:    TaintKeyXID,
 			expectedValue:  "13",
-			expectedEffect: DeviceTaintEffectNone,
+			expectedEffect: resourceapi.DeviceTaintEffectNone,
 		},
 		{
 			name: "XID with nil monitor defaults to fatal",
@@ -208,7 +208,7 @@ func TestHealthEventToTaint(t *testing.T) {
 			monitor:        monitor,
 			expectedKey:    TaintKeyUnmonitored,
 			expectedValue:  "",
-			expectedEffect: DeviceTaintEffectNone,
+			expectedEffect: resourceapi.DeviceTaintEffectNone,
 		},
 		{
 			name: "unknown event type defaults to unmonitored",
@@ -218,7 +218,7 @@ func TestHealthEventToTaint(t *testing.T) {
 			monitor:        monitor,
 			expectedKey:    TaintKeyUnmonitored,
 			expectedValue:  "",
-			expectedEffect: DeviceTaintEffectNone,
+			expectedEffect: resourceapi.DeviceTaintEffectNone,
 		},
 	}
 

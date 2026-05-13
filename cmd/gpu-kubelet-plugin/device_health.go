@@ -38,13 +38,6 @@ const (
 	TaintKeyUnmonitored = DriverName + "/unmonitored"
 )
 
-// TODO(issue #1001):Remove this hardcoded constant and switch to the upstream
-// resourceapi.DeviceTaintEffectNone once the k8s.io/api dependency is bumped
-// to a version that includes it (KEP-5055 beta).
-// DeviceTaintEffectNone is an informational effect that does not affect
-// scheduling or eviction.
-const DeviceTaintEffectNone resourceapi.DeviceTaintEffect = "None"
-
 // DeviceHealthEventType classifies the category of health event detected by
 // the NVML health monitor.
 type DeviceHealthEventType string
@@ -77,7 +70,7 @@ func healthEventToTaint(monitor deviceHealthMonitor, event *DeviceHealthEvent) *
 	case HealthEventXID:
 		effect := resourceapi.DeviceTaintEffectNoSchedule
 		if monitor != nil && monitor.IsEventNonFatal(event) {
-			effect = DeviceTaintEffectNone
+			effect = resourceapi.DeviceTaintEffectNone
 		}
 		return &resourceapi.DeviceTaint{
 			Key:    TaintKeyXID,
@@ -92,13 +85,13 @@ func healthEventToTaint(monitor deviceHealthMonitor, event *DeviceHealthEvent) *
 	case HealthEventUnmonitored:
 		return &resourceapi.DeviceTaint{
 			Key:    TaintKeyUnmonitored,
-			Effect: DeviceTaintEffectNone,
+			Effect: resourceapi.DeviceTaintEffectNone,
 		}
 	default:
 		klog.Errorf("Unknown health event type %q, defaulting to unmonitored taint", event.EventType)
 		return &resourceapi.DeviceTaint{
 			Key:    TaintKeyUnmonitored,
-			Effect: DeviceTaintEffectNone,
+			Effect: resourceapi.DeviceTaintEffectNone,
 		}
 	}
 }
