@@ -12,7 +12,6 @@ workflows:
         app_catalog: giantswarm-catalog
         app_catalog_test: giantswarm-test-catalog
         chart: dra-driver-nvidia-gpu
-        chart_dir: helm/dra-driver-nvidia-gpu
         # Trigger job on git tag.
         filters:
           tags:
