@@ -55,4 +55,4 @@ Use permalinks (commit SHA) rather than branch links so references stay stable.
 - [ ] `make check-generate` passes if `api/` changed (CRDs, deepcopy, informers, listers, clientset)
 - [ ] `make check-modules` passes if `go.mod` / `go.sum` changed
 - [ ] Tests added or updated for the change
-- [ ] Helm chart (`deployments/helm`) updated if flags, RBAC, or defaults changed
+- [ ] Helm chart (`helm/`) updated if flags, RBAC, or defaults changed

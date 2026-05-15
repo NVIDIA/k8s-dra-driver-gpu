@@ -55,7 +55,7 @@ rm -f "${DIST_DIR}/${DRIVER_NAME}-"*.tgz
 
 # Staging image registry swap for non-release builds only. Tagged (release) builds
 # keep registry.k8s.io/dra-driver-nvidia in values.yaml for promoted charts.
-VALUES="${REPO_ROOT}/deployments/helm/${DRIVER_NAME}/values.yaml"
+VALUES="${REPO_ROOT}/helm/${DRIVER_NAME}/values.yaml"
 if git describe --exact-match --tags HEAD >/dev/null 2>&1; then
 	echo "Tagged release build: skipping staging registry rewrite in values.yaml"
 else
@@ -63,7 +63,7 @@ else
 	git diff || echo "ignore git diff exit code"
 fi
 
-"${HELM}" package "deployments/helm/${DRIVER_NAME}" \
+"${HELM}" package "helm/${DRIVER_NAME}" \
 	--version "${CHART_VERSION}" \
 	--app-version "${CHART_VERSION}" \
 	--destination "${DIST_DIR}"

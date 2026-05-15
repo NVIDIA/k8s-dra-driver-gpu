@@ -48,7 +48,7 @@ sg docker -c "make -f deployments/container/Makefile build DOCKER_BUILD_OPTIONS=
 sg docker -c "kind load docker-image '${IMG}' --name '${NVKIND_CLUSTER_NAME}'"
 
 helm --kube-context "${CTX}" upgrade -i dra-driver-nvidia-gpu \
-  "${DRA_SRC_DIR}/deployments/helm/dra-driver-nvidia-gpu" \
+  "${DRA_SRC_DIR}/helm/dra-driver-nvidia-gpu" \
   --create-namespace -n dra-driver-nvidia-gpu \
   --set nvidiaDriverRoot=/ \
   --set gpuResourcesEnabledOverride=true \

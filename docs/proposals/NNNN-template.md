@@ -90,7 +90,7 @@ the internals do.
 - [ ] `compute-domain-controller`
 - [ ] `compute-domain-daemon`
 - [ ] admission webhook
-- [ ] Helm chart (`deployments/helm`)
+- [ ] Helm chart (`helm/`)
 - [ ] CDI spec generation
 - [ ] Metrics
 - [ ] Kubelet-plugin checkpoint schema

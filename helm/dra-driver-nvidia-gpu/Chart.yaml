@@ -33,6 +33,13 @@ appVersion: "0.5.0-dev"
 # on GKE as they add a '-gke-*' suffix to all of their Kubernetes versions.
 kubeVersion: ">=1.32.0-0"
 
+home: https://github.com/giantswarm/dra-driver-nvidia-gpu
+icon: https://s.giantswarm.io/app-icons/giantswarm/1/light.svg
+sources:
+  - https://github.com/NVIDIA/k8s-dra-driver-gpu
+
 annotations:
   application.giantswarm.io/team: tenet
   io.giantswarm.application.team: tenet
+  io.giantswarm.application.audience: all
+  io.giantswarm.application.managed: "false"

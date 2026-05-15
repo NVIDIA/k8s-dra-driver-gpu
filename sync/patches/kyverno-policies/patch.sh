@@ -13,5 +13,5 @@ cd "${repo_dir}"
 # Copy it back into the chart's templates.
 set -x
 cp "${script_dir}/kyverno-policy-exception.yaml" \
-   "${repo_dir}/deployments/helm/dra-driver-nvidia-gpu/templates/kyverno-policy-exception.yaml"
+   "${repo_dir}/helm/dra-driver-nvidia-gpu/templates/kyverno-policy-exception.yaml"
 { set +x; } 2>/dev/null

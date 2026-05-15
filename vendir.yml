@@ -12,7 +12,7 @@ directories:
       ref: main
     includePaths:
     - deployments/helm/dra-driver-nvidia-gpu/**/*
-- path: deployments/helm/dra-driver-nvidia-gpu
+- path: helm/dra-driver-nvidia-gpu
   contents:
   - path: .
     directory:

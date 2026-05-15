@@ -1,0 +1,34 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "additionalProperties": true,
+  "$comment": "Permissive starter schema. Top-level keys are listed for documentation only; nested validation has not yet been written. Tighten this incrementally as values shape stabilizes.",
+  "properties": {
+    "nvidiaDriverRoot": { "type": "string" },
+    "nvidiaCDIHookPath": { "type": "string" },
+    "altProcDevices": { "type": "string" },
+    "nameOverride": { "type": "string" },
+    "fullnameOverride": { "type": "string" },
+    "namespaceOverride": { "type": "string" },
+    "selectorLabelsOverride": { "type": "object" },
+    "gpuResourcesEnabledOverride": { "type": "boolean" },
+    "allowDefaultNamespace": { "type": "boolean" },
+    "resourceApiVersion": { "type": "string" },
+    "imagePullSecrets": { "type": "array" },
+    "image": { "type": "object" },
+    "serviceAccount": { "type": "object" },
+    "resources": { "type": "object" },
+    "featureGates": { "type": "object" },
+    "logVerbosity": { "type": ["string", "integer"] },
+    "webhook": { "type": "object" },
+    "controller": { "type": "object" },
+    "kubeletPlugin": { "type": "object" },
+    "maskNvidiaDriverParams": { "type": ["string", "boolean"] },
+    "kyvernoPolicyExceptions": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" }
+      }
+    }
+  }
+}
