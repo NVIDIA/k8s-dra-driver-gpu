@@ -26,6 +26,36 @@ nvidiaDriverRoot: /
 # If not specified, the default path inferred from the nvidia-container-toolkit library version will be used.
 nvidiaCDIHookPath: ""
 
+# Optional: extra directories (inside the in-container `/driver-root`) to
+# search for the `nvidia-smi` binary, in addition to the FHS defaults
+# (`bin`, `sbin`, `usr/bin`, `usr/sbin`). Useful for driver bundles whose
+# layout differs from FHS. Paths may be relative to `/driver-root` (e.g.
+# `opt/bin`) or absolute container paths (e.g. `/opt/bin`, paired with an
+# entry in `extraHostPathMounts` below).
+extraDriverBinaryPaths: []
+
+# Optional: extra directories (inside the in-container `/driver-root`) to
+# search for `libnvidia-ml.so.1`, in addition to the FHS defaults. Same
+# path semantics as `extraDriverBinaryPaths`.
+extraDriverLibraryPaths: []
+
+# Optional: extra hostPath bind-mounts injected into the init container and
+# both runtime containers (`compute-domains`, `gpus`). Useful when the
+# driver bundle pointed at by `nvidiaDriverRoot` contains absolute symlinks
+# whose targets live outside the bundle (e.g. on Flatcar,
+# `/opt/nvidia/current/usr/bin/nvidia-smi -> /opt/bin/nvidia-smi`).
+# Mounting `/opt/bin -> /opt/bin` heals those dangling symlinks without
+# rewriting any paths.
+#
+# Example (Flatcar Container Linux):
+#   nvidiaDriverRoot: /opt/nvidia/current
+#   extraHostPathMounts:
+#     - name: host-opt-bin
+#       hostPath: /opt/bin
+#       mountPath: /opt/bin
+#       readOnly: true
+extraHostPathMounts: []
+
 nameOverride: ""
 fullnameOverride: ""
 namespaceOverride: ""

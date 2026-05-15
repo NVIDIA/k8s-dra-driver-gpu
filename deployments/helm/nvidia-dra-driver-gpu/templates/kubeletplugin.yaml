@@ -61,6 +61,14 @@ spec:
         # Use runc: explicit "void"; otherwise we inherit "all".
         - name: NVIDIA_VISIBLE_DEVICES
           value: void
+        {{- with .Values.extraDriverBinaryPaths }}
+        - name: EXTRA_DRIVER_BINARY_PATHS
+          value: {{ join ":" . | quote }}
+        {{- end }}
+        {{- with .Values.extraDriverLibraryPaths }}
+        - name: EXTRA_DRIVER_LIBRARY_PATHS
+          value: {{ join ":" . | quote }}
+        {{- end }}
         volumeMounts:
         - name: driver-root-parent
           mountPath: /driver-root-parent
@@ -76,6 +84,13 @@ spec:
           # propagation will see it.").
           mountPropagation: HostToContainer
           {{- end }}
+        {{- range .Values.extraHostPathMounts }}
+        - name: {{ .name }}
+          mountPath: {{ .mountPath }}
+          {{- if .readOnly }}
+          readOnly: true
+          {{- end }}
+        {{- end }}
       containers:
       {{- if .Values.resources.computeDomains.enabled }}
       - name: compute-domains
@@ -117,6 +132,14 @@ spec:
           valueFrom:
             fieldRef:
               fieldPath: metadata.namespace
+        {{- with .Values.extraDriverBinaryPaths }}
+        - name: EXTRA_DRIVER_BINARY_PATHS
+          value: {{ join ":" . | quote }}
+        {{- end }}
+        {{- with .Values.extraDriverLibraryPaths }}
+        - name: EXTRA_DRIVER_LIBRARY_PATHS
+          value: {{ join ":" . | quote }}
+        {{- end }}
         {{- if .Values.nvidiaCDIHookPath }}
         - name: NVIDIA_CDI_HOOK_PATH
           value: "{{ .Values.nvidiaCDIHookPath }}"
@@ -138,6 +161,13 @@ spec:
         # https://github.com/NVIDIA/k8s-dra-driver-gpu/pull/307.
         - name: host-dev
           mountPath: /host/dev
+        {{- range .Values.extraHostPathMounts }}
+        - name: {{ .name }}
+          mountPath: {{ .mountPath }}
+          {{- if .readOnly }}
+          readOnly: true
+          {{- end }}
+        {{- end }}
       {{- end }}
       {{- if .Values.resources.gpus.enabled }}
       - name: gpus
@@ -181,6 +211,14 @@ spec:
               fieldPath: metadata.namespace
         - name: IMAGE_NAME
           value: {{ include "nvidia-dra-driver-gpu.fullimage" . }}
+        {{- with .Values.extraDriverBinaryPaths }}
+        - name: EXTRA_DRIVER_BINARY_PATHS
+          value: {{ join ":" . | quote }}
+        {{- end }}
+        {{- with .Values.extraDriverLibraryPaths }}
+        - name: EXTRA_DRIVER_LIBRARY_PATHS
+          value: {{ join ":" . | quote }}
+        {{- end }}
         {{- if .Values.nvidiaCDIHookPath }}
         - name: NVIDIA_CDI_HOOK_PATH
           value: "{{ .Values.nvidiaCDIHookPath }}"
@@ -197,6 +235,13 @@ spec:
           mountPath: /driver-root
           readOnly: true
           mountPropagation: HostToContainer
+        {{- range .Values.extraHostPathMounts }}
+        - name: {{ .name }}
+          mountPath: {{ .mountPath }}
+          {{- if .readOnly }}
+          readOnly: true
+          {{- end }}
+        {{- end }}
       {{- end }}
       volumes:
       - name: plugins-registry
@@ -227,6 +272,14 @@ spec:
       - name: host-dev
         hostPath:
           path: /dev
+      {{- range .Values.extraHostPathMounts }}
+      - name: {{ .name }}
+        hostPath:
+          path: {{ .hostPath }}
+          {{- if .hostPathType }}
+          type: {{ .hostPathType }}
+          {{- end }}
+      {{- end }}
       {{- with .Values.kubeletPlugin.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}
