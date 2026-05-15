@@ -35,33 +35,57 @@ emit_common_err () {
 validate_and_exit_on_success () {
     echo -n "$(date -u +"%Y-%m-%dT%H:%M:%SZ")  /driver-root (${NVIDIA_DRIVER_ROOT} on host): "
 
+    # Default binary search paths inside /driver-root.
+    _bin_dirs="/driver-root/bin /driver-root/sbin /driver-root/usr/bin /driver-root/usr/sbin"
+
+    # Default library search paths inside /driver-root.
+    _lib_dirs="/driver-root/usr/lib64 /driver-root/usr/lib/x86_64-linux-gnu /driver-root/usr/lib/aarch64-linux-gnu /driver-root/lib64 /driver-root/lib/x86_64-linux-gnu /driver-root/lib/aarch64-linux-gnu"
+
+    # Optional: extra search paths, colon-separated. Useful for distros where
+    # the driver bundle layout puts binaries/libraries outside the standard
+    # FHS locations, or where bundled symlinks point to absolute paths that
+    # only resolve if a sibling host path is also bind-mounted into the
+    # container (see the chart's `extraHostPathMounts` value). Paths are
+    # treated as absolute container paths if they start with `/`; otherwise
+    # they are joined under `/driver-root/`.
+    if [ -n "${EXTRA_DRIVER_BINARY_PATHS}" ]; then
+        _extra_bin="$(echo "${EXTRA_DRIVER_BINARY_PATHS}" | tr ':' ' ')"
+        for _p in ${_extra_bin}; do
+            case "${_p}" in
+                /*) _bin_dirs="${_p} ${_bin_dirs}" ;;
+                *)  _bin_dirs="/driver-root/${_p} ${_bin_dirs}" ;;
+            esac
+        done
+    fi
+    if [ -n "${EXTRA_DRIVER_LIBRARY_PATHS}" ]; then
+        _extra_lib="$(echo "${EXTRA_DRIVER_LIBRARY_PATHS}" | tr ':' ' ')"
+        for _p in ${_extra_lib}; do
+            case "${_p}" in
+                /*) _lib_dirs="${_p} ${_lib_dirs}" ;;
+                *)  _lib_dirs="/driver-root/${_p} ${_lib_dirs}" ;;
+            esac
+        done
+    fi
+
     # Search specific set of directories (not recursively: not required, and
     # /driver-root may be a big tree). Limit to first result (multiple results
     # are a bit of a pathological state, but continue with validation logic).
-    # Suppress find stderr: some search directories are expected to be "not
-    # found".
-
+    # Follow symlinks (-L) so that bundles with absolute-symlink layouts
+    # (e.g. Flatcar's `/opt/nvidia/current/usr/bin/nvidia-smi -> /opt/bin/nvidia-smi`)
+    # resolve when the symlink target is bind-mounted into the container via
+    # the chart's `extraHostPathMounts`. Suppress find stderr: some search
+    # directories are expected to be "not found".
     NV_PATH=$( \
-        find \
-            /driver-root/bin \
-            /driver-root/sbin \
-            /driver-root/usr/bin \
-            /driver-root/sbin \
+        find -L ${_bin_dirs} \
         -maxdepth 1 -type f -name "nvidia-smi" 2> /dev/null | head -n1
     )
 
-    # Follow symlinks (-L), because `libnvidia-ml.so.1` is typically a link.
-    # maxdepth 1 also protects against any potential symlink loop (we're
-    # suppressing find's stderr, so we'd never see messages like 'Too many
-    # levels of symbolic links').
+    # `libnvidia-ml.so.1` is typically a relative symlink to the versioned
+    # `libnvidia-ml.so.<version>`; -L follows it. maxdepth 1 also protects
+    # against any potential symlink loop (we're suppressing find's stderr, so
+    # we'd never see messages like 'Too many levels of symbolic links').
     NV_LIB_PATH=$( \
-        find -L \
-            /driver-root/usr/lib64 \
-            /driver-root/usr/lib/x86_64-linux-gnu \
-            /driver-root/usr/lib/aarch64-linux-gnu \
-            /driver-root/lib64 \
-            /driver-root/lib/x86_64-linux-gnu \
-            /driver-root/lib/aarch64-linux-gnu \
+        find -L ${_lib_dirs} \
         -maxdepth 1 -type f -name "libnvidia-ml.so.1" 2> /dev/null | head -n1
     )
 
