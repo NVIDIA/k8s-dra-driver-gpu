@@ -52,6 +52,7 @@ Pod template labels are included here to deliver name+instance.
 helm.sh/chart: {{ include "dra-driver-nvidia-gpu.chart" . }}
 app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
 app.kubernetes.io/managed-by: {{ .Release.Service }}
+application.giantswarm.io/team: {{ index .Chart.Annotations "application.giantswarm.io/team" | quote }}
 {{ include "dra-driver-nvidia-gpu.templateLabels" . }}
 {{- end }}
 

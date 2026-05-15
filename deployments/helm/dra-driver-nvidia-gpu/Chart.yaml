@@ -32,3 +32,7 @@ appVersion: "0.5.0-dev"
 # included. However, it is also required to allow a given chart to be installed
 # on GKE as they add a '-gke-*' suffix to all of their Kubernetes versions.
 kubeVersion: ">=1.32.0-0"
+
+annotations:
+  application.giantswarm.io/team: tenet
+  io.giantswarm.application.team: tenet
