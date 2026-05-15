@@ -1,0 +1,20 @@
+{
+  "name": "dra-driver-nvidia-gpu-site",
+  "version": "0.0.1",
+  "description": "Documentation site for the DRA Driver for NVIDIA GPUs",
+  "private": true,
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/kubernetes-sigs/dra-driver-nvidia-gpu.git"
+  },
+  "scripts": {
+    "build": "hugo --gc --minify",
+    "serve": "hugo server --bind 0.0.0.0 --buildDrafts --buildFuture"
+  },
+  "devDependencies": {
+    "autoprefixer": "^10.4.20",
+    "postcss": "^8.4.49",
+    "postcss-cli": "^11.0.0"
+  }
+}

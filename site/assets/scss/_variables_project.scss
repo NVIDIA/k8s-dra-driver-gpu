@@ -1,0 +1,23 @@
+// Kubernetes brand palette overrides for Docsy.
+// SIG-affiliated project — no NVIDIA branding.
+// See https://kubernetes.io/community/ for visual identity references.
+
+$primary: #326ce5;        // Kubernetes blue
+$secondary: #6c757d;
+$info: #1d63ed;
+$success: #2ecc71;
+$warning: #f1c40f;
+$danger: #e74c3c;
+$dark: #2c3e50;
+$light: #ecf0f1;
+
+$enable-gradients: false;
+$enable-shadows: true;
+
+// Tweak Docsy defaults toward a flatter, k8s-style look
+$navbar-bg-color: $primary;
+$footer-bg-color: $dark;
+
+$td-enable-google-fonts: true;
+$google_font_name: "Open Sans";
+$google_font_family: "Open+Sans:300,300i,400,400i,700,700i";

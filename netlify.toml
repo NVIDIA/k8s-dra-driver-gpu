@@ -1,3 +1,16 @@
 [build]
-publish = "site"
-command = "pip install mkdocs && mkdocs build"
+  base    = "site"
+  publish = "public"
+  command = "npm ci && hugo --gc --minify"
+
+[build.environment]
+  HUGO_VERSION = "0.157.0"
+  GO_VERSION   = "1.25.0"
+  NODE_VERSION = "20"
+  GIT_DEPTH    = "0"
+
+[context.deploy-preview]
+  command = "npm ci && hugo --gc --minify --buildDrafts --buildFuture --baseURL $DEPLOY_PRIME_URL"
+
+[context.branch-deploy]
+  command = "npm ci && hugo --gc --minify --buildDrafts --buildFuture --baseURL $DEPLOY_PRIME_URL"

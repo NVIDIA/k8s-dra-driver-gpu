@@ -1,0 +1,10 @@
+# Hugo build output
+public/
+resources/
+.hugo_build.lock
+
+# npm
+node_modules/
+
+# Local Netlify CLI state
+.netlify/
