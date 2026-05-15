@@ -27,7 +27,7 @@ rm -rf ./diffs
 mkdir -p ./diffs
 
 upstream_chart="upstream/k8s-dra-driver-gpu/deployments/helm/dra-driver-nvidia-gpu"
-shipped_chart="deployments/helm/dra-driver-nvidia-gpu"
+shipped_chart="helm/dra-driver-nvidia-gpu"
 
 for f in $(git --no-pager diff --no-exit-code --no-color --no-index "${upstream_chart}" "${shipped_chart}" --name-only) ; do
     [[ "$f" == "/dev/null" ]] && continue

@@ -1,7 +1,7 @@
-diff --git a/deployments/helm/dra-driver-nvidia-gpu/templates/networkpolicy-controller.yaml b/deployments/helm/dra-driver-nvidia-gpu/templates/networkpolicy-controller.yaml
+diff --git a/helm/dra-driver-nvidia-gpu/templates/networkpolicy-controller.yaml b/helm/dra-driver-nvidia-gpu/templates/networkpolicy-controller.yaml
 index 597f6f72..96d2ca2a 100644
---- a/deployments/helm/dra-driver-nvidia-gpu/templates/networkpolicy-controller.yaml
-+++ b/deployments/helm/dra-driver-nvidia-gpu/templates/networkpolicy-controller.yaml
+--- a/helm/dra-driver-nvidia-gpu/templates/networkpolicy-controller.yaml
++++ b/helm/dra-driver-nvidia-gpu/templates/networkpolicy-controller.yaml
 @@ -11,7 +11,9 @@ spec:
      matchLabels:
        {{- include "dra-driver-nvidia-gpu.selectorLabels" (dict "context" . "componentName" "controller") | nindent 6 }}
@@ -30,10 +30,10 @@ index 597f6f72..96d2ca2a 100644
 +    - protocol: TCP
 +      port: 53
  {{- end }}
-diff --git a/deployments/helm/dra-driver-nvidia-gpu/templates/networkpolicy-kubelet-plugin.yaml b/deployments/helm/dra-driver-nvidia-gpu/templates/networkpolicy-kubelet-plugin.yaml
+diff --git a/helm/dra-driver-nvidia-gpu/templates/networkpolicy-kubelet-plugin.yaml b/helm/dra-driver-nvidia-gpu/templates/networkpolicy-kubelet-plugin.yaml
 index 2758a48a..c0befc71 100644
---- a/deployments/helm/dra-driver-nvidia-gpu/templates/networkpolicy-kubelet-plugin.yaml
-+++ b/deployments/helm/dra-driver-nvidia-gpu/templates/networkpolicy-kubelet-plugin.yaml
+--- a/helm/dra-driver-nvidia-gpu/templates/networkpolicy-kubelet-plugin.yaml
++++ b/helm/dra-driver-nvidia-gpu/templates/networkpolicy-kubelet-plugin.yaml
 @@ -11,7 +11,9 @@ spec:
      matchLabels:
        {{- include "dra-driver-nvidia-gpu.selectorLabels" (dict "context" . "componentName" "kubelet-plugin") | nindent 6 }}

@@ -1,8 +1,8 @@
-diff --git a/deployments/helm/dra-driver-nvidia-gpu/templates/kyverno-policy-exception.yaml b/deployments/helm/dra-driver-nvidia-gpu/templates/kyverno-policy-exception.yaml
+diff --git a/helm/dra-driver-nvidia-gpu/templates/kyverno-policy-exception.yaml b/helm/dra-driver-nvidia-gpu/templates/kyverno-policy-exception.yaml
 new file mode 100644
 index 00000000..deccb5f9
 --- /dev/null
-+++ b/deployments/helm/dra-driver-nvidia-gpu/templates/kyverno-policy-exception.yaml
++++ b/helm/dra-driver-nvidia-gpu/templates/kyverno-policy-exception.yaml
 @@ -0,0 +1,53 @@
 +{{- if and .Values.kyvernoPolicyExceptions .Values.kyvernoPolicyExceptions.enabled -}}
 +---

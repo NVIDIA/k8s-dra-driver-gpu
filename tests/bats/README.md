@@ -46,7 +46,7 @@ test_basics.bats
 ...
 ```
 
-This installs the  Helm chart currently specified in `deployments/helm/dra-driver-nvidia-gpu` in the local checkout, and expects it to point to the container image spec used for pushing above's image to the nodes (`registry.k8s.io/dra-driver-nvidia/dra-driver-nvidia-gpu:v25.12.0-dev` in the example above).
+This installs the  Helm chart currently specified in `helm/dra-driver-nvidia-gpu` in the local checkout, and expects it to point to the container image spec used for pushing above's image to the nodes (`registry.k8s.io/dra-driver-nvidia/dra-driver-nvidia-gpu:v25.12.0-dev` in the example above).
 
 Note that `TEST_CHART_LOCAL=1` just overrides `TEST_CHART_REPO` and `TEST_CHART_VERSION`.
 

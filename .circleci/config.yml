@@ -1,0 +1,23 @@
+version: 2.1
+orbs:
+  architect: giantswarm/architect@8.0.2
+
+workflows:
+  package-and-push-chart-on-tag:
+    jobs:
+    - architect/push-to-app-catalog:
+        context: architect
+        executor: app-build-suite
+        name: package and push dra-driver-nvidia-gpu chart
+        app_catalog: giantswarm-catalog
+        app_catalog_test: giantswarm-test-catalog
+        chart: dra-driver-nvidia-gpu
+        chart_dir: helm/dra-driver-nvidia-gpu
+        # Trigger job on git tag.
+        filters:
+          tags:
+            only: /^v.*/
+          branches:
+            ignore:
+            - main
+            - master

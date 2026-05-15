@@ -30,7 +30,7 @@ DRIVER_NAME=$(from_versions_mk "DRIVER_NAME")
 # TODO: update to the latest tag once we remove the ubi tag suffix
 : ${IMAGE_TAG:=d1fad7ed-ubi9}
 
-helm upgrade -i --create-namespace --namespace nvidia dra-driver-nvidia-gpu ${PROJECT_DIR}/deployments/helm/dra-driver-nvidia-gpu \
+helm upgrade -i --create-namespace --namespace nvidia dra-driver-nvidia-gpu ${PROJECT_DIR}/helm/dra-driver-nvidia-gpu \
   --set image.repository=${IMAGE_REGISTRY}/${IMAGE_NAME} \
   --set image.tag=${IMAGE_TAG} \
   --set image.pullPolicy=Always \

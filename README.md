@@ -1,5 +1,19 @@
 # DRA Driver for NVIDIA GPUs
 
+> Giant Swarm fork of [NVIDIA/k8s-dra-driver-gpu](https://github.com/NVIDIA/k8s-dra-driver-gpu), maintained by `team-tenet`.
+> The Helm chart at [`helm/dra-driver-nvidia-gpu/`](helm/dra-driver-nvidia-gpu/) is synced from upstream via [vendir](https://github.com/carvel-dev/vendir) (see [`vendir.yml`](vendir.yml) and [`sync/`](sync/)) with Giant Swarm patches applied on each sync.
+
+## Install on a Giant Swarm cluster
+
+The chart is published to the `giantswarm-catalog` on tag. Install via the [App Platform](https://docs.giantswarm.io/tutorials/fleet-management/app-platform/):
+
+- Create an `App` CR referencing `dra-driver-nvidia-gpu` from `giantswarm-catalog`, or
+- Use [GitOps](https://docs.giantswarm.io/tutorials/continuous-deployment/apps/add-appcr/).
+
+To sync a new upstream release into this fork: edit `ref:` in `vendir.yml`, run `./sync/sync.sh`, resolve any patch conflicts, update `CHANGELOG.md`, and open a PR.
+
+---
+
 Enables
 
 * flexible and powerful allocation and dynamic reconfiguration of GPUs as well as

@@ -24,12 +24,12 @@ TEST_CHART_LASTSTABLE_REPO ?= "oci://ghcr.io/nvidia/k8s-dra-driver-gpu"
 TEST_CHART_LASTSTABLE_VERSION ?= "25.12.0-0882da87-chart"
 
 # If not "false": the to-be-tested Helm chart is installed from the local
-# filesystem (from `deployments/helm/dra-driver-nvidia-gpu`). Make sure
+# filesystem (from `helm/dra-driver-nvidia-gpu`). Make sure
 # (out-of-band) that the container images that the chart refers to are available
 # (placed directly on the involved nodes or pullable). This is a convenince
 # parameter for setting
 #
-#        TEST_CHART_REPO="deployments/helm/dra-driver-nvidia-gpu/"
+#        TEST_CHART_REPO="helm/dra-driver-nvidia-gpu/"
 #        TEST_CHART_VERSION="$(make print-VERSION)" (but w/o v prefix)
 #
 TEST_CHART_LOCAL ?= "false"
@@ -47,7 +47,7 @@ TEST_NVIDIA_DRIVER_ROOT ?= "/run/nvidia/driver"
 TEST_EXPECTED_IMAGE_SPEC_SUBSTRING ?= $(VERSION)
 
 ifneq ($(TEST_CHART_LOCAL),"false")
-TEST_CHART_REPO = "deployments/helm/dra-driver-nvidia-gpu"
+TEST_CHART_REPO = "helm/dra-driver-nvidia-gpu"
 TEST_CHART_VERSION = $(VERSION:v%=%)
 endif
 

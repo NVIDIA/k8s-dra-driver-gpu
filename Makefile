@@ -87,10 +87,10 @@ golangci-lint:
 lint-internal: golangci-lint
 
 helm-lint:
-	helm lint deployments/helm/dra-driver-nvidia-gpu
+	helm lint helm/dra-driver-nvidia-gpu
 
 helm-package:
-	helm package deployments/helm/dra-driver-nvidia-gpu
+	helm package helm/dra-driver-nvidia-gpu
 
 vendor:
 	go mod tidy
@@ -116,12 +116,12 @@ generate-crds: generate-deepcopy .remove-crds
 	for dir in $(CLIENT_SOURCES); do \
 		controller-gen crd:crdVersions=v1 \
 			paths=$(CURDIR)/$${dir} \
-			output:crd:dir=$(CURDIR)/deployments/helm/tmp_crds; \
+			output:crd:dir=$(CURDIR)/helm/tmp_crds; \
 	done
-	mkdir -p $(CURDIR)/deployments/helm/$(DRIVER_NAME)/crds
-	cp -R $(CURDIR)/deployments/helm/tmp_crds/* \
-		$(CURDIR)/deployments/helm/$(DRIVER_NAME)/crds
-	rm -rf $(CURDIR)/deployments/helm/tmp_crds
+	mkdir -p $(CURDIR)/helm/$(DRIVER_NAME)/crds
+	cp -R $(CURDIR)/helm/tmp_crds/* \
+		$(CURDIR)/helm/$(DRIVER_NAME)/crds
+	rm -rf $(CURDIR)/helm/tmp_crds
 
 
 # Regenerate everything and fail if the tree is dirty (used by `make check`).
@@ -176,7 +176,7 @@ generate-clientset: .remove-clientset
 	rm -rf $(CURDIR)/pkg/tmp_clientset
 
 .remove-crds:
-	rm -rf $(CURDIR)/deployments/helm/$(DRIVER_NAME)/crds
+	rm -rf $(CURDIR)/helm/$(DRIVER_NAME)/crds
 
 .remove-deepcopy:
 	for dir in $(DEEPCOPY_SOURCES); do \

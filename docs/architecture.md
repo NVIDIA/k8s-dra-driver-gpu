@@ -5,7 +5,7 @@ This repo ships two independent Kubernetes DRA drivers from one codebase:
 - **`gpu.nvidia.com`** — allocates GPUs, MIG slices, and VFIO passthrough.
 - **`compute-domain.nvidia.com`** — allocates IMEX daemons and channels for Multi-Node NVLink.
 
-Both are delivered by the Helm chart in [`deployments/helm/dra-driver-nvidia-gpu/`](../deployments/helm/dra-driver-nvidia-gpu).
+Both are delivered by the Helm chart in [`helm/dra-driver-nvidia-gpu/`](../helm/dra-driver-nvidia-gpu).
 
 ## Binaries ([`cmd/`](../cmd))
 
@@ -29,5 +29,5 @@ User creates a `ComputeDomain` → controller creates a per-CD DaemonSet → eac
 
 - CRD and opaque-config types: [`api/nvidia.com/resource/v1beta1`](../api/nvidia.com/resource/v1beta1).
 - Feature gates: [`pkg/featuregates/featuregates.go`](../pkg/featuregates/featuregates.go).
-- DeviceClasses shipped by the chart: [`deployments/helm/dra-driver-nvidia-gpu/templates/deviceclass-*.yaml`](../deployments/helm/dra-driver-nvidia-gpu/templates).
+- DeviceClasses shipped by the chart: [`helm/dra-driver-nvidia-gpu/templates/deviceclass-*.yaml`](../helm/dra-driver-nvidia-gpu/templates).
 - Example workloads: [`demo/specs/quickstart/`](../demo/specs/quickstart).

@@ -2,14 +2,14 @@ apiVersion: vendir.k14s.io/v1alpha1
 directories:
 - contents:
   - git:
-      commitTitle: 'Merge pull request #1142 from varunrsekar/fix-cd-unittests...'
-      sha: 3687fd54d337b35f37ade08389cabdc380b734a9
+      commitTitle: 'Merge pull request #1137 from shivamerla/remove_cherry_pick_gh_actions...'
+      sha: 22407113785e78c7763b4637689a201eb39c6199
       tags:
-      - v0.4.0-rc.1-12-g3687fd54
+      - v0.4.0-rc.1-14-g22407113
     path: k8s-dra-driver-gpu
   path: upstream
 - contents:
   - directory: {}
     path: .
-  path: deployments/helm/dra-driver-nvidia-gpu
+  path: helm/dra-driver-nvidia-gpu
 kind: LockConfig
