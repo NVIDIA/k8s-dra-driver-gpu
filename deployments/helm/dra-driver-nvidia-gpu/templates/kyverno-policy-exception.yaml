@@ -1,0 +1,53 @@
+{{- if and .Values.kyvernoPolicyExceptions .Values.kyvernoPolicyExceptions.enabled -}}
+---
+# Kyverno PolicyException: allow the DRA driver workloads to use the
+# privileged operations they need (hostPath, host namespaces, privileged
+# containers, etc.) on clusters where PSS-equivalent Kyverno policies are
+# enforced.
+#
+# Adjust `exceptions[*].policyName` to match the policy names actually
+# installed on the target cluster.
+apiVersion: kyverno.io/v2
+kind: PolicyException
+metadata:
+  name: {{ include "dra-driver-nvidia-gpu.name" . }}-pss-exception
+  namespace: {{ include "dra-driver-nvidia-gpu.namespace" . }}
+  labels:
+    {{- include "dra-driver-nvidia-gpu.labels" . | nindent 4 }}
+spec:
+  exceptions:
+    - policyName: disallow-privileged-containers
+      ruleNames:
+        - privileged-containers
+        - autogen-privileged-containers
+    - policyName: disallow-host-path
+      ruleNames:
+        - host-path
+        - autogen-host-path
+    - policyName: disallow-host-namespaces
+      ruleNames:
+        - host-namespaces
+        - autogen-host-namespaces
+    - policyName: disallow-host-ports
+      ruleNames:
+        - host-ports-none
+        - autogen-host-ports-none
+    - policyName: disallow-capabilities-strict
+      ruleNames:
+        - require-drop-all
+        - autogen-require-drop-all
+    - policyName: restrict-volume-types
+      ruleNames:
+        - restricted-volumes
+        - autogen-restricted-volumes
+  match:
+    any:
+      - resources:
+          kinds:
+            - Pod
+          namespaces:
+            - {{ include "dra-driver-nvidia-gpu.namespace" . }}
+          selector:
+            matchLabels:
+              app.kubernetes.io/instance: {{ .Release.Name }}
+{{- end }}

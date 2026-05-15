@@ -1,5 +1,8 @@
 dist/
 .cache/
+
+# vendir staging area (chart sync from upstream)
+upstream/
 .bash_history
 /compute-domain-controller
 /compute-domain-daemon

@@ -1,0 +1,21 @@
+apiVersion: vendir.k14s.io/v1alpha1
+kind: Config
+directories:
+- path: upstream
+  contents:
+  - path: k8s-dra-driver-gpu
+    git:
+      url: https://github.com/NVIDIA/k8s-dra-driver-gpu
+      # TODO: switch back to a stable tag (e.g. v25.12.x / v26.x) once one is
+      # cut that includes the rename of `deployments/helm/nvidia-dra-driver-gpu`
+      # to `deployments/helm/dra-driver-nvidia-gpu` (currently only on main).
+      ref: main
+    includePaths:
+    - deployments/helm/dra-driver-nvidia-gpu/**/*
+- path: deployments/helm/dra-driver-nvidia-gpu
+  contents:
+  - path: .
+    directory:
+      path: upstream/k8s-dra-driver-gpu/deployments/helm/dra-driver-nvidia-gpu
+    ignorePaths:
+    - Chart.yaml

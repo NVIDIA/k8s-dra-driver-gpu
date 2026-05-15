@@ -1,0 +1,12 @@
+diff --git a/upstream/k8s-dra-driver-gpu/deployments/helm/dra-driver-nvidia-gpu/templates/_helpers.tpl b/deployments/helm/dra-driver-nvidia-gpu/templates/_helpers.tpl
+index 749e5c9d..696a87b3 100644
+--- a/upstream/k8s-dra-driver-gpu/deployments/helm/dra-driver-nvidia-gpu/templates/_helpers.tpl
++++ b/deployments/helm/dra-driver-nvidia-gpu/templates/_helpers.tpl
+@@ -52,6 +52,7 @@ Pod template labels are included here to deliver name+instance.
+ helm.sh/chart: {{ include "dra-driver-nvidia-gpu.chart" . }}
+ app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
+ app.kubernetes.io/managed-by: {{ .Release.Service }}
++application.giantswarm.io/team: {{ index .Chart.Annotations "application.giantswarm.io/team" | quote }}
+ {{ include "dra-driver-nvidia-gpu.templateLabels" . }}
+ {{- end }}
+ 
