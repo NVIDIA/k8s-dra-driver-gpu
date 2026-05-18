@@ -1,12 +1,12 @@
 #!/bin/bash
 
-# Copyright The Kubernetes Authors
+# Copyright 2023 NVIDIA CORPORATION.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
 #
-#    https://www.apache.org/licenses/LICENSE-2.0
+#     http://www.apache.org/licenses/LICENSE-2.0
 #
 # Unless required by applicable law or agreed to in writing, software
 # distributed under the License is distributed on an "AS IS" BASIS,
@@ -27,10 +27,9 @@ DRIVER_NAME=$(from_versions_mk "DRIVER_NAME")
 
 : ${IMAGE_REGISTRY:=ghcr.io/nvidia}
 : ${IMAGE_NAME:=${DRIVER_NAME}}
-# TODO: update to the latest tag once we remove the ubi tag suffix
 : ${IMAGE_TAG:=d1fad7ed-ubi9}
 
-helm upgrade -i --create-namespace --namespace nvidia dra-driver-nvidia-gpu ${PROJECT_DIR}/deployments/helm/dra-driver-nvidia-gpu \
+helm upgrade -i --create-namespace --namespace nvidia nvidia-dra-driver-gpu ${PROJECT_DIR}/helm/nvidia-dra-driver-gpu \
   --set image.repository=${IMAGE_REGISTRY}/${IMAGE_NAME} \
   --set image.tag=${IMAGE_TAG} \
   --set image.pullPolicy=Always \

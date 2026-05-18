@@ -87,7 +87,7 @@ func WithAnnotations(annotations map[string]string) Option {
 	}
 }
 
-func WithAnnotationsPrefixes(annotationsPrefixes ...string) Option {
+func WithAnnotationsPrefixes(annotationsPrefixes []string) Option {
 	return func(b *builder) error {
 		b.annotationsPrefixes = annotationsPrefixes
 		return nil
@@ -127,15 +127,6 @@ func WithEnvMap(env map[string]string) Option {
 	}
 }
 
-// WithIgnoreImexChannelRequests sets whether per-container IMEX channel
-// requests are supported.
-func WithIgnoreImexChannelRequests(ignoreImexChannelRequests bool) Option {
-	return func(b *builder) error {
-		b.ignoreImexChannelRequests = ignoreImexChannelRequests
-		return nil
-	}
-}
-
 // WithLogger sets the logger to use when creating the CUDA image.
 func WithLogger(logger logger.Interface) Option {
 	return func(b *builder) error {
@@ -156,17 +147,7 @@ func WithMounts(mounts []specs.Mount) Option {
 // should take precedence over the default NVIDIA_VISIBLE_DEVICES.
 func WithPreferredVisibleDevicesEnvVars(preferredVisibleDeviceEnvVars ...string) Option {
 	return func(b *builder) error {
-		var normalized []string
-		for _, e := range preferredVisibleDeviceEnvVars {
-			candidates := strings.Split(e, ",")
-			for _, c := range candidates {
-				trimmed := strings.TrimSpace(c)
-				if len(trimmed) > 0 {
-					normalized = append(normalized, trimmed)
-				}
-			}
-		}
-		b.preferredVisibleDeviceEnvVars = normalized
+		b.preferredVisibleDeviceEnvVars = preferredVisibleDeviceEnvVars
 		return nil
 	}
 }

@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
 
-# Copyright The Kubernetes Authors
+# Copyright 2023 The Kubernetes Authors.
+# Copyright 2023 NVIDIA CORPORATION.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
 #
-#    https://www.apache.org/licenses/LICENSE-2.0
+#     http://www.apache.org/licenses/LICENSE-2.0
 #
 # Unless required by applicable law or agreed to in writing, software
 # distributed under the License is distributed on an "AS IS" BASIS,
@@ -23,7 +24,7 @@ source "${CURRENT_DIR}/scripts/common.sh"
 
 kubectl label node -l node-role.x-k8s.io/worker --overwrite nvidia.com/gpu.present=true
 
-helm upgrade -i --create-namespace --namespace dra-driver-nvidia-gpu dra-driver-nvidia-gpu ${PROJECT_DIR}/deployments/helm/dra-driver-nvidia-gpu \
+helm upgrade -i --create-namespace --namespace nvidia-dra-driver-gpu nvidia-dra-driver-gpu ${PROJECT_DIR}/helm/nvidia-dra-driver-gpu \
     ${NVIDIA_DRIVER_ROOT:+--set nvidiaDriverRoot=${NVIDIA_DRIVER_ROOT}} \
     ${MASK_NVIDIA_DRIVER_PARAMS:+--set maskNvidiaDriverParams=${MASK_NVIDIA_DRIVER_PARAMS}} \
     --set gpuResourcesEnabledOverride=true \
@@ -32,5 +33,5 @@ helm upgrade -i --create-namespace --namespace dra-driver-nvidia-gpu dra-driver-
 set +x
 printf '\033[0;32m'
 echo "Driver installation complete:"
-kubectl get pod -n dra-driver-nvidia-gpu
+kubectl get pod -n nvidia-dra-driver-gpu
 printf '\033[0m'

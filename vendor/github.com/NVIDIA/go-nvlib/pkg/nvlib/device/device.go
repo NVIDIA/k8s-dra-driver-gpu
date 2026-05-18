@@ -29,11 +29,9 @@ type Device interface {
 	GetArchitectureAsString() (string, error)
 	GetBrandAsString() (string, error)
 	GetCudaComputeCapabilityAsString() (string, error)
-	GetAddressingModeAsString() (string, error)
 	GetMigDevices() ([]MigDevice, error)
 	GetMigProfiles() ([]MigProfile, error)
 	GetPCIBusID() (string, error)
-	IsCoherent() (bool, error)
 	IsFabricAttached() (bool, error)
 	IsMigCapable() (bool, error)
 	IsMigEnabled() (bool, error)
@@ -93,6 +91,8 @@ func (d *device) GetArchitectureAsString() (string, error) {
 		return "Hopper", nil
 	case nvml.DEVICE_ARCH_BLACKWELL:
 		return "Blackwell", nil
+	case nvml.DEVICE_ARCH_T23X:
+		return "Orin", nil
 	case nvml.DEVICE_ARCH_UNKNOWN:
 		return "Unknown", nil
 	}
@@ -147,36 +147,6 @@ func (d *device) GetBrandAsString() (string, error) {
 	return "", fmt.Errorf("error interpreting device brand as string: %v", brand)
 }
 
-// GetAddressingModeAsString returns the Device addressing mode as a string.
-func (d *device) GetAddressingModeAsString() (string, error) {
-	if !d.lib.hasSymbol("nvmlDeviceGetAddressingMode") {
-		return "", nil
-	}
-
-	mode, ret := nvml.Device(d).GetAddressingMode()
-
-	switch ret {
-	case nvml.SUCCESS:
-		// continue
-	case nvml.ERROR_NOT_SUPPORTED:
-		// Addressing mode is not supported on the current platform.
-		return "", nil
-	default:
-		return "", fmt.Errorf("error getting device addressing mode: %v", ret)
-	}
-
-	switch nvml.DeviceAddressingModeType(mode.Value) {
-	case nvml.DEVICE_ADDRESSING_MODE_ATS:
-		return "ATS", nil
-	case nvml.DEVICE_ADDRESSING_MODE_HMM:
-		return "HMM", nil
-	case nvml.DEVICE_ADDRESSING_MODE_NONE:
-		return "None", nil
-	}
-
-	return "", fmt.Errorf("error interpreting addressing mode as string: %v", mode)
-}
-
 // GetPCIBusID returns the string representation of the bus ID.
 func (d *device) GetPCIBusID() (string, error) {
 	info, ret := d.GetPciInfo()
@@ -207,27 +177,6 @@ func (d *device) GetCudaComputeCapabilityAsString() (string, error) {
 		return "", fmt.Errorf("error getting CUDA compute capability: %v", ret)
 	}
 	return fmt.Sprintf("%d.%d", major, minor), nil
-}
-
-// IsCoherent returns whether the device is capable of coherent access to system
-// memory.
-func (d *device) IsCoherent() (bool, error) {
-	if !d.lib.hasSymbol("nvmlDeviceGetAddressingMode") {
-		return false, nil
-	}
-
-	mode, ret := nvml.Device(d).GetAddressingMode()
-	if ret == nvml.ERROR_NOT_SUPPORTED {
-		return false, nil
-	}
-	if ret != nvml.SUCCESS {
-		return false, fmt.Errorf("error getting addressing mode: %v", ret)
-	}
-
-	if nvml.DeviceAddressingModeType(mode.Value) == nvml.DEVICE_ADDRESSING_MODE_ATS {
-		return true, nil
-	}
-	return false, nil
 }
 
 // IsMigCapable checks if a device is capable of having MIG paprtitions created on it.

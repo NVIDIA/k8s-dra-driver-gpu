@@ -1,0 +1,50 @@
+# Copyright 2025 NVIDIA CORPORATION
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+on:
+  workflow_call:
+  workflow_dispatch:
+
+jobs:
+  build-push:
+    runs-on: linux-amd64-cpu4
+    steps:
+      - uses: actions/checkout@v5
+        name: checkout
+        with:
+          # For `git diff` to work.
+          fetch-depth: 2
+      - name: install-helm
+        run: |
+          curl -sSfLO --retry 8 --retry-all-errors --connect-timeout 10 --retry-delay 5 \
+            https://get.helm.sh/helm-v3.18.6-linux-amd64.tar.gz
+          tar -zxvf helm-v3*amd64.tar.gz && mv linux-amd64/helm .
+      - name: build-chart
+        run: |
+          export VERSION="$(make print-VERSION)"
+          export VERSION_W_COMMIT="$(make print-VERSION)-$(echo $GITHUB_SHA | cut -c1-8)"
+          # Drop leading 'v'.
+          echo "replace ${VERSION:1} with ${VERSION_W_COMMIT:1}"
+          sed -i "s/${VERSION:1}/${VERSION_W_COMMIT:1}-chart/g" deployments/helm/nvidia-dra-driver-gpu/Chart.yaml
+          # Override chart name to match github repo name (defines registry url to push to).
+          sed -i "s/name: nvidia-dra-driver-gpu/name: k8s-dra-driver-gpu/g" deployments/helm/nvidia-dra-driver-gpu/Chart.yaml
+          sed -i "s/nvcr\.io/ghcr.io/g" deployments/helm/nvidia-dra-driver-gpu/values.yaml
+          sed -i "s/nameOverride: \"\"/nameOverride: \"nvidia-dra-driver-gpu\"/g" deployments/helm/nvidia-dra-driver-gpu/values.yaml
+          sed -i "s/tag: \"\"/tag: \"${VERSION_W_COMMIT}-ubi9\"/g" deployments/helm/nvidia-dra-driver-gpu/values.yaml
+          git diff || echo "ignore git diff exit code"
+          ./helm package deployments/helm/nvidia-dra-driver-gpu
+      - name: push-chart
+        run: |
+          echo ${{ secrets.GITHUB_TOKEN }} | ./helm registry login --password-stdin ghcr.io -u NVIDIA
+          ./helm push k8s-dra-driver-gpu-*tgz oci://ghcr.io/nvidia

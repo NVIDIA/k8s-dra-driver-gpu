@@ -17,8 +17,6 @@
 package transform
 
 import (
-	"slices"
-
 	"tags.cncf.io/container-device-interface/specs-go"
 )
 
@@ -52,12 +50,6 @@ func (d dedupe) Transform(spec *specs.Spec) error {
 }
 
 func (d dedupe) transformEdits(edits *specs.ContainerEdits) error {
-	additionalGIDs, err := d.deduplicateAdditionalGIDs(edits.AdditionalGIDs)
-	if err != nil {
-		return err
-	}
-	edits.AdditionalGIDs = additionalGIDs
-
 	deviceNodes, err := d.deduplicateDeviceNodes(edits.DeviceNodes)
 	if err != nil {
 		return err
@@ -157,20 +149,4 @@ func (d dedupe) deduplicateMounts(entities []*specs.Mount) ([]*specs.Mount, erro
 		mounts = append(mounts, e)
 	}
 	return mounts, nil
-}
-
-func (d dedupe) deduplicateAdditionalGIDs(entities []uint32) ([]uint32, error) {
-	seen := make(map[uint32]bool)
-	var additionalGIDs []uint32
-	for _, e := range entities {
-		if seen[e] {
-			continue
-		}
-		seen[e] = true
-		additionalGIDs = append(additionalGIDs, e)
-	}
-
-	slices.Sort(additionalGIDs)
-
-	return additionalGIDs, nil
 }

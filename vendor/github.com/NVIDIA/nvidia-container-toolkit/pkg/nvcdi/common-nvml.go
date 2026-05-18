@@ -25,7 +25,16 @@ import (
 // newCommonNVMLDiscoverer returns a discoverer for entities that are not associated with a specific CDI device.
 // This includes driver libraries and meta devices, for example.
 func (l *nvmllib) newCommonNVMLDiscoverer() (discover.Discover, error) {
-	metaDevices := l.controlDeviceNodeDiscoverer()
+	metaDevices := discover.NewCharDeviceDiscoverer(
+		l.logger,
+		l.devRoot,
+		[]string{
+			"/dev/nvidia-modeset",
+			"/dev/nvidia-uvm-tools",
+			"/dev/nvidia-uvm",
+			"/dev/nvidiactl",
+		},
+	)
 
 	graphicsMounts, err := discover.NewGraphicsMountsDiscoverer(l.logger, l.driver, l.hookCreator)
 	if err != nil {
@@ -44,17 +53,4 @@ func (l *nvmllib) newCommonNVMLDiscoverer() (discover.Discover, error) {
 	)
 
 	return d, nil
-}
-
-func (l *nvmllib) controlDeviceNodeDiscoverer() discover.Discover {
-	return discover.NewCharDeviceDiscoverer(
-		l.logger,
-		l.driver.DevRoot,
-		[]string{
-			"/dev/nvidia-modeset",
-			"/dev/nvidia-uvm-tools",
-			"/dev/nvidia-uvm",
-			"/dev/nvidiactl",
-		},
-	)
 }

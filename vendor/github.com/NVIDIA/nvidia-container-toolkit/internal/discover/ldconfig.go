@@ -25,11 +25,12 @@ import (
 )
 
 // NewLDCacheUpdateHook creates a discoverer that updates the ldcache for the specified mounts. A logger can also be specified
-func NewLDCacheUpdateHook(logger logger.Interface, mounts Discover, hookCreator HookCreator) (Discover, error) {
+func NewLDCacheUpdateHook(logger logger.Interface, mounts Discover, hookCreator HookCreator, ldconfigPath string) (Discover, error) {
 	d := ldconfig{
-		logger:      logger,
-		hookCreator: hookCreator,
-		mountsFrom:  mounts,
+		logger:       logger,
+		hookCreator:  hookCreator,
+		ldconfigPath: ldconfigPath,
+		mountsFrom:   mounts,
 	}
 
 	return &d, nil
@@ -37,9 +38,10 @@ func NewLDCacheUpdateHook(logger logger.Interface, mounts Discover, hookCreator 
 
 type ldconfig struct {
 	None
-	logger      logger.Interface
-	hookCreator HookCreator
-	mountsFrom  Discover
+	logger       logger.Interface
+	hookCreator  HookCreator
+	ldconfigPath string
+	mountsFrom   Discover
 }
 
 // Hooks checks the required mounts for libraries and returns a hook to update the LDcache for the discovered paths.
@@ -49,9 +51,17 @@ func (d ldconfig) Hooks() ([]Hook, error) {
 		return nil, fmt.Errorf("failed to discover mounts for ldcache update: %v", err)
 	}
 
-	libraryFolders := uniqueFolders(getLibraryPaths(mounts))
+	var args []string
 
-	return d.hookCreator.Create(UpdateLDCacheHook, libraryFolders...).Hooks()
+	if d.ldconfigPath != "" {
+		args = append(args, "--ldconfig-path", d.ldconfigPath)
+	}
+
+	for _, f := range uniqueFolders(getLibraryPaths(mounts)) {
+		args = append(args, "--folder", f)
+	}
+
+	return d.hookCreator.Create(UpdateLDCacheHook, args...).Hooks()
 }
 
 // getLibraryPaths extracts the library dirs from the specified mounts

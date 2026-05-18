@@ -19,14 +19,13 @@ package dgpu
 import (
 	"github.com/NVIDIA/nvidia-container-toolkit/internal/discover"
 	"github.com/NVIDIA/nvidia-container-toolkit/internal/logger"
-	"github.com/NVIDIA/nvidia-container-toolkit/internal/lookup/root"
 	"github.com/NVIDIA/nvidia-container-toolkit/internal/nvcaps"
 	"github.com/NVIDIA/nvidia-container-toolkit/internal/nvsandboxutils"
 )
 
 type options struct {
 	logger      logger.Interface
-	driver      *root.Driver
+	devRoot     string
 	hookCreator discover.HookCreator
 
 	isMigDevice bool
@@ -40,10 +39,10 @@ type options struct {
 
 type Option func(*options)
 
-// WithDriver sets the driver root.
-func WithDriver(driver *root.Driver) Option {
+// WithDevRoot sets the root where /dev is located.
+func WithDevRoot(root string) Option {
 	return func(l *options) {
-		l.driver = driver
+		l.devRoot = root
 	}
 }
 

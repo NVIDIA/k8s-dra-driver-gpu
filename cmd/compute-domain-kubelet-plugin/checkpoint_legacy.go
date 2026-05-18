@@ -1,24 +1,9 @@
-/*
-Copyright The Kubernetes Authors
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-    https://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-*/
-
 package main
 
 import (
 	"encoding/json"
 
+	"k8s.io/dynamic-resource-allocation/kubeletplugin"
 	drapbv1 "k8s.io/kubelet/pkg/apis/dra/v1beta1"
 	"k8s.io/kubernetes/pkg/kubelet/checkpointmanager/checksum"
 )
@@ -103,11 +88,11 @@ func (c *PreparedComputeDomainChannel2503RC2) ToV1() *PreparedComputeDomainChann
 		channel.Info = c.Info
 	}
 	if c.Device != nil {
-		channel.Device = &CheckpointedDevice{
+		channel.Device = &kubeletplugin.Device{
 			Requests:     c.Device.RequestNames,
 			PoolName:     c.Device.PoolName,
 			DeviceName:   c.Device.DeviceName,
-			CDIDeviceIDs: c.Device.CdiDeviceIds,
+			CDIDeviceIDs: c.Device.CDIDeviceIDs,
 		}
 	}
 	return channel
@@ -120,11 +105,11 @@ func (d *PreparedComputeDomainDaemon2503RC2) ToV1() *PreparedComputeDomainDaemon
 		daemon.Info = d.Info
 	}
 	if d.Device != nil {
-		daemon.Device = &CheckpointedDevice{
+		daemon.Device = &kubeletplugin.Device{
 			Requests:     d.Device.RequestNames,
 			PoolName:     d.Device.PoolName,
 			DeviceName:   d.Device.DeviceName,
-			CDIDeviceIDs: d.Device.CdiDeviceIds,
+			CDIDeviceIDs: d.Device.CDIDeviceIDs,
 		}
 	}
 	return daemon
@@ -144,17 +129,13 @@ func (g *PreparedDeviceGroup2503RC2) ToV1() *PreparedDeviceGroup {
 
 // ToV1 converts a Checkpoint2503RC2 to a Checkpoint.
 func (cp *Checkpoint2503RC2) ToV1() *Checkpoint {
-	cpv1 := &Checkpoint{
-		V1: &CheckpointV1{
-			PreparedClaims: make(PreparedClaimsByUIDV1),
-		},
-	}
+	cpv1 := newCheckpoint()
 	for k, v := range cp.V1.PreparedClaims {
 		pds := make(PreparedDevices, 0, len(v))
 		for _, pd := range v {
 			pds = append(pds, pd.ToV1())
 		}
-		cpv1.V1.PreparedClaims[k] = PreparedClaimV1{
+		cpv1.V1.PreparedClaims[k] = PreparedClaim{
 			PreparedDevices: pds,
 		}
 	}

@@ -69,11 +69,8 @@ func NewFlock(path string) *Flock {
 // any given time.
 func (l *Flock) Acquire(ctx context.Context, opts ...AcquireOption) (func(), error) {
 	cfg := &acquireConfig{
-		// Default: short period to keep lock acquisition rather responsive. If
-		// this is used for fine-grained (and hence frequent) checkpoint
-		// mutation locking, then it should really be a rather short period
-		// (~100 ms or less).
-		pollPeriod: 100 * time.Millisecond,
+		// Default: short period to keep lock acquisition rather responsive
+		pollPeriod: 200 * time.Millisecond,
 		// Default: timeout disabled
 		timeout: 0,
 	}

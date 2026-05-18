@@ -16,15 +16,15 @@ kubectl get pod -A
 # Install the DRA driver for ComputeDomains
 helm upgrade -i \
 	--create-namespace \
-	--namespace dra-driver-nvidia-gpu \
-	dra-driver-nvidia-gpu \
-	../../../deployments/helm/dra-driver-nvidia-gpu \
+	--namespace nvidia-dra-driver-gpu \
+	nvidia-dra-driver-gpu \
+	../../../helm/nvidia-dra-driver-gpu \
     --set nvidiaDriverRoot="/" \
 	--set resources.gpus.enabled=false \
     --wait
 
 # Show the DRA driver components running
-kubectl get pod -n dra-driver-nvidia-gpu
+kubectl get pod -n nvidia-dra-driver-gpu
 
 # Show two MPI jobs, one traditional, and one referencing a ComputeDomain
 vim -O nvbandwidth-test-no-compute-domain-job.yaml nvbandwidth-test-job.yaml
@@ -44,7 +44,7 @@ kubectl apply -f nvbandwidth-test-job.yaml
 kubectl get pods
 
 # Look at the pods for the IMEX daemons running on behalf of the MPI job *within* a ComputeDomain
-kubectl get pods -n dra-driver-nvidia-gpu
+kubectl get pods -n nvidia-dra-driver-gpu
 
 # Look at the status of the newly created ComputeDomain
 kubectl get -o yaml computedomains.resource.nvidia.com
@@ -73,7 +73,7 @@ kubectl get -o yaml computedomains.resource.nvidia.com
 kubectl get pods
 
 # Verify that no extra pods have been started in the nvidia namespace
-kubectl get pods -n dra-driver-nvidia-gpu
+kubectl get pods -n nvidia-dra-driver-gpu
 
 # Look at the logs of the MPI job *without* a ComputeDomain
 kubectl logs --tail=-1 -l job-name=nvbandwidth-test-launcher
@@ -100,7 +100,7 @@ kubectl apply -f nvbandwidth-test-job-2.yaml
 kubectl get pods
 
 # Look at the pods for the IMEX daemons running on behalf of the 2 MPI jobs with *unique* ComputeDomains
-kubectl get pods -n dra-driver-nvidia-gpu
+kubectl get pods -n nvidia-dra-driver-gpu
 
 # Look at the status of the newly created ComputeDomain
 kubectl get -o yaml computedomains.resource.nvidia.com

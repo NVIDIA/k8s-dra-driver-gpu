@@ -32,9 +32,7 @@ func renameIn(dir, src, dst string, overwrite bool) error {
 	if err != nil {
 		return fmt.Errorf("rename failed: %w", err)
 	}
-	defer func() {
-		_ = dirf.Close()
-	}()
+	defer dirf.Close()
 
 	if !overwrite {
 		flags = unix.RENAME_NOREPLACE

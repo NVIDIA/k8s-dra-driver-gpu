@@ -24,6 +24,7 @@ import (
 	"tags.cncf.io/container-device-interface/pkg/cdi"
 	"tags.cncf.io/container-device-interface/specs-go"
 
+	"github.com/NVIDIA/nvidia-container-toolkit/internal/edits"
 	"github.com/NVIDIA/nvidia-container-toolkit/internal/platform-support/dgpu"
 )
 
@@ -40,7 +41,7 @@ func (l *migDeviceSpecGenerator) GetUUID() (string, error) {
 }
 
 func (l *nvmllib) newMIGDeviceSpecGeneratorFromDevice(i int, d device.Device, j int, m device.MigDevice) (*migDeviceSpecGenerator, error) {
-	parent, err := l.newFullGPUDeviceSpecGeneratorFromDevice(i, d, make(map[FeatureFlag]bool))
+	parent, err := l.newFullGPUDeviceSpecGeneratorFromDevice(i, d)
 	if err != nil {
 		return nil, err
 	}
@@ -124,7 +125,7 @@ func (l *migDeviceSpecGenerator) getDeviceEdits() (*cdi.ContainerEdits, error) {
 		return nil, err
 	}
 	deviceNodes, err := dgpu.NewForMigDevice(device, migDevice,
-		dgpu.WithDriver(l.driver),
+		dgpu.WithDevRoot(l.devRoot),
 		dgpu.WithLogger(l.logger),
 		dgpu.WithHookCreator(l.hookCreator),
 		dgpu.WithNvsandboxuitilsLib(l.nvsandboxutilslib),
@@ -133,7 +134,7 @@ func (l *migDeviceSpecGenerator) getDeviceEdits() (*cdi.ContainerEdits, error) {
 		return nil, fmt.Errorf("failed to create device discoverer: %v", err)
 	}
 
-	editsForDevice, err := l.editsFactory.FromDiscoverer(deviceNodes)
+	editsForDevice, err := edits.FromDiscoverer(deviceNodes)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create container edits for Compute Instance: %v", err)
 	}

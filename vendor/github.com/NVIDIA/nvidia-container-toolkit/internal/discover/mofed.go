@@ -16,16 +16,13 @@
 
 package discover
 
-import (
-	"github.com/NVIDIA/nvidia-container-toolkit/internal/logger"
-	"github.com/NVIDIA/nvidia-container-toolkit/internal/lookup/root"
-)
+import "github.com/NVIDIA/nvidia-container-toolkit/internal/logger"
 
 // NewMOFEDDiscoverer creates a discoverer for MOFED devices.
-func NewMOFEDDiscoverer(logger logger.Interface, driver *root.Driver) (Discover, error) {
+func NewMOFEDDiscoverer(logger logger.Interface, devRoot string) (Discover, error) {
 	devices := NewCharDeviceDiscoverer(
 		logger,
-		driver.DevRoot,
+		devRoot,
 		[]string{
 			"/dev/infiniband/uverbs*",
 			"/dev/infiniband/rdma_cm",

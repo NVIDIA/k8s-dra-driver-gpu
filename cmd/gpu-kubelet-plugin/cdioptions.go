@@ -1,17 +1,17 @@
 /*
-Copyright The Kubernetes Authors
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-    https://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
+# Copyright 2023 NVIDIA CORPORATION
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 */
 
 package main
@@ -19,7 +19,6 @@ package main
 import (
 	nvdevice "github.com/NVIDIA/go-nvlib/pkg/nvlib/device"
 	"github.com/NVIDIA/go-nvml/pkg/nvml"
-	"github.com/sirupsen/logrus"
 )
 
 // cdiOption represents a functional option for constructing a CDI handler.
@@ -74,16 +73,9 @@ func WithDeviceLib(nvdevice nvdevice.Interface) cdiOption {
 	}
 }
 
-// WithVendor provides an cdiOption to set the logger used by the 'cdi' interface.
-func WithLogger(logger *logrus.Logger) cdiOption {
+// WithVendor provides an cdiOption to set the vendor used by the 'cdi' interface.
+func WithVendor(vendor string) cdiOption {
 	return func(c *CDIHandler) {
-		c.logger = logger
-	}
-}
-
-// WithVfioCDIHandler provides an cdiOption to set the vfio CDI handler used by the 'cdi' interface.
-func WithVfioCDIHandler(vfioCDIHandler *vfioCDIHandler) cdiOption {
-	return func(c *CDIHandler) {
-		c.vfiocdi = vfioCDIHandler
+		c.vendor = vendor
 	}
 }

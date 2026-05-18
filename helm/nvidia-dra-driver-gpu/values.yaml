@@ -1,0 +1,157 @@
+# Copyright 2023 NVIDIA CORPORATION
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Default values for k8s-dra-driver-gpu.
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+# Specify the driver root on the host.
+# If the NVIDIA GPU driver is managed using the NVIDIA GPU Driver Container,
+# this is typically /run/nvidia/driver.
+# For driver installed directly on a host, a value of `/` is used.
+nvidiaDriverRoot: /
+
+# Optional path to the nvidia-cdi-hook executable.
+# If not specified, the default path inferred from the nvidia-container-toolkit library version will be used.
+nvidiaCDIHookPath: ""
+
+# Optional: extra directories (inside the in-container `/driver-root`) to
+# search for the `nvidia-smi` binary, in addition to the FHS defaults
+# (`bin`, `sbin`, `usr/bin`, `usr/sbin`). Useful for driver bundles whose
+# layout differs from FHS. Paths may be relative to `/driver-root` (e.g.
+# `opt/bin`) or absolute container paths (e.g. `/opt/bin`, paired with an
+# entry in `extraHostPathMounts` below).
+extraDriverBinaryPaths: []
+
+# Optional: extra directories (inside the in-container `/driver-root`) to
+# search for `libnvidia-ml.so.1`, in addition to the FHS defaults. Same
+# path semantics as `extraDriverBinaryPaths`.
+extraDriverLibraryPaths: []
+
+# Optional: extra hostPath bind-mounts injected into the init container and
+# both runtime containers (`compute-domains`, `gpus`). Useful when the
+# driver bundle pointed at by `nvidiaDriverRoot` contains absolute symlinks
+# whose targets live outside the bundle (e.g. on Flatcar,
+# `/opt/nvidia/current/usr/bin/nvidia-smi -> /opt/bin/nvidia-smi`).
+# Mounting `/opt/bin -> /opt/bin` heals those dangling symlinks without
+# rewriting any paths.
+#
+# Example (Flatcar Container Linux):
+#   nvidiaDriverRoot: /opt/nvidia/current
+#   extraHostPathMounts:
+#     - name: host-opt-bin
+#       hostPath: /opt/bin
+#       mountPath: /opt/bin
+#       readOnly: true
+extraHostPathMounts: []
+
+nameOverride: ""
+fullnameOverride: ""
+namespaceOverride: ""
+selectorLabelsOverride: {}
+gpuResourcesEnabledOverride: false
+
+allowDefaultNamespace: false
+
+imagePullSecrets: []
+image:
+  # Downstream Giant Swarm build: points at the patched image carrying the
+  # Flatcar prestart fix and EXTRA_DRIVER_*_PATHS env handling. Revert to
+  # nvcr.io/nvidia/k8s-dra-driver-gpu when upstream ships those changes.
+  repository: gsoci.azurecr.io/giantswarm/k8s-dra-driver-gpu
+  pullPolicy: IfNotPresent
+  # Note: an empty string is translated to the `appVersion` string from
+  # the Helm chart YAML (effectively implementing the default value to be
+  # the current version). Also note that a "v" is prefixed to the
+  # `appVersion` value.
+  tag: ""
+
+serviceAccount:
+  # Specifies whether a service account should be created
+  create: true
+  # Annotations to add to the service account
+  annotations: {}
+  # The name of the service account to use.
+  # If not set and create is true, a name is generated using the fullname template
+  name: ""
+
+resources:
+  gpus:
+    enabled: true
+  computeDomains:
+    enabled: true
+
+controller:
+  priorityClassName: "system-node-critical"
+  podAnnotations: {}
+  podSecurityContext: {}
+  nodeSelector: {}
+  tolerations:
+  - key: node-role.kubernetes.io/control-plane
+    operator: Exists
+    effect: NoSchedule
+  containers:
+    computeDomain:
+      securityContext: {}
+      resources: {}
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+        - matchExpressions:
+          - key: "node-role.kubernetes.io/control-plane"
+            operator: "Exists"
+
+kubeletPlugin:
+  priorityClassName: "system-node-critical"
+  updateStrategy:
+    type: RollingUpdate
+  podAnnotations: {}
+  podSecurityContext: {}
+  nodeSelector: {}
+  tolerations: []
+  containers:
+    init:
+      securityContext: {}
+      resources: {}
+    computeDomains:
+      securityContext:
+        privileged: true
+      resources: {}
+    gpus:
+      securityContext:
+        privileged: true
+      resources: {}
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+        - matchExpressions:
+          # On discrete-GPU based systems NFD adds the following label where 10de is the NVIDIA PCI vendor ID
+          - key: feature.node.kubernetes.io/pci-10de.present
+            operator: In
+            values:
+            - "true"
+        - matchExpressions:
+          # On some Tegra-based systems NFD detects the CPU vendor ID as NVIDIA
+          - key: feature.node.kubernetes.io/cpu-model.vendor_id
+            operator: In
+            values:
+            - "NVIDIA"
+        - matchExpressions:
+          # We allow a GPU deployment to be forced by setting the following label to "true"
+          - key: "nvidia.com/gpu.present"
+            operator: In
+            values:
+            - "true"

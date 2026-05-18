@@ -4,35 +4,17 @@ import (
 	"strings"
 
 	"github.com/NVIDIA/nvidia-container-toolkit/internal/logger"
+	"github.com/NVIDIA/nvidia-container-toolkit/internal/lookup/root"
 )
-
-// EnableCUDACompatHookOptions defines the options that can be specified
-// when creating the enable-cuda-compat hook.
-type EnableCUDACompatHookOptions struct {
-	HostDriverVersion       string
-	HostCUDAVersion         string
-	CUDACompatContainerRoot string
-}
 
 // NewCUDACompatHookDiscoverer creates a discoverer for a enable-cuda-compat hook.
 // This hook is responsible for setting up CUDA compatibility in the container and depends on the host driver version.
-func NewCUDACompatHookDiscoverer(logger logger.Interface, hookCreator HookCreator, o *EnableCUDACompatHookOptions) Discover {
-	return hookCreator.Create(EnableCudaCompatHook, o.args()...)
-}
-
-func (o *EnableCUDACompatHookOptions) args() []string {
-	if o == nil {
-		return nil
-	}
+func NewCUDACompatHookDiscoverer(logger logger.Interface, hookCreator HookCreator, driver *root.Driver) Discover {
+	_, cudaVersionPattern := getCUDALibRootAndVersionPattern(logger, driver)
 	var args []string
-	if o.HostDriverVersion != "" && !strings.Contains(o.HostDriverVersion, "*") {
-		args = append(args, "--host-driver-version="+o.HostDriverVersion)
+	if !strings.Contains(cudaVersionPattern, "*") {
+		args = append(args, "--host-driver-version="+cudaVersionPattern)
 	}
-	if o.HostCUDAVersion != "" {
-		args = append(args, "--host-cuda-version="+o.HostCUDAVersion)
-	}
-	if o.CUDACompatContainerRoot != "" {
-		args = append(args, "--cuda-compat-container-root="+o.CUDACompatContainerRoot)
-	}
-	return args
+
+	return hookCreator.Create("enable-cuda-compat", args...)
 }

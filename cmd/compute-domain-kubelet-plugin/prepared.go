@@ -1,18 +1,18 @@
 /*
-Copyright The Kubernetes Authors.
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-    http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-*/
+ * Copyright (c) 2024, NVIDIA CORPORATION.  All rights reserved.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 
 package main
 
@@ -30,12 +30,12 @@ type PreparedDevice struct {
 
 type PreparedComputeDomainChannel struct {
 	Info   *ComputeDomainChannelInfo `json:"info"`
-	Device *CheckpointedDevice       `json:"device"`
+	Device *kubeletplugin.Device     `json:"device"`
 }
 
 type PreparedComputeDomainDaemon struct {
 	Info   *ComputeDomainDaemonInfo `json:"info"`
-	Device *CheckpointedDevice      `json:"device"`
+	Device *kubeletplugin.Device    `json:"device"`
 }
 
 type PreparedDeviceGroup struct {
@@ -106,30 +106,10 @@ func (g *PreparedDeviceGroup) GetDevices() []kubeletplugin.Device {
 	for _, device := range g.Devices {
 		switch device.Type() {
 		case ComputeDomainChannelType:
-			devices = append(devices, kubeletplugin.Device(*device.Channel.Device))
+			devices = append(devices, *device.Channel.Device)
 		case ComputeDomainDaemonType:
-			devices = append(devices, kubeletplugin.Device(*device.Daemon.Device))
+			devices = append(devices, *device.Daemon.Device)
 		}
 	}
 	return devices
-}
-
-// GetNonAdminDevices returns a map of device names that were requested
-// without admin access in the prepared claim.
-func (c *PreparedClaim) GetNonAdminDevices() map[string]struct{} {
-	requested := make(map[string]struct{}, len(c.Status.Allocation.Devices.Results))
-
-	if c.Status.Allocation == nil {
-		return requested
-	}
-	for _, r := range c.Status.Allocation.Devices.Results {
-		if r.Driver != DriverName {
-			continue
-		}
-		if r.AdminAccess != nil && *r.AdminAccess {
-			continue
-		}
-		requested[r.Device] = struct{}{}
-	}
-	return requested
 }

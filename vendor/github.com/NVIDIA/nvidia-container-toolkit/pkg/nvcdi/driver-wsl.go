@@ -23,7 +23,7 @@ import (
 	"github.com/NVIDIA/nvidia-container-toolkit/internal/discover"
 	"github.com/NVIDIA/nvidia-container-toolkit/internal/dxcore"
 	"github.com/NVIDIA/nvidia-container-toolkit/internal/logger"
-	"github.com/NVIDIA/nvidia-container-toolkit/pkg/lookup"
+	"github.com/NVIDIA/nvidia-container-toolkit/internal/lookup"
 )
 
 var requiredDriverStoreFiles = []string{
@@ -39,13 +39,13 @@ var requiredDriverStoreFiles = []string{
 }
 
 // newWSLDriverDiscoverer returns a Discoverer for WSL2 drivers.
-func (l *wsllib) newWSLDriverDiscoverer() (discover.Discover, error) {
+func newWSLDriverDiscoverer(logger logger.Interface, driverRoot string, hookCreator discover.HookCreator, ldconfigPath string) (discover.Discover, error) {
 	if err := dxcore.Init(); err != nil {
 		return nil, fmt.Errorf("failed to initialize dxcore: %w", err)
 	}
 	defer func() {
 		if err := dxcore.Shutdown(); err != nil {
-			l.logger.Warningf("failed to shutdown dxcore: %w", err)
+			logger.Warningf("failed to shutdown dxcore: %w", err)
 		}
 	}()
 
@@ -54,32 +54,32 @@ func (l *wsllib) newWSLDriverDiscoverer() (discover.Discover, error) {
 		return nil, fmt.Errorf("no driver store paths found")
 	}
 	if len(driverStorePaths) > 1 {
-		l.logger.Warningf("Found multiple driver store paths: %v", driverStorePaths)
+		logger.Warningf("Found multiple driver store paths: %v", driverStorePaths)
 	}
-	l.logger.Infof("Using WSL driver store paths: %v", driverStorePaths)
+	logger.Infof("Using WSL driver store paths: %v", driverStorePaths)
 
 	driverStorePaths = append(driverStorePaths, "/usr/lib/wsl/lib")
 
 	driverStoreMounts := discover.NewMounts(
-		l.logger,
+		logger,
 		lookup.NewFileLocator(
-			lookup.WithLogger(l.logger),
+			lookup.WithLogger(logger),
 			lookup.WithSearchPaths(
 				driverStorePaths...,
 			),
 			lookup.WithCount(1),
 		),
-		l.driver.Root,
+		driverRoot,
 		requiredDriverStoreFiles,
 	)
 
 	symlinkHook := nvidiaSMISimlinkHook{
-		logger:      l.logger,
+		logger:      logger,
 		mountsFrom:  driverStoreMounts,
-		hookCreator: l.hookCreator,
+		hookCreator: hookCreator,
 	}
 
-	ldcacheHook, _ := discover.NewLDCacheUpdateHook(l.logger, driverStoreMounts, l.hookCreator)
+	ldcacheHook, _ := discover.NewLDCacheUpdateHook(logger, driverStoreMounts, hookCreator, ldconfigPath)
 
 	d := discover.Merge(
 		driverStoreMounts,

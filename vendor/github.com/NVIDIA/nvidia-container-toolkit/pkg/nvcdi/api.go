@@ -77,23 +77,7 @@ const (
 type FeatureFlag string
 
 const (
-	// FeatureEnableExplicitDriverLibraries enables the inclusion of a list of
-	// explicit driver libraries.
-	FeatureEnableExplicitDriverLibraries = FeatureFlag("enable-explicit-driver-libraries")
-
 	// FeatureDisableNvsandboxUtils disables the use of nvsandboxutils when
 	// querying devices.
-	FeatureDisableNvsandboxUtils = FeatureFlag("disable-nvsandboxutils")
-
-	// FeatureEnableCoherentAnnotations enables the addition of annotations
-	// coherent or non-coherent devices.
-	FeatureEnableCoherentAnnotations = FeatureFlag("enable-coherent-annotations")
-
-	// FeatureDisableMultipleCSVDevices disables the handling of multiple devices
-	// in CSV mode.
-	FeatureDisableMultipleCSVDevices = FeatureFlag("disable-multiple-csv-devices")
-
-	// FeatureNoAdditionalGIDsForDeviceNodes disables the injection of additional GIDs
-	// for a device node when the node is not readable and writable by the user.
-	FeatureNoAdditionalGIDsForDeviceNodes = FeatureFlag("no-additional-gids-for-device-nodes")
+	FeatureDisableNvsandboxUtils = FeatureFlag("disable-nvsandbox-utils")
 )

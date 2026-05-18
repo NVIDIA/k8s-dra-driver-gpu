@@ -108,7 +108,7 @@ func mergeDeviceSpecs(deviceSpecs []specs.Device, mergedDeviceName string) (*spe
 		}
 	}
 
-	mergedEdits := edits.EmptyFactory.New()
+	mergedEdits := edits.NewContainerEdits()
 
 	for _, d := range deviceSpecs {
 		d := d

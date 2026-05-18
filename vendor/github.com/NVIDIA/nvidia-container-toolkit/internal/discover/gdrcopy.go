@@ -16,15 +16,12 @@
 
 package discover
 
-import (
-	"github.com/NVIDIA/nvidia-container-toolkit/internal/logger"
-	"github.com/NVIDIA/nvidia-container-toolkit/internal/lookup/root"
-)
+import "github.com/NVIDIA/nvidia-container-toolkit/internal/logger"
 
-func NewGDRCopyDiscoverer(logger logger.Interface, driver *root.Driver) (Discover, error) {
+func NewGDRCopyDiscoverer(logger logger.Interface, devRoot string) (Discover, error) {
 	return NewCharDeviceDiscoverer(
 		logger,
-		driver.DevRoot,
+		devRoot,
 		[]string{"/dev/gdrdrv"},
 	), nil
 }

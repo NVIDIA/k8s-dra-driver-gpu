@@ -26,6 +26,7 @@ import (
 	"tags.cncf.io/container-device-interface/specs-go"
 
 	"github.com/NVIDIA/nvidia-container-toolkit/internal/discover"
+	"github.com/NVIDIA/nvidia-container-toolkit/internal/edits"
 )
 
 type imexlib nvcdilib
@@ -43,7 +44,7 @@ const (
 
 // GetCommonEdits returns an empty set of edits for IMEX devices.
 func (l *imexlib) GetCommonEdits() (*cdi.ContainerEdits, error) {
-	return l.editsFactory.FromDiscoverer(discover.None{})
+	return edits.FromDiscoverer(discover.None{})
 }
 
 // DeviceSpecGenerators returns the CDI device spec generators for the specified
@@ -60,7 +61,7 @@ func (l *imexlib) DeviceSpecGenerators(ids ...string) (DeviceSpecGenerator, erro
 
 	var deviceSpecGenerators DeviceSpecGenerators
 	for _, id := range channelsIDs {
-		deviceSpecGenerators = append(deviceSpecGenerators, &imexChannel{id: id, devRoot: l.driver.DevRoot})
+		deviceSpecGenerators = append(deviceSpecGenerators, &imexChannel{id: id, devRoot: l.devRoot})
 	}
 
 	return deviceSpecGenerators, nil
@@ -86,7 +87,7 @@ func (l *imexlib) getChannelIDs(ids ...string) ([]string, error) {
 func (l *imexlib) getAllChannelIDs() ([]string, error) {
 	channelsDiscoverer := discover.NewCharDeviceDiscoverer(
 		l.logger,
-		l.driver.DevRoot,
+		l.devRoot,
 		[]string{"/dev/nvidia-caps-imex-channels/channel*"},
 	)
 

@@ -1,16 +1,8 @@
-dist/
 .cache/
 .bash_history
 /compute-domain-controller
-/compute-domain-daemon
 /compute-domain-kubelet-plugin
 /gpu-kubelet-plugin
-/webhook
 .idea
 [._]*.sw[a-p]
 coverage.out
-tests-out
-*.log
-*.tar
-*.tgz
-

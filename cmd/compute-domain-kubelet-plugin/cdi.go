@@ -1,18 +1,18 @@
 /*
-Copyright The Kubernetes Authors
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-    https://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-*/
+ * Copyright (c) 2022-2023, NVIDIA CORPORATION.  All rights reserved.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 
 package main
 
@@ -141,10 +141,7 @@ func NewCDIHandler(opts ...cdiOption) (*CDIHandler, error) {
 
 func (cdi *CDIHandler) CreateStandardDeviceSpecFile(allocatable AllocatableDevices) error {
 	// Initialize NVML in order to get the device edits.
-	// Its possible there are no GPUs available in NVML.
-	// (Eg: All gpus prepared in passthrough-mode)
-	// We use the INIT_FLAG_NO_GPUS flag to avoid failing if there are no GPUs.
-	if r := cdi.nvml.InitWithFlags(nvml.INIT_FLAG_NO_GPUS); r != nvml.SUCCESS {
+	if r := cdi.nvml.Init(); r != nvml.SUCCESS {
 		return fmt.Errorf("failed to initialize NVML: %v", r)
 	}
 	defer func() {
@@ -194,9 +191,9 @@ func (cdi *CDIHandler) CreateStandardDeviceSpecFile(allocatable AllocatableDevic
 	}
 
 	// Update the spec to include only the minimum version necessary.
-	minVersion, err := cdispec.MinimumRequiredVersion(spec.Raw())
+	minVersion, err := cdiapi.MinimumRequiredVersion(spec.Raw())
 	if err != nil {
-		return fmt.Errorf("failed to get minimum required CDI spec version: %w", err)
+		return fmt.Errorf("failed to get minimum required CDI spec version: %v", err)
 	}
 	spec.Raw().Version = minVersion
 
@@ -251,9 +248,9 @@ func (cdi *CDIHandler) CreateClaimSpecFile(claimUID string, preparedDevices Prep
 	}
 
 	// Update the spec to include only the minimum version necessary.
-	minVersion, err := cdispec.MinimumRequiredVersion(spec.Raw())
+	minVersion, err := cdiapi.MinimumRequiredVersion(spec.Raw())
 	if err != nil {
-		return fmt.Errorf("failed to get minimum required CDI spec version: %w", err)
+		return fmt.Errorf("failed to get minimum required CDI spec version: %v", err)
 	}
 	spec.Raw().Version = minVersion
 
@@ -262,7 +259,7 @@ func (cdi *CDIHandler) CreateClaimSpecFile(claimUID string, preparedDevices Prep
 	return cdi.cache.WriteSpec(spec.Raw(), specName)
 }
 
-func (cdi *CDIHandler) DeleteClaimSpecFileIfExists(claimUID string) error {
+func (cdi *CDIHandler) DeleteClaimSpecFile(claimUID string) error {
 	specName := cdiapi.GenerateTransientSpecName(cdi.vendor, cdi.claimClass, claimUID)
 	return cdi.cache.RemoveSpec(specName)
 }

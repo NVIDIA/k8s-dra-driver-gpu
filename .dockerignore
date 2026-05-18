@@ -4,4 +4,3 @@ deployments/container
 *.tgz
 demo
 .git
-tests-out

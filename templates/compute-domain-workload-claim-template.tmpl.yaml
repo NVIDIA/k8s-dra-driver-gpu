@@ -24,4 +24,3 @@ spec:
             apiVersion: {{ .ChannelConfig.APIVersion }}
             kind: {{ .ChannelConfig.Kind }}
             domainID: {{ .ChannelConfig.DomainID }}
-            allocationMode: {{ .ChannelConfig.AllocationMode }}

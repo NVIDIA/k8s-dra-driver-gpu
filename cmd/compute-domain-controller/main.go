@@ -1,18 +1,18 @@
 /*
-Copyright The Kubernetes Authors
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-    https://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-*/
+ * Copyright (c) 2024 NVIDIA CORPORATION.  All rights reserved.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 
 package main
 
@@ -25,64 +25,45 @@ import (
 	"os"
 	"os/signal"
 	"path"
-	"strings"
 	"syscall"
 
-	"github.com/google/uuid"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/urfave/cli/v2"
 
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/tools/leaderelection"
-	"k8s.io/client-go/tools/leaderelection/resourcelock"
-	"k8s.io/component-base/logs"
+	"k8s.io/component-base/metrics/legacyregistry"
 	"k8s.io/klog/v2"
 
 	_ "k8s.io/component-base/metrics/prometheus/restclient" // for client metric registration
 	_ "k8s.io/component-base/metrics/prometheus/version"    // for version metric registration
 	_ "k8s.io/component-base/metrics/prometheus/workqueue"  // register work queues in the default legacy registry
 
-	"sigs.k8s.io/dra-driver-nvidia-gpu/internal/common"
-	"sigs.k8s.io/dra-driver-nvidia-gpu/internal/info"
-	"sigs.k8s.io/dra-driver-nvidia-gpu/pkg/featuregates"
-	pkgflags "sigs.k8s.io/dra-driver-nvidia-gpu/pkg/flags"
-	"sigs.k8s.io/dra-driver-nvidia-gpu/pkg/metrics"
+	"github.com/NVIDIA/k8s-dra-driver-gpu/internal/info"
+	"github.com/NVIDIA/k8s-dra-driver-gpu/pkg/flags"
 )
 
 const (
 	DriverName = "compute-domain.nvidia.com"
-
-	// This constant provides a reasonable default for the maximum size of
-	// a given IMEX Domain. On GB200 and GB300 the limit is 18, so we pick
-	// this for now. It can be overridden as an environment variable or
-	// command line argument as required.
-	defaultMaxNodesPerIMEXDomain = 18
 )
 
 type Flags struct {
-	kubeClientConfig     pkgflags.KubeClientConfig
-	leaderElectionConfig pkgflags.LeaderElectionConfig
+	kubeClientConfig flags.KubeClientConfig
+	loggingConfig    *flags.LoggingConfig
 
-	podName               string
-	namespace             string
-	imageName             string
-	maxNodesPerIMEXDomain int
-	logVerbosityCDDaemon  int
+	podName   string
+	namespace string
+	imageName string
 
 	httpEndpoint string
 	metricsPath  string
 	profilePath  string
-
-	additionalNamespaces cli.StringSlice
-	imagePullSecretsCSV  string
-	klogVerbosity        int
 }
 
 type Config struct {
-	driverName           string
-	flags                *Flags
-	clientsets           pkgflags.ClientSets
-	mux                  *http.ServeMux
-	imagePullSecretNames []string
+	driverName string
+	flags      *Flags
+	clientsets flags.ClientSets
+	mux        *http.ServeMux
 }
 
 func main() {
@@ -93,10 +74,9 @@ func main() {
 }
 
 func newApp() *cli.App {
-	loggingConfig := pkgflags.NewLoggingConfig()
-	featureGateConfig := pkgflags.NewFeatureGateConfig()
-	flags := &Flags{}
-
+	flags := &Flags{
+		loggingConfig: flags.NewLoggingConfig(),
+	}
 	cliFlags := []cli.Flag{
 		&cli.StringFlag{
 			Name:        "pod-name",
@@ -120,26 +100,6 @@ func newApp() *cli.App {
 			EnvVars:     []string{"IMAGE_NAME"},
 		},
 		&cli.StringFlag{
-			Name:        "cd-daemon-image-pull-secret-names",
-			Usage:       "Comma-separated imagePullSecret names for compute-domain-daemon DaemonSets (e.g. regcred,other). Empty string means none.",
-			Destination: &flags.imagePullSecretsCSV,
-			EnvVars:     []string{"CD_DAEMON_IMAGE_PULL_SECRET_NAMES"},
-		},
-		&cli.IntFlag{
-			Name:        "log-verbosity-cd-daemon",
-			Usage:       "Log verbosity for dynamically launched CD daemon pods",
-			Required:    true,
-			EnvVars:     []string{"LOG_VERBOSITY_CD_DAEMON"},
-			Destination: &flags.logVerbosityCDDaemon,
-		},
-		&cli.IntFlag{
-			Name:        "max-nodes-per-imex-domain",
-			Usage:       "The maximum number of possible nodes per IMEX domain",
-			Value:       defaultMaxNodesPerIMEXDomain,
-			EnvVars:     []string{"MAX_NODES_PER_IMEX_DOMAIN"},
-			Destination: &flags.maxNodesPerIMEXDomain,
-		},
-		&cli.StringFlag{
 			Category:    "HTTP server:",
 			Name:        "http-endpoint",
 			Usage:       "The TCP network `address` where the HTTP server for diagnostics, including pprof and metrics will listen (example: `:8080`). The default is the empty string, which means the server is disabled.",
@@ -161,18 +121,10 @@ func newApp() *cli.App {
 			Destination: &flags.profilePath,
 			EnvVars:     []string{"PPROF_PATH"},
 		},
-		&cli.StringSliceFlag{
-			Name:        "additional-namespaces",
-			Usage:       "Additional namespaces where the driver can manage resources.",
-			Destination: &flags.additionalNamespaces,
-			EnvVars:     []string{"ADDITIONAL_NAMESPACES"},
-		},
 	}
 
-	cliFlags = append(cliFlags, flags.leaderElectionConfig.Flags()...)
 	cliFlags = append(cliFlags, flags.kubeClientConfig.Flags()...)
-	cliFlags = append(cliFlags, featureGateConfig.Flags()...)
-	cliFlags = append(cliFlags, loggingConfig.Flags()...)
+	cliFlags = append(cliFlags, flags.loggingConfig.Flags()...)
 
 	app := &cli.App{
 		Name:            "compute-domain-controller",
@@ -184,24 +136,9 @@ func newApp() *cli.App {
 			if c.Args().Len() > 0 {
 				return fmt.Errorf("arguments not supported: %v", c.Args().Slice())
 			}
-			// `loggingConfig` must be applied before doing any logging
-			err := loggingConfig.Apply()
-
-			// Store klog's log verbosity setting in this program's config for
-			// later runtime inspection (it's otherwise not accessible anymore
-			// because we do not expose the raw `cliFlags`).
-			flags.klogVerbosity = int(loggingConfig.Config.Verbosity)
-			pkgflags.LogStartupConfig(flags, loggingConfig)
-			return err
+			return flags.loggingConfig.Apply()
 		},
 		Action: func(c *cli.Context) error {
-			common.StartDebugSignalHandlers()
-
-			// Validate feature gate dependencies
-			if err := featuregates.ValidateFeatureGates(); err != nil {
-				return fmt.Errorf("feature gate validation failed: %w", err)
-			}
-
 			mux := http.NewServeMux()
 
 			clientsets, err := flags.kubeClientConfig.NewClientSets()
@@ -210,11 +147,10 @@ func newApp() *cli.App {
 			}
 
 			config := &Config{
-				mux:                  mux,
-				flags:                flags,
-				clientsets:           clientsets,
-				driverName:           DriverName,
-				imagePullSecretNames: strings.Fields(strings.ReplaceAll(strings.TrimSpace(flags.imagePullSecretsCSV), ",", " ")),
+				mux:        mux,
+				flags:      flags,
+				clientsets: clientsets,
+				driverName: DriverName,
 			}
 
 			if flags.httpEndpoint != "" {
@@ -231,35 +167,16 @@ func newApp() *cli.App {
 			controller := NewController(config)
 			ctx, cancel := context.WithCancel(c.Context)
 			go func() {
-				// Fallback to standalone mode if leader election is disabled
-				if !config.flags.leaderElectionConfig.Enabled {
-					klog.Info("Leader election disabled, starting controller directly")
-					errChan <- controller.Run(ctx)
-					return
-				}
-				errChan <- runWithLeaderElection(ctx, config, controller)
+				errChan <- controller.Run(ctx)
 			}()
 
-			for {
-				select {
-				case sig := <-sigs:
-					klog.InfoS("Received signal, shutting down", "signal", sig.String())
-					cancel()
-				case err := <-errChan:
-					cancel()
-					if err != nil {
-						return fmt.Errorf("run controller: %w", err)
-					}
-					return nil
-				}
+			<-sigs
+			cancel()
+
+			if err := <-errChan; err != nil {
+				return fmt.Errorf("run controller: %w", err)
 			}
-		},
-		After: func(c *cli.Context) error {
-			// Runs after `Action` (regardless of success/error). In urfave cli
-			// v2, the final error reported will be from either Action, Before,
-			// or After (whichever is non-nil and last executed).
-			klog.Infof("shutdown")
-			logs.FlushLogs()
+
 			return nil
 		},
 		Version: info.GetVersionString(),
@@ -274,114 +191,26 @@ func newApp() *cli.App {
 	return app
 }
 
-func runWithLeaderElection(ctx context.Context, config *Config, controller *Controller) error {
-	klog.Info("Leader election enabled")
-	// Unique identity: PodName + UUID to prevent conflicts on restarts
-	id := uuid.New().String()
-	lockID := fmt.Sprintf("%s-%s", config.flags.podName, id)
-	klog.InfoS("Leader election candidate registered", "lockID", lockID,
-		"leaseName", config.flags.leaderElectionConfig.LeaseLockName,
-		"leaseNamespace", config.flags.leaderElectionConfig.LeaseLockNamespace)
-
-	// electorCtx controls the lifecycle of the leader election loop
-	electorCtx, cancelElector := context.WithCancel(ctx)
-	// Standard defer to ensure resources are cleaned up on function exit
-	defer cancelElector()
-
-	lock := &resourcelock.LeaseLock{
-		LeaseMeta: metav1.ObjectMeta{
-			Name:      config.flags.leaderElectionConfig.LeaseLockName,
-			Namespace: config.flags.leaderElectionConfig.LeaseLockNamespace,
-		},
-		Client: config.clientsets.Core.CoordinationV1(),
-		LockConfig: resourcelock.ResourceLockConfig{
-			Identity: lockID,
-		},
-	}
-
-	controllerErrCh := make(chan error, 1)
-	callbacks := leaderelection.LeaderCallbacks{
-		OnStartedLeading: func(leaderCtx context.Context) {
-			klog.InfoS("Became leader, starting controller", "lockID", lockID)
-
-			// ARCHITECTURE NOTE:
-			// We use cancelElector() to ensure that if the controller logic exits
-			// (either gracefully or with an error), the entire leader election loop
-			// terminates. This triggers ReleaseOnCancel, clearing the lease holder
-			// identity and allowing standby replicas to take over immediately.
-			//
-			// By returning from run() after elector.Run() finishes, we rely on
-			// Kubernetes to restart the Pod, ensuring a clean in-memory state
-			// for the next leadership term.
-			defer cancelElector()
-
-			// NOTE: Use leaderCtx provided by the callback.
-			// It is automatically cancelled if leadership is lost.
-			if err := controller.Run(leaderCtx); err != nil {
-				select {
-				case controllerErrCh <- err:
-				default:
-				}
-				klog.ErrorS(err, "Controller exited with error", "lockID", lockID)
-			} else {
-				klog.InfoS("Controller exited gracefully", "lockID", lockID)
-			}
-		},
-		OnStoppedLeading: func() {
-			// ARCHITECTURE NOTE:
-			// We only log here. The actual shutdown of the controller is handled by the
-			// cancellation of the leaderCtx passed to OnStartedLeading.
-			// When leadership is lost, the library cancels that context, triggering
-			// the controller's graceful shutdown logic.
-			klog.Warningf("Stopped leading, lockID: %s", lockID)
-		},
-		OnNewLeader: func(identity string) {
-			// OnNewLeader is called when a new leader is observed.
-			// We ignore the case where the "new" leader is ourselves to avoid
-			// redundant logs during initial election or re-election.
-			if identity == lockID {
-				klog.V(6).InfoS("OnNewLeader callback: observed leader is still ourselves", "lockID", lockID)
-				return
-			}
-			klog.InfoS("New leader elected", "leader", identity, "currentCandidate", lockID)
-		},
-	}
-
-	elector, err := leaderelection.NewLeaderElector(leaderelection.LeaderElectionConfig{
-		Lock:            lock,
-		LeaseDuration:   config.flags.leaderElectionConfig.LeaseDuration,
-		RenewDeadline:   config.flags.leaderElectionConfig.RenewDeadline,
-		RetryPeriod:     config.flags.leaderElectionConfig.RetryPeriod,
-		Name:            config.flags.leaderElectionConfig.LeaseLockName,
-		Callbacks:       callbacks,
-		ReleaseOnCancel: true, // Steps down immediately by clearing the Lease holder
-	})
-	if err != nil {
-		return fmt.Errorf("failed to create leader elector: %w", err)
-	}
-
-	// Block until electorCtx is cancelled or leadership is lost
-	klog.InfoS("Starting leader election loop", "lockID", lockID)
-	elector.Run(electorCtx)
-
-	// If exiting due to a controller failure, propagate the error to main
-	select {
-	case err := <-controllerErrCh:
-		if err != nil {
-			klog.ErrorS(err, "Process exiting due to controller failure")
-			return fmt.Errorf("controller execution failed: %w", err)
-		}
-	default:
-	}
-	klog.InfoS("Leader election loop ended gracefully", "lockID", lockID)
-	return nil
-}
-
 func SetupHTTPEndpoint(config *Config) error {
 	if config.flags.metricsPath != "" {
+		// To collect metrics data from the metric handler itself, we
+		// let it register itself and then collect from that registry.
+		reg := prometheus.NewRegistry()
+		gatherers := prometheus.Gatherers{
+			// Include Go runtime and process metrics:
+			// https://github.com/kubernetes/kubernetes/blob/9780d88cb6a4b5b067256ecb4abf56892093ee87/staging/src/k8s.io/component-base/metrics/legacyregistry/registry.go#L46-L49
+			legacyregistry.DefaultGatherer,
+		}
+		gatherers = append(gatherers, reg)
+
 		actualPath := path.Join("/", config.flags.metricsPath)
 		klog.InfoS("Starting metrics", "path", actualPath)
-		config.mux.Handle(path.Join("/", config.flags.metricsPath), metrics.NewLegacyPrometheusHandler())
+		// This is similar to k8s.io/component-base/metrics HandlerWithReset
+		// except that we gather from multiple sources.
+		config.mux.Handle(actualPath,
+			promhttp.InstrumentMetricHandler(
+				reg,
+				promhttp.HandlerFor(gatherers, promhttp.HandlerOpts{})))
 	}
 
 	if config.flags.profilePath != "" {

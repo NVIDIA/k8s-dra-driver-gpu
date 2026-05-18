@@ -22,7 +22,7 @@ type Value struct {
 	vtype    Type
 	numeric  uint64
 	stringly string
-	slice    any
+	slice    interface{}
 }
 
 const (
@@ -66,7 +66,8 @@ func IntValue(v int) Value {
 
 // IntSliceValue creates an INTSLICE Value.
 func IntSliceValue(v []int) Value {
-	cp := reflect.New(reflect.ArrayOf(len(v), reflect.TypeFor[int64]()))
+	var int64Val int64
+	cp := reflect.New(reflect.ArrayOf(len(v), reflect.TypeOf(int64Val)))
 	for i, val := range v {
 		cp.Elem().Index(i).SetInt(int64(val))
 	}
@@ -198,8 +199,8 @@ func (v Value) asStringSlice() []string {
 
 type unknownValueType struct{}
 
-// AsInterface returns Value's data as any.
-func (v Value) AsInterface() any {
+// AsInterface returns Value's data as interface{}.
+func (v Value) AsInterface() interface{} {
 	switch v.Type() {
 	case BOOL:
 		return v.AsBool()
@@ -261,7 +262,7 @@ func (v Value) Emit() string {
 func (v Value) MarshalJSON() ([]byte, error) {
 	var jsonVal struct {
 		Type  string
-		Value any
+		Value interface{}
 	}
 	jsonVal.Type = v.Type().String()
 	jsonVal.Value = v.AsInterface()

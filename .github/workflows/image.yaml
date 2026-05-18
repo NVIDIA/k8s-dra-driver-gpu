@@ -1,0 +1,54 @@
+# Copyright 2024 NVIDIA CORPORATION
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Run this workflow on pull requests or merge to main/release branches
+name: Image
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        required: true
+        type: string
+
+jobs:
+  build:
+    runs-on: linux-amd64-cpu4
+    steps:
+      - uses: actions/checkout@v4
+        name: Check out code
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+        with:
+          image: tonistiigi/binfmt:qemu-v7.0.0-28
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build image
+        env:
+          IMAGE_NAME: ghcr.io/nvidia/k8s-dra-driver-gpu
+          VERSION: ${{ inputs.version }}
+          PUSH_ON_BUILD: true
+          BUILD_MULTI_ARCH_IMAGES: "true"
+        run: |
+          echo "${VERSION}"
+          make -f deployments/container/Makefile build
+          # Push the image again, using a shorter tag (only commit hash + ubi9 suffix)
+          export IMAGE_TAG="$(echo $GITHUB_SHA | cut -c1-8)-ubi9"
+          make -f deployments/container/Makefile build

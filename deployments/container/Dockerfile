@@ -1,12 +1,14 @@
 # syntax=docker.io/docker/dockerfile:1.7-labs
-# The above enables the COPY --exclude + --parent flags
-# Copyright The Kubernetes Authors
+# The above enables the COPY --exclude flag, see:
+# https://github.com/moby/buildkit/pull/4561
+
+# Copyright (c) 2019-2025, NVIDIA CORPORATION.  All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
 #
-#    https://www.apache.org/licenses/LICENSE-2.0
+#     http://www.apache.org/licenses/LICENSE-2.0
 #
 # Unless required by applicable law or agreed to in writing, software
 # distributed under the License is distributed on an "AS IS" BASIS,
@@ -18,16 +20,10 @@
 ARG TOOLKIT_CONTAINER_IMAGE=unknown
 
 # Run build with binaries native to the current build platform.
-FROM --platform=$BUILDPLATFORM nvcr.io/nvidia/base/ubuntu:jammy-20260217 AS build
+FROM --platform=$BUILDPLATFORM nvcr.io/nvidia/cuda:12.9.1-base-ubuntu20.04 AS build
 
 # Require arg to be provided (set invalid default value).
 ARG GOLANG_VERSION=x.x.x
-
-# Controlled by Makefile: location(s) of Go build/mod cache. CI: in image layer.
-# Local dev: mount cache (host filesystem). ARGs are available as environment
-# variables in RUN steps of the same stage (relied upon below).
-ARG GOCACHE
-ARG GOMODCACHE
 
 # BUILDARCH, TARGETARCH (and others) are defined in the global scope by
 # BuiltKit. BUILDARCH is the architecture of the build platform. TARGETARCH is
@@ -38,76 +34,51 @@ ARG GOMODCACHE
 ARG BUILDARCH
 ARG TARGETARCH
 
-# Dependencies for Go build. Clear apt cache; keep this layer small.
-RUN apt-get update && apt-get install -y \
-        curl time make \
-        gcc \
+RUN apt-get update && \
+    apt-get install -y \
+        wget \
+        make \
+        git \
         gcc-aarch64-linux-gnu \
-        gcc-x86-64-linux-gnu && \
-        rm -rf /var/lib/apt/lists/* /var/cache/apt/archives
+        gcc && \
+    rm -rf /var/lib/apt/lists/*
 
-RUN curl -sSfL --retry 8 --retry-all-errors --connect-timeout 10 --retry-delay 5 \
-        https://go.dev/dl/go${GOLANG_VERSION}.linux-${BUILDARCH}.tar.gz | tar -C /usr/local -xz
+RUN wget -nv -O - https://storage.googleapis.com/golang/go${GOLANG_VERSION}.linux-${BUILDARCH}.tar.gz \
+    | tar -C /usr/local -xz
 
 ENV GOPATH=/go
 ENV PATH=$GOPATH/bin:/usr/local/go/bin:$PATH
+
 WORKDIR /build
 
-# Create a layer that only invalidates when _rarely_ changing Go code changes
-# (`vendor`, `pkg`, ..). Goal: useful Go build&mod cache in an image layer (for
-# CI). The mount cache below is only used in local dev (ignored in CI because
-# GO[MOD]CACHE does not point to these paths).
-# https://github.com/moby/buildkit/blob/master/frontend/dockerfile/docs/reference.md#example-cache-go-packages
-COPY go.mod go.sum ./
-COPY --parents pkg api internal vendor ./
-RUN --mount=type=cache,target=/mc/go/build-cache,id=gocache \
-    --mount=type=cache,target=/mc/go/pkg/mod,id=gomodcache \
-    case "$TARGETARCH" in "$BUILDARCH") cc=gcc;; arm64) cc=aarch64-linux-gnu-gcc;; amd64) cc=x86_64-linux-gnu-gcc;; esac && \
-    CC=${cc} CGO_ENABLED=1 GOARCH=${TARGETARCH} time go build -mod=vendor ./...
+# Copy everything that is needed for the go build, but do not invalidate go
+# build artifact layer unnecessarily often. Note that --exclude only affects the
+# cache.
+COPY    --exclude=./templates/** \
+        --exclude=./deployments/helm/** \
+        --exclude=./hack/kubelet-plugin-prestart.sh \
+        --exclude=./demo/** \
+        --exclude=./Dockerfile \
+        . .
 
-# Copy everything else (and only) what is required for the Go build ('Explicit
-# include' philosophy). Goal: invalidate layer only when absolutely required.
-RUN mkdir /build/deployments /build/hack
-COPY common.mk versions.mk Makefile ./
-COPY deployments/devel deployments/devel
-COPY hack/golang-version.sh hack/golang-version.sh
-COPY hack/toolkit-container-image.sh hack/toolkit-container-image.sh
-COPY cmd ./cmd
+RUN mkdir /artifacts
 
-# The vars VERSION & GIT_COMMIT are consumed (as environment variables) by the
-# `make` target below. That implies that the cached image layer is invalidated
-# for every commit. Hence, during local dev, there's great benefit from backing
-# the Go build/mod cache by a mount cache.
+# The VERSION and GIT_COMMIT env vars are consumed by the `make` target below.
 ARG VERSION="N/A"
 ARG GIT_COMMIT="unknown"
-RUN mkdir /artifacts
-RUN --mount=type=cache,target=/mc/go/build-cache,id=gocache \
-    --mount=type=cache,target=/mc/go/pkg/mod,id=gomodcache \
-    case "$TARGETARCH" in "$BUILDARCH") cc=gcc;; arm64) cc=aarch64-linux-gnu-gcc;; amd64) cc=x86_64-linux-gnu-gcc;; esac && \
-    time make CC=${cc} GOARCH=${TARGETARCH} PREFIX=/artifacts cmds
-
-# Static bash binary, sourced from the Debian 'bash-static' package on
-# trixie. Replaces a from-source build that was flaky in CI (autoconf
-# availability, GNU mirror instability, cross-compile segfaults; see
-# issues/502 and issues/743) and dominated CI duration on the happy
-# path. Pinned by image digest for reproducibility; bash version follows
-# the trixie suite. Currently delivers bash 5.2.37, statically linked.
-FROM debian:trixie-slim@sha256:109e2c65005bf160609e4ba6acf7783752f8502ad218e298253428690b9eaa4b AS bash
-RUN apt-get update \
- && apt-get install -y --no-install-recommends bash-static \
- && rm -rf /var/lib/apt/lists/* \
- && /bin/bash-static --version
+RUN if [ "$TARGETARCH" = "amd64" ]; then \
+        cc=gcc; \
+    elif [ "$TARGETARCH" = "arm64" ]; then \
+        cc=aarch64-linux-gnu-gcc; \
+    fi && \
+    make CC=${cc} GOARCH=${TARGETARCH} PREFIX=/artifacts cmds
 
 # Pull the nvidia-cdi-hook binary out of the relevant toolkit container
 # (arch: TARGETPLATFORM, set via --platform).
 FROM ${TOOLKIT_CONTAINER_IMAGE} AS toolkit
 
-# Construct production image (arch: TARGETPLATFORM, set via the `--platform` CLI
-# arg). gcr.io/distroless/cc:debug is distroless/cc plus busybox at /busybox/
-# (PATH includes /busybox). The scripts bundled in this image (kubelet-plugin-
-# prestart.sh, bind_to_driver.sh, unbind_from_driver.sh) require coreutils
-# (ln, find, date, sleep, head, env, readlink, basename) provided by busybox.
-FROM gcr.io/distroless/cc:debug
+# Construct production image (arch: TARGETPLATFORM, set via --platform).
+FROM nvcr.io/nvidia/cuda:12.9.1-base-ubi9
 
 ENV NVIDIA_DISABLE_REQUIRE="true"
 ENV NVIDIA_VISIBLE_DEVICES=all
@@ -115,40 +86,26 @@ ENV NVIDIA_DRIVER_CAPABILITIES=utility
 ARG VERSION="N/A"
 ARG GIT_COMMIT="unknown"
 
-LABEL io.k8s.display-name="DRA Driver for NVIDIA GPUs"
-LABEL name="DRA Driver for NVIDIA GPUs"
+LABEL io.k8s.display-name="NVIDIA DRA Driver for GPUs"
+LABEL name="NVIDIA DRA Driver for GPUs"
 LABEL vendor="NVIDIA"
 LABEL version=${VERSION}
 LABEL com.nvidia.git-commit="${GIT_COMMIT}"
 LABEL release="N/A"
-LABEL summary="DRA Driver for NVIDIA GPUs"
-LABEL description="DRA Driver for NVIDIA GPUs"
-LABEL org.opencontainers.image.description="DRA Driver for NVIDIA GPUs"
-LABEL org.opencontainers.image.source="https://github.com/kubernetes-sigs/dra-driver-nvidia-gpu"
+LABEL summary="NVIDIA DRA Driver for GPUs"
+LABEL description="NVIDIA DRA Driver for GPUs"
+LABEL org.opencontainers.image.description="NVIDIA DRA Driver for GPUs"
+LABEL org.opencontainers.image.source="https://github.com/NVIDIA/k8s-dra-driver-gpu"
 
-# Add top-level license (AL2) file into the container image
-COPY LICENSE /
+# When doing a cross-platform build (e.g., amd64 -> arm64) then mkdir/mv below
+# require virtualization. To support that you might have to install qemu:
+# https://docs.docker.com/build/building/multi-platform/#install-qemu-manually
+RUN mkdir /licenses && mv /NGC-DL-CONTAINER-LICENSE /licenses/NGC-DL-CONTAINER-LICENSE
 
-COPY --from=bash    /bin/bash-static                          /bin/bash
-
-COPY --from=toolkit /artifacts/rpm/usr/bin/nvidia-cdi-hook    /usr/bin/nvidia-cdi-hook
-COPY --from=build   /artifacts/compute-domain-controller      /usr/bin/compute-domain-controller
-COPY --from=build   /artifacts/compute-domain-kubelet-plugin  /usr/bin/compute-domain-kubelet-plugin
-COPY --from=build   /artifacts/compute-domain-daemon          /usr/bin/compute-domain-daemon
-COPY --from=build   /artifacts/gpu-kubelet-plugin             /usr/bin/gpu-kubelet-plugin
-COPY --from=build   /artifacts/webhook                        /usr/bin/webhook
-
-COPY /scripts/bind_to_driver.sh                               /usr/bin/bind_to_driver.sh
-COPY /scripts/unbind_from_driver.sh                           /usr/bin/unbind_from_driver.sh
-COPY /hack/kubelet-plugin-prestart.sh                         /usr/bin/kubelet-plugin-prestart.sh
+COPY --from=toolkit /artifacts/rpm/usr/bin/nvidia-cdi-hook   /usr/bin/nvidia-cdi-hook
+COPY --from=build   /artifacts/compute-domain-controller     /usr/bin/compute-domain-controller
+COPY --from=build   /artifacts/compute-domain-kubelet-plugin /usr/bin/compute-domain-kubelet-plugin
+COPY --from=build   /artifacts/compute-domain-daemon         /usr/bin/compute-domain-daemon
+COPY --from=build   /artifacts/gpu-kubelet-plugin            /usr/bin/gpu-kubelet-plugin
+COPY /hack/kubelet-plugin-prestart.sh /usr/bin/kubelet-plugin-prestart.sh
 COPY /templates /templates
-
-# Use root by default (for example, the init container as of now needs
-# this, otherwise `ln: /driver-root: Permission denied`).
-COPY --from=build /etc/passwd /etc/passwd
-COPY --from=build /etc/group /etc/group
-USER root:root
-
-# Smoke-test executables (provide early build feedback).
-RUN ["/usr/bin/compute-domain-kubelet-plugin", "--version"]
-RUN ["/bin/bash", "--version"]

@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
 
-# Copyright The Kubernetes Authors
+# Copyright 2023 The Kubernetes Authors.
+# Copyright 2023 NVIDIA CORPORATION.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
 #
-#    https://www.apache.org/licenses/LICENSE-2.0
+#     http://www.apache.org/licenses/LICENSE-2.0
 #
 # Unless required by applicable law or agreed to in writing, software
 # distributed under the License is distributed on an "AS IS" BASIS,
@@ -29,7 +30,6 @@ DRIVER_IMAGE_REGISTRY=$(from_versions_mk "REGISTRY")
 DRIVER_IMAGE_VERSION=$(from_versions_mk "VERSION")
 
 : ${DRIVER_IMAGE_NAME:=${DRIVER_NAME}}
-# TODO: update to the latest tag once we remove the ubi tag suffix
 : ${DRIVER_IMAGE_PLATFORM:="ubi9"}
 : ${DRIVER_IMAGE_TAG:=${DRIVER_IMAGE_VERSION}}
 # The derived name of the driver image to build
@@ -39,7 +39,7 @@ DRIVER_IMAGE_VERSION=$(from_versions_mk "VERSION")
 # From https://github.com/kubernetes/kubernetes/tags
 # See also https://hub.docker.com/r/kindest/node/tags
 : ${KIND_K8S_REPO:="https://github.com/kubernetes/kubernetes.git"}
-: ${KIND_K8S_TAG:="v1.34.3"}
+: ${KIND_K8S_TAG:="v1.32.0"}
 
 # The name of the kind cluster to create
 : ${KIND_CLUSTER_NAME:="${DRIVER_NAME}-cluster"}

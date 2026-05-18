@@ -51,7 +51,6 @@ type CUDA struct {
 	annotationsPrefixes            []string
 	acceptDeviceListAsVolumeMounts bool
 	acceptEnvvarUnprivileged       bool
-	ignoreImexChannelRequests      bool
 	preferredVisibleDeviceEnvVars  []string
 }
 
@@ -413,42 +412,8 @@ func (m cdiDeviceMountRequest) qualifiedName() (string, error) {
 	return fmt.Sprintf("%s/%s=%s", parts[0], parts[1], parts[2]), nil
 }
 
-func (i CUDA) ImexChannelRequests() []string {
-	if i.ignoreImexChannelRequests {
-		return nil
-	}
-
-	// If enabled, try and get the device list from volume mounts first
-	if i.acceptDeviceListAsVolumeMounts {
-		volumeMountDeviceRequests := i.imexChannelsFromMounts()
-		if len(volumeMountDeviceRequests) > 0 {
-			return volumeMountDeviceRequests
-		}
-	}
-
-	// Get the Fallback to reading from the environment variable if privileges are correct
-	envVarDeviceRequests := i.imexChannelsFromEnvVar()
-	if len(envVarDeviceRequests) == 0 {
-		return nil
-	}
-
-	// If the container is privileged, or environment variable requests are
-	// allowed for unprivileged containers, these devices are returned.
-	if i.isPrivileged || i.acceptEnvvarUnprivileged {
-		return envVarDeviceRequests
-	}
-
-	// We log a warning if we are ignoring the environment variable requests.
-	envVars := []string{EnvVarNvidiaImexChannels}
-	if len(envVars) > 0 {
-		i.logger.Warningf("Ignoring request by environment variable(s) in unprivileged container: %v", envVars)
-	}
-
-	return nil
-}
-
-// imexChannelsFromEnvVar returns the list of IMEX channels requested for the image.
-func (i CUDA) imexChannelsFromEnvVar() []string {
+// ImexChannelsFromEnvVar returns the list of IMEX channels requested for the image.
+func (i CUDA) ImexChannelsFromEnvVar() []string {
 	imexChannels := i.devicesFromEnvvars(EnvVarNvidiaImexChannels)
 	if len(imexChannels) == 1 && imexChannels[0] == "all" {
 		return nil
@@ -456,8 +421,8 @@ func (i CUDA) imexChannelsFromEnvVar() []string {
 	return imexChannels
 }
 
-// imexChannelsFromMounts returns the list of IMEX channels requested for the image.
-func (i CUDA) imexChannelsFromMounts() []string {
+// ImexChannelsFromMounts returns the list of IMEX channels requested for the image.
+func (i CUDA) ImexChannelsFromMounts() []string {
 	var channels []string
 	for _, mountDevice := range i.requestsFromMounts() {
 		if !strings.HasPrefix(mountDevice, volumeMountDevicePrefixImex) {

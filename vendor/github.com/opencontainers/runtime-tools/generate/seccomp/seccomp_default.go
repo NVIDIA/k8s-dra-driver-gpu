@@ -3,6 +3,7 @@ package seccomp
 import (
 	"runtime"
 
+	"github.com/opencontainers/runtime-spec/specs-go"
 	rspec "github.com/opencontainers/runtime-spec/specs-go"
 )
 
@@ -30,7 +31,8 @@ func arches() []rspec.Arch {
 }
 
 // DefaultProfile defines the whitelist for the default seccomp profile.
-func DefaultProfile(rs *rspec.Spec) *rspec.LinuxSeccomp {
+func DefaultProfile(rs *specs.Spec) *rspec.LinuxSeccomp {
+
 	syscalls := []rspec.LinuxSyscall{
 		{
 			Names: []string{
@@ -533,6 +535,7 @@ func DefaultProfile(rs *rspec.Spec) *rspec.LinuxSeccomp {
 				},
 			},
 		}...)
+
 	}
 
 	arch := runtime.GOARCH

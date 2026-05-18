@@ -1,18 +1,18 @@
 /*
-Copyright The Kubernetes Authors
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-    https://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-*/
+ * Copyright (c) 2025 NVIDIA CORPORATION.  All rights reserved.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 
 package main
 
@@ -34,7 +34,7 @@ import (
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
 
-	nvapi "sigs.k8s.io/dra-driver-nvidia-gpu/api/nvidia.com/resource/v1beta1"
+	nvapi "github.com/NVIDIA/k8s-dra-driver-gpu/api/nvidia.com/resource/v1beta1"
 )
 
 const (
@@ -45,6 +45,7 @@ const (
 type ResourceClaimTemplateTemplateData struct {
 	Namespace               string
 	Name                    string
+	GenerateName            string
 	Finalizer               string
 	ComputeDomainLabelKey   string
 	ComputeDomainLabelValue types.UID
@@ -149,9 +150,7 @@ func (m *BaseResourceClaimTemplateManager) Start(ctx context.Context) (rerr erro
 }
 
 func (m *BaseResourceClaimTemplateManager) Stop() error {
-	if m.cancelContext != nil {
-		m.cancelContext()
-	}
+	m.cancelContext()
 	m.waitGroup.Wait()
 	return nil
 }
@@ -301,7 +300,7 @@ func NewDaemonSetResourceClaimTemplateManager(config *ManagerConfig, getComputeD
 	return m
 }
 
-func (m *DaemonSetResourceClaimTemplateManager) Create(ctx context.Context, cd *nvapi.ComputeDomain) (*resourceapi.ResourceClaimTemplate, error) {
+func (m *DaemonSetResourceClaimTemplateManager) Create(ctx context.Context, namespace string, cd *nvapi.ComputeDomain) (*resourceapi.ResourceClaimTemplate, error) {
 	rcts, err := getByComputeDomainUID[*resourceapi.ResourceClaimTemplate](ctx, m.mutationCache, string(cd.UID))
 	if err != nil {
 		return nil, fmt.Errorf("error retrieving ResourceClaimTemplate: %w", err)
@@ -317,8 +316,8 @@ func (m *DaemonSetResourceClaimTemplateManager) Create(ctx context.Context, cd *
 	daemonConfig.DomainID = string(cd.UID)
 
 	templateData := ResourceClaimTemplateTemplateData{
-		Namespace:               m.config.driverNamespace,
-		Name:                    fmt.Sprintf("computedomain-daemon-%s", cd.UID),
+		Namespace:               namespace,
+		GenerateName:            fmt.Sprintf("%s-daemon-claim-template-", cd.Name),
 		Finalizer:               computeDomainFinalizer,
 		ComputeDomainLabelKey:   computeDomainLabelKey,
 		ComputeDomainLabelValue: cd.UID,
@@ -375,7 +374,6 @@ func (m *WorkloadResourceClaimTemplateManager) Create(ctx context.Context, names
 
 	channelConfig := nvapi.DefaultComputeDomainChannelConfig()
 	channelConfig.DomainID = string(cd.UID)
-	channelConfig.AllocationMode = cd.Spec.Channel.AllocationMode
 
 	templateData := ResourceClaimTemplateTemplateData{
 		Namespace:               namespace,

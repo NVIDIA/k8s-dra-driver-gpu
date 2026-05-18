@@ -1,0 +1,39 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+apiVersion: v2
+name: nvidia-dra-driver-gpu
+description: Official Helm chart for the NVIDIA DRA Driver for GPUs
+type: application
+
+# Note(JP): strict semver: no v prefix allowed
+# Downstream Giant Swarm build: pre-release suffix encodes the Flatcar patch
+# series. Revert to "25.3.2" when this chart's fix lands upstream.
+version: "25.3.2-flatcar.1"
+
+# Note(JP): templating logic consumes `appVersion` for building the default
+# `tag` value used in a k8s image specification. That logic expects the version
+# number below to not have a "v" prefix (a "v" is added by said logic to yield a
+# valid image reference).
+# Downstream Giant Swarm build: tag matches the patched image at gsoci. Revert
+# to "25.3.2" when upstream ships an image with the Flatcar prestart fix.
+appVersion: "25.3.2-flatcar.1-ubi9"
+
+# The kubeVersion puts constraints on the Kubernetes versions where this helm
+# chart can be installed. Note a '-0' at the end of a version string in the
+# kubeVersion generally indicates that all pre-release versions should also be
+# included. However, it is also required to allow a given chart to be installed
+# on GKE as they add a '-gke-*' suffix to all of their Kubernetes versions.
+kubeVersion: ">=1.32.0-0"

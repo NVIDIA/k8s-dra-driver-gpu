@@ -18,7 +18,6 @@ import (
 	"errors"
 	"fmt"
 	"runtime"
-	"strings"
 	"unsafe"
 )
 
@@ -40,29 +39,14 @@ type DynamicLibrary struct {
 	Name   string
 	Flags  int
 	handle unsafe.Pointer
-	path   string
 }
 
 func New(name string, flags int) *DynamicLibrary {
-	return (&DynamicLibrary{
-		Name:  name,
-		Flags: flags,
-	}).init()
-}
-
-func (dl *DynamicLibrary) reset() {
-	_ = dl.init()
-}
-
-func (dl *DynamicLibrary) init() *DynamicLibrary {
-	dl.handle = nil
-	dl.path = func() string {
-		if strings.Contains(dl.Name, "/") {
-			return dl.Name
-		}
-		return ""
-	}()
-	return dl
+	return &DynamicLibrary{
+		Name:   name,
+		Flags:  flags,
+		handle: nil,
+	}
 }
 
 func withOSLock(action func() error) error {
@@ -105,7 +89,7 @@ func (dl *DynamicLibrary) Close() error {
 		if C.dlclose(dl.handle) != 0 {
 			return dlError()
 		}
-		dl.reset()
+		dl.handle = nil
 		return nil
 	}); err != nil {
 		return err

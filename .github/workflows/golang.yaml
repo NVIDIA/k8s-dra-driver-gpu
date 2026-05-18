@@ -1,10 +1,10 @@
-# Copyright The Kubernetes Authors
+# Copyright 2024 NVIDIA CORPORATION
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
 #
-#    https://www.apache.org/licenses/LICENSE-2.0
+#     http://www.apache.org/licenses/LICENSE-2.0
 #
 # Unless required by applicable law or agreed to in writing, software
 # distributed under the License is distributed on an "AS IS" BASIS,
@@ -25,39 +25,39 @@ jobs:
   check:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+    - uses: actions/checkout@v4
       name: Checkout code
 
     - name: Install Go
-      uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6
+      uses: actions/setup-go@v5
       with:
-        go-version: ${{ inputs.golang_version }}
+        go-version: ${{ inputs.golang_versions }}
 
     - name: Lint
-      uses: golangci/golangci-lint-action@1e7e51e771db61008b38414a730f564565cf7c20 # v9
+      uses: golangci/golangci-lint-action@v8
       with:
         version: latest
         args: -v --timeout 5m
         skip-cache: true
-
-    - name: Generated code
-      run: |
-        make -C deployments/devel install-tools
-        make check-generate
 
     - name: Golang modules
       run: |
         make check-modules
         make -C deployments/devel check-modules
 
+    - name: Generated code
+      run: |
+        make -C deployments/devel install-tools
+        make check-generate
+
   test:
     name: Unit test
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        uses: actions/checkout@v4
       - name: Install Go
-        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6
+        uses: actions/setup-go@v5
         with:
           go-version: ${{ inputs.golang_version }}
       - run: make test
@@ -67,9 +67,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        uses: actions/checkout@v4
       - name: Install Go
-        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6
+        uses: actions/setup-go@v5
         with:
           go-version: ${{ inputs.golang_version }}
       - run: make build

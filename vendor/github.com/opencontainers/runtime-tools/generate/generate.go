@@ -6,13 +6,12 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"slices"
 	"strings"
 
-	"github.com/moby/sys/capability"
 	rspec "github.com/opencontainers/runtime-spec/specs-go"
 	"github.com/opencontainers/runtime-tools/generate/seccomp"
 	capsCheck "github.com/opencontainers/runtime-tools/validate/capabilities"
+	"github.com/syndtr/gocapability/capability"
 )
 
 var (
@@ -24,12 +23,6 @@ var (
 		s[i] = s[len(s)-1]
 		return s[:len(s)-1]
 	}
-)
-
-const (
-	// UnlimitedPidsLimit can be passed to SetLinuxResourcesPidsLimit to
-	// request unlimited PIDs.
-	UnlimitedPidsLimit int64 = -1
 )
 
 // Generator represents a generator for a container config.
@@ -95,8 +88,7 @@ func New(os string) (generator Generator, err error) {
 		}
 	}
 
-	switch os {
-	case "linux":
+	if os == "linux" {
 		config.Process.Capabilities = &rspec.LinuxCapabilities{
 			Bounding: []string{
 				"CAP_CHOWN",
@@ -190,7 +182,7 @@ func New(os string) (generator Generator, err error) {
 				Destination: "/dev",
 				Type:        "tmpfs",
 				Source:      "tmpfs",
-				Options:     []string{"nosuid", "strictatime", "mode=755", "size=65536k"},
+				Options:     []string{"nosuid", "noexec", "strictatime", "mode=755", "size=65536k"},
 			},
 			{
 				Destination: "/dev/pts",
@@ -245,7 +237,7 @@ func New(os string) (generator Generator, err error) {
 			},
 			Seccomp: seccomp.DefaultProfile(&config),
 		}
-	case "freebsd":
+	} else if os == "freebsd" {
 		config.Mounts = []rspec.Mount{
 			{
 				Destination: "/dev",
@@ -331,7 +323,7 @@ func createEnvCacheMap(env []string) map[string]int {
 //
 // Deprecated: Replace with:
 //
-//	Use generator.Config = config
+//   Use generator.Config = config
 func (g *Generator) SetSpec(config *rspec.Spec) {
 	g.Config = config
 }
@@ -601,10 +593,12 @@ func (g *Generator) ClearProcessAdditionalGids() {
 }
 
 // AddProcessAdditionalGid adds an additional gid into g.Config.Process.AdditionalGids.
-func (g *Generator) AddProcessAdditionalGid(gid uint32) { //nolint:staticcheck // Ignore ST1003: method AddProcessAdditionalGid should be AddProcessAdditionalGID
+func (g *Generator) AddProcessAdditionalGid(gid uint32) {
 	g.initConfigProcess()
-	if slices.Contains(g.Config.Process.User.AdditionalGids, gid) {
-		return
+	for _, group := range g.Config.Process.User.AdditionalGids {
+		if group == gid {
+			return
+		}
 	}
 	g.Config.Process.User.AdditionalGids = append(g.Config.Process.User.AdditionalGids, gid)
 }
@@ -874,7 +868,7 @@ func (g *Generator) DropLinuxResourcesHugepageLimit(pageSize string) {
 	}
 }
 
-// SetLinuxResourcesUnified sets the g.Config.Linux.Resources.Unified.
+// AddLinuxResourcesUnified sets the g.Config.Linux.Resources.Unified
 func (g *Generator) SetLinuxResourcesUnified(unified map[string]string) {
 	g.initConfigLinuxResourcesUnified()
 	for k, v := range unified {
@@ -917,7 +911,7 @@ func (g *Generator) SetLinuxResourcesMemorySwap(swap int64) {
 // SetLinuxResourcesMemoryKernel sets g.Config.Linux.Resources.Memory.Kernel.
 func (g *Generator) SetLinuxResourcesMemoryKernel(kernel int64) {
 	g.initConfigLinuxResourcesMemory()
-	g.Config.Linux.Resources.Memory.Kernel = &kernel //nolint:staticcheck // Ignore SA1019: g.Config.Linux.Resources.Memory.Kernel is deprecated
+	g.Config.Linux.Resources.Memory.Kernel = &kernel
 }
 
 // SetLinuxResourcesMemoryKernelTCP sets g.Config.Linux.Resources.Memory.KernelTCP.
@@ -976,7 +970,7 @@ func (g *Generator) DropLinuxResourcesNetworkPriorities(name string) {
 // SetLinuxResourcesPidsLimit sets g.Config.Linux.Resources.Pids.Limit.
 func (g *Generator) SetLinuxResourcesPidsLimit(limit int64) {
 	g.initConfigLinuxResourcesPids()
-	g.Config.Linux.Resources.Pids.Limit = &limit
+	g.Config.Linux.Resources.Pids.Limit = limit
 }
 
 // ClearLinuxSysctl clears g.Config.Linux.Sysctl.
@@ -1066,13 +1060,13 @@ func (g *Generator) ClearPreStartHooks() {
 	if g.Config == nil || g.Config.Hooks == nil {
 		return
 	}
-	g.Config.Hooks.Prestart = []rspec.Hook{} //nolint:staticcheck // Ignore SA1019: g.Config.Hooks.Prestart is deprecated
+	g.Config.Hooks.Prestart = []rspec.Hook{}
 }
 
 // AddPreStartHook add a prestart hook into g.Config.Hooks.Prestart.
 func (g *Generator) AddPreStartHook(preStartHook rspec.Hook) {
 	g.initConfigHooks()
-	g.Config.Hooks.Prestart = append(g.Config.Hooks.Prestart, preStartHook) //nolint:staticcheck // Ignore SA1019: g.Config.Hooks.Prestart is deprecated
+	g.Config.Hooks.Prestart = append(g.Config.Hooks.Prestart, preStartHook)
 }
 
 // ClearPostStopHooks clear g.Config.Hooks.Poststop.
@@ -1141,11 +1135,10 @@ func (g *Generator) ClearMounts() {
 func (g *Generator) SetupPrivileged(privileged bool) {
 	if privileged { // Add all capabilities in privileged mode.
 		var finalCapList []string
-		capList := capability.ListKnown()
-		if g.HostSpecific {
-			capList, _ = capability.ListSupported()
-		}
-		for _, cap := range capList {
+		for _, cap := range capability.List() {
+			if g.HostSpecific && cap > capsCheck.LastCap() {
+				continue
+			}
 			finalCapList = append(finalCapList, fmt.Sprintf("CAP_%s", strings.ToUpper(cap.String())))
 		}
 		g.initConfigLinux()

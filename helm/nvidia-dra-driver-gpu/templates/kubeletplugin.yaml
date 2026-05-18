@@ -1,0 +1,295 @@
+# Copyright 2023 NVIDIA CORPORATION
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+{{- if or .Values.resources.computeDomains.enabled .Values.resources.gpus.enabled }}
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: {{ include "nvidia-dra-driver-gpu.name" . }}-kubelet-plugin
+  namespace: {{ include "nvidia-dra-driver-gpu.namespace" . }}
+  labels:
+    {{- include "nvidia-dra-driver-gpu.labels" . | nindent 4 }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "nvidia-dra-driver-gpu.selectorLabels" (dict "context" . "componentName" "kubelet-plugin") | nindent 6 }}
+  {{- with .Values.kubeletPlugin.updateStrategy }}
+  updateStrategy:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  template:
+    metadata:
+      {{- with .Values.kubeletPlugin.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      labels:
+        {{- include "nvidia-dra-driver-gpu.templateLabels" . | nindent 8 }}
+        {{- include "nvidia-dra-driver-gpu.selectorLabels" (dict "context" . "componentName" "kubelet-plugin") | nindent 8 }}
+    spec:
+      {{- if .Values.kubeletPlugin.priorityClassName }}
+      priorityClassName: {{ .Values.kubeletPlugin.priorityClassName }}
+      {{- end }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "nvidia-dra-driver-gpu.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.kubeletPlugin.podSecurityContext | nindent 8 }}
+      initContainers:
+      - name: init-container
+        image: {{ include "nvidia-dra-driver-gpu.fullimage" . }}
+        securityContext:
+          privileged: true
+        command: [bash, /usr/bin/kubelet-plugin-prestart.sh]
+        env:
+        - name: NVIDIA_DRIVER_ROOT
+          value: "{{ .Values.nvidiaDriverRoot }}"
+        # Use runc: explicit "void"; otherwise we inherit "all".
+        - name: NVIDIA_VISIBLE_DEVICES
+          value: void
+        {{- with .Values.extraDriverBinaryPaths }}
+        - name: EXTRA_DRIVER_BINARY_PATHS
+          value: {{ join ":" . | quote }}
+        {{- end }}
+        {{- with .Values.extraDriverLibraryPaths }}
+        - name: EXTRA_DRIVER_LIBRARY_PATHS
+          value: {{ join ":" . | quote }}
+        {{- end }}
+        volumeMounts:
+        - name: driver-root-parent
+          mountPath: /driver-root-parent
+          {{- if eq "/" .Values.nvidiaDriverRoot }}
+          readOnly: true
+          {{- else }}
+          # In case of the operator-provided driver, another container mounts
+          # the driver onto the host using `mountPropagation: Bidirectional`
+          # (out-of-band of the lifecycle of _this_ pod here). For us to see
+          # that mount, `mountPropagation: HostToContainer` is required (docs:
+          # "if any Pod with Bidirectional mount propagation to the same volume
+          # mounts anything there, the container with HostToContainer mount
+          # propagation will see it.").
+          mountPropagation: HostToContainer
+          {{- end }}
+        {{- range .Values.extraHostPathMounts }}
+        - name: {{ .name }}
+          mountPath: {{ .mountPath }}
+          {{- if .readOnly }}
+          readOnly: true
+          {{- end }}
+        {{- end }}
+      containers:
+      {{- if .Values.resources.computeDomains.enabled }}
+      - name: compute-domains
+        securityContext:
+          {{- toYaml .Values.kubeletPlugin.containers.computeDomains.securityContext | nindent 10 }}
+        image: {{ include "nvidia-dra-driver-gpu.fullimage" . }}
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        command: ["bash", "-c"]
+        args:
+        - |-
+          # Conditionally mask the params file to prevent this container from
+          # recreating any missing GPU device nodes. This is necessary, for
+          # example, when running under nvkind to limit the set GPUs governed
+          # by the plugin even though it has cgroup access to all of them.
+          if [ "${MASK_NVIDIA_DRIVER_PARAMS}" = "true" ]; then
+            cp /proc/driver/nvidia/params root/gpu-params
+            sed -i 's/^ModifyDeviceFiles: 1$/ModifyDeviceFiles: 0/' root/gpu-params
+            mount --bind root/gpu-params /proc/driver/nvidia/params
+          fi
+          compute-domain-kubelet-plugin -v 6
+        resources:
+          {{- toYaml .Values.kubeletPlugin.containers.computeDomains.resources | nindent 10 }}
+        env:
+        - name: MASK_NVIDIA_DRIVER_PARAMS
+          value: "{{ .Values.maskNvidiaDriverParams }}"
+        - name: NVIDIA_DRIVER_ROOT
+          value: "{{ .Values.nvidiaDriverRoot }}"
+        - name: NVIDIA_VISIBLE_DEVICES
+          value: void
+        - name: CDI_ROOT
+          value: /var/run/cdi
+        - name: NVIDIA_MIG_CONFIG_DEVICES
+          value: all
+        - name: NODE_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+        - name: NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        {{- with .Values.extraDriverBinaryPaths }}
+        - name: EXTRA_DRIVER_BINARY_PATHS
+          value: {{ join ":" . | quote }}
+        {{- end }}
+        {{- with .Values.extraDriverLibraryPaths }}
+        - name: EXTRA_DRIVER_LIBRARY_PATHS
+          value: {{ join ":" . | quote }}
+        {{- end }}
+        {{- if .Values.nvidiaCDIHookPath }}
+        - name: NVIDIA_CDI_HOOK_PATH
+          value: "{{ .Values.nvidiaCDIHookPath }}"
+        {{- end }}
+        volumeMounts:
+        - name: plugins-registry
+          mountPath: /var/lib/kubelet/plugins_registry
+        - name: plugins
+          mountPath: /var/lib/kubelet/plugins
+          mountPropagation: Bidirectional
+        - name: cdi
+          mountPath: /var/run/cdi
+        - name: driver-root
+          mountPath: /driver-root
+          readOnly: true
+          mountPropagation: HostToContainer
+        # For host-managed drivers located not at /.
+        # TODO: make this more surgical, see discussion in
+        # https://github.com/NVIDIA/k8s-dra-driver-gpu/pull/307.
+        - name: host-dev
+          mountPath: /host/dev
+        {{- range .Values.extraHostPathMounts }}
+        - name: {{ .name }}
+          mountPath: {{ .mountPath }}
+          {{- if .readOnly }}
+          readOnly: true
+          {{- end }}
+        {{- end }}
+      {{- end }}
+      {{- if .Values.resources.gpus.enabled }}
+      - name: gpus
+        securityContext:
+          {{- toYaml .Values.kubeletPlugin.containers.gpus.securityContext | nindent 10 }}
+        image: {{ include "nvidia-dra-driver-gpu.fullimage" . }}
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        command: ["bash", "-c"]
+        args:
+        - |-
+          # Conditionally mask the params file to prevent this container from
+          # recreating any missing GPU device nodes. This is necessary, for
+          # example, when running under nvkind to limit the set GPUs governed
+          # by the plugin even though it has cgroup access to all of them.
+          if [ "${MASK_NVIDIA_DRIVER_PARAMS}" = "true" ]; then
+            cp /proc/driver/nvidia/params root/gpu-params
+            sed -i 's/^ModifyDeviceFiles: 1$/ModifyDeviceFiles: 0/' root/gpu-params
+            mount --bind root/gpu-params /proc/driver/nvidia/params
+          fi
+          gpu-kubelet-plugin -v 6
+        resources:
+          {{- toYaml .Values.kubeletPlugin.containers.gpus.resources | nindent 10 }}
+        env:
+        - name: MASK_NVIDIA_DRIVER_PARAMS
+          value: "{{ .Values.maskNvidiaDriverParams }}"
+        - name: NVIDIA_DRIVER_ROOT
+          value: "{{ .Values.nvidiaDriverRoot }}"
+        - name: NVIDIA_VISIBLE_DEVICES
+          value: void
+        - name: CDI_ROOT
+          value: /var/run/cdi
+        - name: NVIDIA_MIG_CONFIG_DEVICES
+          value: all
+        - name: NODE_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+        - name: NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        - name: IMAGE_NAME
+          value: {{ include "nvidia-dra-driver-gpu.fullimage" . }}
+        {{- with .Values.extraDriverBinaryPaths }}
+        - name: EXTRA_DRIVER_BINARY_PATHS
+          value: {{ join ":" . | quote }}
+        {{- end }}
+        {{- with .Values.extraDriverLibraryPaths }}
+        - name: EXTRA_DRIVER_LIBRARY_PATHS
+          value: {{ join ":" . | quote }}
+        {{- end }}
+        {{- if .Values.nvidiaCDIHookPath }}
+        - name: NVIDIA_CDI_HOOK_PATH
+          value: "{{ .Values.nvidiaCDIHookPath }}"
+        {{- end }}
+        volumeMounts:
+        - name: plugins-registry
+          mountPath: /var/lib/kubelet/plugins_registry
+        - name: plugins
+          mountPath: /var/lib/kubelet/plugins
+          mountPropagation: Bidirectional
+        - name: cdi
+          mountPath: /var/run/cdi
+        - name: driver-root
+          mountPath: /driver-root
+          readOnly: true
+          mountPropagation: HostToContainer
+        {{- range .Values.extraHostPathMounts }}
+        - name: {{ .name }}
+          mountPath: {{ .mountPath }}
+          {{- if .readOnly }}
+          readOnly: true
+          {{- end }}
+        {{- end }}
+      {{- end }}
+      volumes:
+      - name: plugins-registry
+        hostPath:
+          path: /var/lib/kubelet/plugins_registry
+      - name: plugins
+        hostPath:
+          path: /var/lib/kubelet/plugins
+      - name: cdi
+        hostPath:
+          path: /var/run/cdi
+      - name: driver-root-parent
+        hostPath:
+          # If nvidiaDriverRoot == "/" then its parent is itself. Otherwise, get
+          # its parent by removing any trailing slashes as well as the last path
+          # element with sprig template function `dir`. Examples: /a/b/ -> /a,
+          # /a/b/c -> /a/b.
+          {{- if eq "/" .Values.nvidiaDriverRoot }}
+          path: "/"
+          {{- else }}
+          path: {{ dir (trimSuffix "/" .Values.nvidiaDriverRoot) }}
+          {{- end }}
+          type: DirectoryOrCreate
+      - name: driver-root
+        hostPath:
+          path: {{ .Values.nvidiaDriverRoot }}
+          type: DirectoryOrCreate
+      - name: host-dev
+        hostPath:
+          path: /dev
+      {{- range .Values.extraHostPathMounts }}
+      - name: {{ .name }}
+        hostPath:
+          path: {{ .hostPath }}
+          {{- if .hostPathType }}
+          type: {{ .hostPathType }}
+          {{- end }}
+      {{- end }}
+      {{- with .Values.kubeletPlugin.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.kubeletPlugin.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.kubeletPlugin.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}

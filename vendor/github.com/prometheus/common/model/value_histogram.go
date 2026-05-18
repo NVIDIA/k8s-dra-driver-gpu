@@ -86,22 +86,22 @@ func (s *HistogramBucket) Equal(o *HistogramBucket) bool {
 	return s == o || (s.Boundaries == o.Boundaries && s.Lower == o.Lower && s.Upper == o.Upper && s.Count == o.Count)
 }
 
-func (s HistogramBucket) String() string {
+func (b HistogramBucket) String() string {
 	var sb strings.Builder
-	lowerInclusive := s.Boundaries == 1 || s.Boundaries == 3
-	upperInclusive := s.Boundaries == 0 || s.Boundaries == 3
+	lowerInclusive := b.Boundaries == 1 || b.Boundaries == 3
+	upperInclusive := b.Boundaries == 0 || b.Boundaries == 3
 	if lowerInclusive {
 		sb.WriteRune('[')
 	} else {
 		sb.WriteRune('(')
 	}
-	fmt.Fprintf(&sb, "%g,%g", s.Lower, s.Upper)
+	fmt.Fprintf(&sb, "%g,%g", b.Lower, b.Upper)
 	if upperInclusive {
 		sb.WriteRune(']')
 	} else {
 		sb.WriteRune(')')
 	}
-	fmt.Fprintf(&sb, ":%v", s.Count)
+	fmt.Fprintf(&sb, ":%v", b.Count)
 	return sb.String()
 }
 

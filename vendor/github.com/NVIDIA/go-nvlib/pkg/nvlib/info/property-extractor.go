@@ -59,7 +59,6 @@ func (i *propertyExtractor) HasNvml() (bool, string) {
 }
 
 // IsTegraSystem returns true if the system is detected as a Tegra-based system.
-//
 // Deprecated: Use HasTegraFiles instead.
 func (i *propertyExtractor) IsTegraSystem() (bool, string) {
 	return i.HasTegraFiles()
@@ -90,20 +89,25 @@ func (i *propertyExtractor) HasTegraFiles() (bool, string) {
 	return false, fmt.Sprintf("%v has no 'tegra' prefix", tegraFamilyFile)
 }
 
-// HasAnIntegratedGPU checks whether any of the GPUs reported by NVML is an
-// integrated GPU.
+// UsesOnlyNVGPUModule checks whether the only the nvgpu module is used.
+//
+// Deprecated: UsesOnlyNVGPUModule is deprecated, use HasOnlyIntegratedGPUs instead.
+func (i *propertyExtractor) UsesOnlyNVGPUModule() (uses bool, reason string) {
+	return i.HasOnlyIntegratedGPUs()
+}
+
+// HasOnlyIntegratedGPUs checks whether all GPUs are iGPUs that use NVML.
 //
 // As of Orin-based systems iGPUs also support limited NVML queries.
-// In the absence of a robust API, we rely on heuristics based on the device
-// name to make this decision.
+// In the absence of a robust API, we rely on heuristics to make this decision.
 //
-// Devices with the following names are considered integrated GPUs:
+// The following device names are checked:
 //
 //	GPU 0: Orin (nvgpu) (UUID: 54d0709b-558d-5a59-9c65-0c5fc14a21a4)
 //	GPU 0: NVIDIA Thor  (UUID: 54d0709b-558d-5a59-9c65-0c5fc14a21a4)
 //
-// (Where this shows the nvidia-smi -L output on these systems).
-func (i *propertyExtractor) HasAnIntegratedGPU() (uses bool, reason string) {
+// This function returns true if ALL devices are detected as iGPUs.
+func (i *propertyExtractor) HasOnlyIntegratedGPUs() (uses bool, reason string) {
 	// We ensure that this function never panics
 	defer func() {
 		if err := recover(); err != nil {
@@ -139,23 +143,14 @@ func (i *propertyExtractor) HasAnIntegratedGPU() (uses bool, reason string) {
 	}
 
 	for _, name := range names {
-		if IsIntegratedGPUName(name) {
-			return true, fmt.Sprintf("device %q is an integrated GPU", name)
+		if !isIntegratedGPUName(name) {
+			return false, fmt.Sprintf("device %q does not use nvgpu module", name)
 		}
 	}
-	return false, "no integrated GPUs found"
+	return true, "all devices use nvgpu module"
 }
 
-// IsIntegratedGPUName checks whether the specified device name is associated
-// with a known integrated GPU.
-//
-// Devices with the following names are considered integrated GPUs:
-//
-//	GPU 0: Orin (nvgpu) (UUID: 54d0709b-558d-5a59-9c65-0c5fc14a21a4)
-//	GPU 0: NVIDIA Thor  (UUID: 54d0709b-558d-5a59-9c65-0c5fc14a21a4)
-//
-// (Where this shows the nvidia-smi -L output on these systems).
-func IsIntegratedGPUName(name string) bool {
+func isIntegratedGPUName(name string) bool {
 	if strings.Contains(name, "(nvgpu)") {
 		return true
 	}

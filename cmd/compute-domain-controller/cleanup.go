@@ -1,18 +1,19 @@
 /*
-Copyright The Kubernetes Authors
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-    https://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-*/
+ * SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 
 package main
 
@@ -73,9 +74,7 @@ func (m *CleanupManager[T]) Start(ctx context.Context) error {
 }
 
 func (m *CleanupManager[T]) Stop() error {
-	if m.cancelContext != nil {
-		m.cancelContext()
-	}
+	m.cancelContext()
 	m.waitGroup.Wait()
 	return nil
 }
@@ -122,7 +121,7 @@ func (m *CleanupManager[T]) cleanup(ctx context.Context) {
 			continue
 		}
 
-		klog.V(1).Infof("Cleanup: stale %T found for ComputeDomain '%s', running callback", *new(T), uid)
+		klog.Infof("Cleanup: stale %T found for ComputeDomain '%s', running callback", *new(T), uid)
 		if err := m.callback(ctx, uid); err != nil {
 			klog.Errorf("error running CleanupManager callback: %v", err)
 			continue
@@ -147,14 +146,13 @@ func (m *CleanupManager[T]) periodicCleanup(ctx context.Context) {
 	ticker := time.NewTicker(cleanupInterval)
 	defer ticker.Stop()
 
-	m.cleanup(ctx)
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
 			if m.EnqueueCleanup() {
-				klog.V(6).Infof("Periodic cleanup requested for %T objects", *new(T))
+				klog.V(6).Infof("Periodoc cleanup requested for %T objects", *new(T))
 			}
 		}
 	}

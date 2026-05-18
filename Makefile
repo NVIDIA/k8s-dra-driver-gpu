@@ -1,10 +1,10 @@
-# Copyright The Kubernetes Authors
+# Copyright (c) 2020-2022, NVIDIA CORPORATION.  All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
 #
-#    https://www.apache.org/licenses/LICENSE-2.0
+#     http://www.apache.org/licenses/LICENSE-2.0
 #
 # Unless required by applicable law or agreed to in writing, software
 # distributed under the License is distributed on an "AS IS" BASIS,
@@ -31,8 +31,7 @@ CMDS := $(patsubst ./cmd/%/,%,$(sort $(dir $(wildcard ./cmd/*/))))
 CMD_TARGETS := $(patsubst %,cmd-%, $(CMDS))
 
 CHECK_TARGETS := golangci-lint check-generate
-
-MAKE_TARGETS := binaries build build-image check fmt lint-internal test examples cmds coverage generate vendor check-modules helm-lint helm-package $(CHECK_TARGETS)
+MAKE_TARGETS := binaries build build-image check fmt lint-internal test examples cmds coverage generate vendor check-modules $(CHECK_TARGETS)
 
 TARGETS := $(MAKE_TARGETS) $(CMD_TARGETS)
 
@@ -84,14 +83,6 @@ goimports:
 golangci-lint:
 	golangci-lint run ./...
 
-lint-internal: golangci-lint
-
-helm-lint:
-	helm lint deployments/helm/dra-driver-nvidia-gpu
-
-helm-package:
-	helm package deployments/helm/dra-driver-nvidia-gpu
-
 vendor:
 	go mod tidy
 	go mod vendor
@@ -102,9 +93,7 @@ check-modules: vendor
 
 COVERAGE_FILE := coverage.out
 test: build cmds
-	go test -race -cover -v -coverprofile=$(COVERAGE_FILE) \
-		-ldflags "-X $(CLI_VERSION_PACKAGE).version=$(CLI_VERSION)" \
-		$(MODULE)/...
+	go test -race -cover -v -coverprofile=$(COVERAGE_FILE) $(MODULE)/...
 
 coverage: test
 	cat $(COVERAGE_FILE) | grep -v "_mock.go" > $(COVERAGE_FILE).no-mocks
@@ -118,13 +107,12 @@ generate-crds: generate-deepcopy .remove-crds
 			paths=$(CURDIR)/$${dir} \
 			output:crd:dir=$(CURDIR)/deployments/helm/tmp_crds; \
 	done
-	mkdir -p $(CURDIR)/deployments/helm/$(DRIVER_NAME)/crds
+	mkdir -p $(CURDIR)/deployments/helm/$(HELM_DRIVER_NAME)/crds
 	cp -R $(CURDIR)/deployments/helm/tmp_crds/* \
-		$(CURDIR)/deployments/helm/$(DRIVER_NAME)/crds
+		$(CURDIR)/deployments/helm/$(HELM_DRIVER_NAME)/crds
 	rm -rf $(CURDIR)/deployments/helm/tmp_crds
 
 
-# Regenerate everything and fail if the tree is dirty (used by `make check`).
 check-generate: generate
 	git diff --exit-code HEAD
 
@@ -140,7 +128,7 @@ generate-informers: .remove-informers generate-listers
 	informer-gen \
 		--go-header-file=$(CURDIR)/hack/boilerplate.go.txt \
 		--output-package "$(MODULE)/$(PKG_BASE)/informers" \
-        --input-dirs "$(shell for api in $(CLIENT_APIS); do printf '%s' "$(MODULE)/$(API_BASE)/$$api,"; done | sed 's/,$$//')" \
+        --input-dirs "$(shell for api in $(CLIENT_APIS); do echo -n "$(MODULE)/$(API_BASE)/$$api,"; done | sed 's/,$$//')" \
 		--output-base "$(CURDIR)/pkg/tmp_informers" \
 		--versioned-clientset-package "$(MODULE)/$(PKG_BASE)/clientset/versioned" \
 		--listers-package "$(MODULE)/$(PKG_BASE)/listers"
@@ -153,7 +141,7 @@ generate-listers: .remove-listers generate-clientset
 	lister-gen \
 		--go-header-file=$(CURDIR)/hack/boilerplate.go.txt \
 		--output-package "$(MODULE)/$(PKG_BASE)/listers" \
-        --input-dirs "$(shell for api in $(CLIENT_APIS); do printf '%s' "$(MODULE)/$(API_BASE)/$$api,"; done | sed 's/,$$//')" \
+        --input-dirs "$(shell for api in $(CLIENT_APIS); do echo -n "$(MODULE)/$(API_BASE)/$$api,"; done | sed 's/,$$//')" \
 		--output-base "$(CURDIR)/pkg/tmp_listers"
 	mkdir -p $(CURDIR)/$(PKG_BASE)
 	mv $(CURDIR)/pkg/tmp_listers/$(MODULE)/$(PKG_BASE)/listers \
@@ -176,7 +164,7 @@ generate-clientset: .remove-clientset
 	rm -rf $(CURDIR)/pkg/tmp_clientset
 
 .remove-crds:
-	rm -rf $(CURDIR)/deployments/helm/$(DRIVER_NAME)/crds
+	rm -rf $(CURDIR)/deployments/helm/$(HELM_DRIVER_NAME)/crds
 
 .remove-deepcopy:
 	for dir in $(DEEPCOPY_SOURCES); do \
@@ -230,36 +218,3 @@ PHONY: .shell
 		-w /work \
 		--user $$(id -u):$$(id -g) \
 		$(BUILDIMAGE)
-
-.PHONY: bats bats-cd bats-gpu
-bats:
-	make -f tests/bats/Makefile tests
-
-# Run compute domain specific tests
-bats-cd:
-	make -f tests/bats/Makefile tests-cd
-
-# Run GPU plugin specific tests
-bats-gpu:
-	make -f tests/bats/Makefile tests-gpu
-
-.PHONY: image-build-and-copy-to-nodes
-image-build-and-copy-to-nodes:
-	make -f deployments/container/Makefile build
-	bash hack/copy-image-to-k8s-nodes.sh $(REGISTRY)/$(DRIVER_NAME):$(VERSION)
-
-# GCP + nvkind + GPU Operator e2e harness.
-# For local dev: set GCP_PROJECT=<your-project> and (optionally) GCE_ZONE,
-# which short-circuits Boskos. See hack/ci/gcp-nvkind/README.md.
-.PHONY: e2e-gcp-nvkind
-e2e-gcp-nvkind:
-	bash hack/ci/gcp-nvkind/e2e-test.sh
-
-# Run the Go/Ginkgo e2e suite against the current kubectl context. Assumes
-# the cluster already has GPU Operator (minimal mode) + the DRA driver
-# installed. The -tags=e2e build tag keeps this out of `make test`.
-.PHONY: test-e2e
-test-e2e:
-	ARTIFACTS=$${ARTIFACTS:-/tmp/test-e2e-artifacts}; mkdir -p $$ARTIFACTS; \
-	go test -mod=vendor -tags=e2e -v -timeout=30m ./test/e2e/... \
-	  -ginkgo.v -ginkgo.junit-report=$$ARTIFACTS/junit_01.xml

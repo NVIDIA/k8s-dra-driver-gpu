@@ -37,7 +37,6 @@ var (
 	DeviceGetAccountingStats                         = libnvml.DeviceGetAccountingStats
 	DeviceGetActiveVgpus                             = libnvml.DeviceGetActiveVgpus
 	DeviceGetAdaptiveClockInfoStatus                 = libnvml.DeviceGetAdaptiveClockInfoStatus
-	DeviceGetAddressingMode                          = libnvml.DeviceGetAddressingMode
 	DeviceGetApplicationsClock                       = libnvml.DeviceGetApplicationsClock
 	DeviceGetArchitecture                            = libnvml.DeviceGetArchitecture
 	DeviceGetAttributes                              = libnvml.DeviceGetAttributes
@@ -104,7 +103,6 @@ var (
 	DeviceGetGpuInstanceId                           = libnvml.DeviceGetGpuInstanceId
 	DeviceGetGpuInstancePossiblePlacements           = libnvml.DeviceGetGpuInstancePossiblePlacements
 	DeviceGetGpuInstanceProfileInfo                  = libnvml.DeviceGetGpuInstanceProfileInfo
-	DeviceGetGpuInstanceProfileInfoByIdV             = libnvml.DeviceGetGpuInstanceProfileInfoByIdV
 	DeviceGetGpuInstanceProfileInfoV                 = libnvml.DeviceGetGpuInstanceProfileInfoV
 	DeviceGetGpuInstanceRemainingCapacity            = libnvml.DeviceGetGpuInstanceRemainingCapacity
 	DeviceGetGpuInstances                            = libnvml.DeviceGetGpuInstances
@@ -154,7 +152,6 @@ var (
 	DeviceGetNumaNodeId                              = libnvml.DeviceGetNumaNodeId
 	DeviceGetNvLinkCapability                        = libnvml.DeviceGetNvLinkCapability
 	DeviceGetNvLinkErrorCounter                      = libnvml.DeviceGetNvLinkErrorCounter
-	DeviceGetNvLinkInfo                              = libnvml.DeviceGetNvLinkInfo
 	DeviceGetNvLinkRemoteDeviceType                  = libnvml.DeviceGetNvLinkRemoteDeviceType
 	DeviceGetNvLinkRemotePciInfo                     = libnvml.DeviceGetNvLinkRemotePciInfo
 	DeviceGetNvLinkState                             = libnvml.DeviceGetNvLinkState
@@ -171,7 +168,6 @@ var (
 	DeviceGetPcieReplayCounter                       = libnvml.DeviceGetPcieReplayCounter
 	DeviceGetPcieSpeed                               = libnvml.DeviceGetPcieSpeed
 	DeviceGetPcieThroughput                          = libnvml.DeviceGetPcieThroughput
-	DeviceGetPdi                                     = libnvml.DeviceGetPdi
 	DeviceGetPerformanceModes                        = libnvml.DeviceGetPerformanceModes
 	DeviceGetPerformanceState                        = libnvml.DeviceGetPerformanceState
 	DeviceGetPersistenceMode                         = libnvml.DeviceGetPersistenceMode
@@ -181,14 +177,12 @@ var (
 	DeviceGetPowerManagementLimit                    = libnvml.DeviceGetPowerManagementLimit
 	DeviceGetPowerManagementLimitConstraints         = libnvml.DeviceGetPowerManagementLimitConstraints
 	DeviceGetPowerManagementMode                     = libnvml.DeviceGetPowerManagementMode
-	DeviceGetPowerMizerMode_v1                       = libnvml.DeviceGetPowerMizerMode_v1
 	DeviceGetPowerSource                             = libnvml.DeviceGetPowerSource
 	DeviceGetPowerState                              = libnvml.DeviceGetPowerState
 	DeviceGetPowerUsage                              = libnvml.DeviceGetPowerUsage
 	DeviceGetProcessUtilization                      = libnvml.DeviceGetProcessUtilization
 	DeviceGetProcessesUtilizationInfo                = libnvml.DeviceGetProcessesUtilizationInfo
 	DeviceGetRemappedRows                            = libnvml.DeviceGetRemappedRows
-	DeviceGetRepairStatus                            = libnvml.DeviceGetRepairStatus
 	DeviceGetRetiredPages                            = libnvml.DeviceGetRetiredPages
 	DeviceGetRetiredPagesPendingStatus               = libnvml.DeviceGetRetiredPagesPendingStatus
 	DeviceGetRetiredPages_v2                         = libnvml.DeviceGetRetiredPages_v2
@@ -197,7 +191,6 @@ var (
 	DeviceGetSamples                                 = libnvml.DeviceGetSamples
 	DeviceGetSerial                                  = libnvml.DeviceGetSerial
 	DeviceGetSramEccErrorStatus                      = libnvml.DeviceGetSramEccErrorStatus
-	DeviceGetSramUniqueUncorrectedEccErrorCounts     = libnvml.DeviceGetSramUniqueUncorrectedEccErrorCounts
 	DeviceGetSupportedClocksEventReasons             = libnvml.DeviceGetSupportedClocksEventReasons
 	DeviceGetSupportedClocksThrottleReasons          = libnvml.DeviceGetSupportedClocksThrottleReasons
 	DeviceGetSupportedEventTypes                     = libnvml.DeviceGetSupportedEventTypes
@@ -238,7 +231,6 @@ var (
 	DevicePowerSmoothingSetState                     = libnvml.DevicePowerSmoothingSetState
 	DevicePowerSmoothingUpdatePresetProfileParam     = libnvml.DevicePowerSmoothingUpdatePresetProfileParam
 	DeviceQueryDrainState                            = libnvml.DeviceQueryDrainState
-	DeviceReadWritePRM_v1                            = libnvml.DeviceReadWritePRM_v1
 	DeviceRegisterEvents                             = libnvml.DeviceRegisterEvents
 	DeviceRemoveGpu                                  = libnvml.DeviceRemoveGpu
 	DeviceRemoveGpu_v2                               = libnvml.DeviceRemoveGpu_v2
@@ -417,7 +409,6 @@ type Interface interface {
 	DeviceGetAccountingStats(Device, uint32) (AccountingStats, Return)
 	DeviceGetActiveVgpus(Device) ([]VgpuInstance, Return)
 	DeviceGetAdaptiveClockInfoStatus(Device) (uint32, Return)
-	DeviceGetAddressingMode(Device) (DeviceAddressingMode, Return)
 	DeviceGetApplicationsClock(Device, ClockType) (uint32, Return)
 	DeviceGetArchitecture(Device) (DeviceArchitecture, Return)
 	DeviceGetAttributes(Device) (DeviceAttributes, Return)
@@ -437,7 +428,7 @@ type Interface interface {
 	DeviceGetComputeInstanceId(Device) (int, Return)
 	DeviceGetComputeMode(Device) (ComputeMode, Return)
 	DeviceGetComputeRunningProcesses(Device) ([]ProcessInfo, Return)
-	DeviceGetConfComputeGpuAttestationReport(Device, *ConfComputeGpuAttestationReport) Return
+	DeviceGetConfComputeGpuAttestationReport(Device) (ConfComputeGpuAttestationReport, Return)
 	DeviceGetConfComputeGpuCertificate(Device) (ConfComputeGpuCertificate, Return)
 	DeviceGetConfComputeMemSizeInfo(Device) (ConfComputeMemSizeInfo, Return)
 	DeviceGetConfComputeProtectedMemoryUsage(Device) (Memory, Return)
@@ -484,7 +475,6 @@ type Interface interface {
 	DeviceGetGpuInstanceId(Device) (int, Return)
 	DeviceGetGpuInstancePossiblePlacements(Device, *GpuInstanceProfileInfo) ([]GpuInstancePlacement, Return)
 	DeviceGetGpuInstanceProfileInfo(Device, int) (GpuInstanceProfileInfo, Return)
-	DeviceGetGpuInstanceProfileInfoByIdV(Device, int) GpuInstanceProfileInfoByIdHandler
 	DeviceGetGpuInstanceProfileInfoV(Device, int) GpuInstanceProfileInfoHandler
 	DeviceGetGpuInstanceRemainingCapacity(Device, *GpuInstanceProfileInfo) (int, Return)
 	DeviceGetGpuInstances(Device, *GpuInstanceProfileInfo) ([]GpuInstance, Return)
@@ -534,7 +524,6 @@ type Interface interface {
 	DeviceGetNumaNodeId(Device) (int, Return)
 	DeviceGetNvLinkCapability(Device, int, NvLinkCapability) (uint32, Return)
 	DeviceGetNvLinkErrorCounter(Device, int, NvLinkErrorCounter) (uint64, Return)
-	DeviceGetNvLinkInfo(Device) NvLinkInfoHandler
 	DeviceGetNvLinkRemoteDeviceType(Device, int) (IntNvLinkDeviceType, Return)
 	DeviceGetNvLinkRemotePciInfo(Device, int) (PciInfo, Return)
 	DeviceGetNvLinkState(Device, int) (EnableState, Return)
@@ -551,7 +540,6 @@ type Interface interface {
 	DeviceGetPcieReplayCounter(Device) (int, Return)
 	DeviceGetPcieSpeed(Device) (int, Return)
 	DeviceGetPcieThroughput(Device, PcieUtilCounter) (uint32, Return)
-	DeviceGetPdi(Device) (Pdi, Return)
 	DeviceGetPerformanceModes(Device) (DevicePerfModes, Return)
 	DeviceGetPerformanceState(Device) (Pstates, Return)
 	DeviceGetPersistenceMode(Device) (EnableState, Return)
@@ -561,14 +549,12 @@ type Interface interface {
 	DeviceGetPowerManagementLimit(Device) (uint32, Return)
 	DeviceGetPowerManagementLimitConstraints(Device) (uint32, uint32, Return)
 	DeviceGetPowerManagementMode(Device) (EnableState, Return)
-	DeviceGetPowerMizerMode_v1(Device) (DevicePowerMizerModes_v1, Return)
 	DeviceGetPowerSource(Device) (PowerSource, Return)
 	DeviceGetPowerState(Device) (Pstates, Return)
 	DeviceGetPowerUsage(Device) (uint32, Return)
 	DeviceGetProcessUtilization(Device, uint64) ([]ProcessUtilizationSample, Return)
 	DeviceGetProcessesUtilizationInfo(Device) (ProcessesUtilizationInfo, Return)
 	DeviceGetRemappedRows(Device) (int, int, bool, bool, Return)
-	DeviceGetRepairStatus(Device) (RepairStatus, Return)
 	DeviceGetRetiredPages(Device, PageRetirementCause) ([]uint64, Return)
 	DeviceGetRetiredPagesPendingStatus(Device) (EnableState, Return)
 	DeviceGetRetiredPages_v2(Device, PageRetirementCause) ([]uint64, []uint64, Return)
@@ -577,7 +563,6 @@ type Interface interface {
 	DeviceGetSamples(Device, SamplingType, uint64) (ValueType, []Sample, Return)
 	DeviceGetSerial(Device) (string, Return)
 	DeviceGetSramEccErrorStatus(Device) (EccSramErrorStatus, Return)
-	DeviceGetSramUniqueUncorrectedEccErrorCounts(Device, *EccSramUniqueUncorrectedErrorCounts) Return
 	DeviceGetSupportedClocksEventReasons(Device) (uint64, Return)
 	DeviceGetSupportedClocksThrottleReasons(Device) (uint64, Return)
 	DeviceGetSupportedEventTypes(Device) (uint64, Return)
@@ -618,7 +603,6 @@ type Interface interface {
 	DevicePowerSmoothingSetState(Device, *PowerSmoothingState) Return
 	DevicePowerSmoothingUpdatePresetProfileParam(Device, *PowerSmoothingProfile) Return
 	DeviceQueryDrainState(*PciInfo) (EnableState, Return)
-	DeviceReadWritePRM_v1(Device, *PRMTLV_v1) Return
 	DeviceRegisterEvents(Device, uint64, EventSet) Return
 	DeviceRemoveGpu(*PciInfo) Return
 	DeviceRemoveGpu_v2(*PciInfo, DetachGpuState, PcieLinkState) Return
@@ -794,7 +778,6 @@ type Device interface {
 	GetAccountingStats(uint32) (AccountingStats, Return)
 	GetActiveVgpus() ([]VgpuInstance, Return)
 	GetAdaptiveClockInfoStatus() (uint32, Return)
-	GetAddressingMode() (DeviceAddressingMode, Return)
 	GetApplicationsClock(ClockType) (uint32, Return)
 	GetArchitecture() (DeviceArchitecture, Return)
 	GetAttributes() (DeviceAttributes, Return)
@@ -814,7 +797,7 @@ type Device interface {
 	GetComputeInstanceId() (int, Return)
 	GetComputeMode() (ComputeMode, Return)
 	GetComputeRunningProcesses() ([]ProcessInfo, Return)
-	GetConfComputeGpuAttestationReport(*ConfComputeGpuAttestationReport) Return
+	GetConfComputeGpuAttestationReport() (ConfComputeGpuAttestationReport, Return)
 	GetConfComputeGpuCertificate() (ConfComputeGpuCertificate, Return)
 	GetConfComputeMemSizeInfo() (ConfComputeMemSizeInfo, Return)
 	GetConfComputeProtectedMemoryUsage() (Memory, Return)
@@ -860,7 +843,6 @@ type Device interface {
 	GetGpuInstanceId() (int, Return)
 	GetGpuInstancePossiblePlacements(*GpuInstanceProfileInfo) ([]GpuInstancePlacement, Return)
 	GetGpuInstanceProfileInfo(int) (GpuInstanceProfileInfo, Return)
-	GetGpuInstanceProfileInfoByIdV(int) GpuInstanceProfileInfoByIdHandler
 	GetGpuInstanceProfileInfoV(int) GpuInstanceProfileInfoHandler
 	GetGpuInstanceRemainingCapacity(*GpuInstanceProfileInfo) (int, Return)
 	GetGpuInstances(*GpuInstanceProfileInfo) ([]GpuInstance, Return)
@@ -905,7 +887,6 @@ type Device interface {
 	GetNumaNodeId() (int, Return)
 	GetNvLinkCapability(int, NvLinkCapability) (uint32, Return)
 	GetNvLinkErrorCounter(int, NvLinkErrorCounter) (uint64, Return)
-	GetNvLinkInfo() NvLinkInfoHandler
 	GetNvLinkRemoteDeviceType(int) (IntNvLinkDeviceType, Return)
 	GetNvLinkRemotePciInfo(int) (PciInfo, Return)
 	GetNvLinkState(int) (EnableState, Return)
@@ -922,7 +903,6 @@ type Device interface {
 	GetPcieReplayCounter() (int, Return)
 	GetPcieSpeed() (int, Return)
 	GetPcieThroughput(PcieUtilCounter) (uint32, Return)
-	GetPdi() (Pdi, Return)
 	GetPerformanceModes() (DevicePerfModes, Return)
 	GetPerformanceState() (Pstates, Return)
 	GetPersistenceMode() (EnableState, Return)
@@ -932,14 +912,12 @@ type Device interface {
 	GetPowerManagementLimit() (uint32, Return)
 	GetPowerManagementLimitConstraints() (uint32, uint32, Return)
 	GetPowerManagementMode() (EnableState, Return)
-	GetPowerMizerMode_v1() (DevicePowerMizerModes_v1, Return)
 	GetPowerSource() (PowerSource, Return)
 	GetPowerState() (Pstates, Return)
 	GetPowerUsage() (uint32, Return)
 	GetProcessUtilization(uint64) ([]ProcessUtilizationSample, Return)
 	GetProcessesUtilizationInfo() (ProcessesUtilizationInfo, Return)
 	GetRemappedRows() (int, int, bool, bool, Return)
-	GetRepairStatus() (RepairStatus, Return)
 	GetRetiredPages(PageRetirementCause) ([]uint64, Return)
 	GetRetiredPagesPendingStatus() (EnableState, Return)
 	GetRetiredPages_v2(PageRetirementCause) ([]uint64, []uint64, Return)
@@ -948,7 +926,6 @@ type Device interface {
 	GetSamples(SamplingType, uint64) (ValueType, []Sample, Return)
 	GetSerial() (string, Return)
 	GetSramEccErrorStatus() (EccSramErrorStatus, Return)
-	GetSramUniqueUncorrectedEccErrorCounts(*EccSramUniqueUncorrectedErrorCounts) Return
 	GetSupportedClocksEventReasons() (uint64, Return)
 	GetSupportedClocksThrottleReasons() (uint64, Return)
 	GetSupportedEventTypes() (uint64, Return)
@@ -993,7 +970,6 @@ type Device interface {
 	PowerSmoothingActivatePresetProfile(*PowerSmoothingProfile) Return
 	PowerSmoothingSetState(*PowerSmoothingState) Return
 	PowerSmoothingUpdatePresetProfileParam(*PowerSmoothingProfile) Return
-	ReadWritePRM_v1(*PRMTLV_v1) Return
 	RegisterEvents(uint64, EventSet) Return
 	ResetApplicationsClocks() Return
 	ResetGpuLockedClocks() Return

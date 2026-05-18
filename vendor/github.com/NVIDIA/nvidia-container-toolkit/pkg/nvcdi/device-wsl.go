@@ -18,6 +18,7 @@ package nvcdi
 
 import (
 	"github.com/NVIDIA/nvidia-container-toolkit/internal/discover"
+	"github.com/NVIDIA/nvidia-container-toolkit/internal/logger"
 )
 
 const (
@@ -25,10 +26,10 @@ const (
 )
 
 // newDXGDeviceDiscoverer returns a Discoverer for DXG devices under WSL2.
-func (l *wsllib) newDXGDeviceDiscoverer() discover.Discover {
+func newDXGDeviceDiscoverer(logger logger.Interface, devRoot string) discover.Discover {
 	deviceNodes := discover.NewCharDeviceDiscoverer(
-		l.logger,
-		l.driver.DevRoot,
+		logger,
+		devRoot,
 		[]string{dxgDeviceNode},
 	)
 

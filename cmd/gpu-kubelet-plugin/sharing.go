@@ -1,18 +1,18 @@
 /*
-Copyright The Kubernetes Authors.
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-    http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-*/
+ * Copyright (c) 2023, NVIDIA CORPORATION.  All rights reserved.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 
 package main
 
@@ -25,7 +25,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"text/template"
@@ -46,31 +46,14 @@ import (
 	cdiapi "tags.cncf.io/container-device-interface/pkg/cdi"
 	cdispec "tags.cncf.io/container-device-interface/specs-go"
 
-	configapi "sigs.k8s.io/dra-driver-nvidia-gpu/api/nvidia.com/resource/v1beta1"
-	"sigs.k8s.io/dra-driver-nvidia-gpu/pkg/featuregates"
+	configapi "github.com/NVIDIA/k8s-dra-driver-gpu/api/nvidia.com/resource/v1beta1"
 )
 
 const (
-	MpsControlFilesDirName       = "mps"
+	MpsRoot                      = DriverPluginPath + "/mps"
 	MpsControlDaemonTemplatePath = "/templates/mps-control-daemon.tmpl.yaml"
 	MpsControlDaemonNameFmt      = "mps-control-daemon-%v" // Fill with ClaimUID
-	MpsDefaultShmMountPath       = "/dev/shm"
-
-	// driverRootMountDir is the directory where the driver root is mounted inside the kubelet plugin container.
-	driverRootMountDir = "/driver-root"
 )
-
-// fileChecker checks whether a file exists at the given path.
-type fileChecker interface {
-	Stat(path string) error
-}
-
-type osFileChecker struct{}
-
-func (osFileChecker) Stat(path string) error {
-	_, err := os.Stat(path)
-	return err
-}
 
 type TimeSlicingManager struct {
 	nvdevlib *deviceLib
@@ -110,19 +93,6 @@ type MpsControlDaemonTemplateData struct {
 	MpsPipeDirectory                string
 	MpsLogDirectory                 string
 	MpsImageName                    string
-	FeatureGates                    map[string]bool
-	MpsShmMountPath                 string
-}
-
-// setMpsShmMountPath returns the container path at which the MPS shm should be mounted in the MPS control daemon pod.
-// If <driverRootMountDir>/dev/shm exists, the MPS daemon runs inside a chroot and shm must be mounted there.
-// Otherwise (e.g. GKE COS) the daemon runs directly in the container namespace and expects /dev/shm.
-func setMpsShmMountPath(checker fileChecker) string {
-	chrootShmPath := filepath.Join(driverRootMountDir, "dev", "shm")
-	if checker.Stat(chrootShmPath) == nil {
-		return chrootShmPath
-	}
-	return MpsDefaultShmMountPath
 }
 
 func NewTimeSlicingManager(deviceLib *deviceLib) *TimeSlicingManager {
@@ -131,16 +101,20 @@ func NewTimeSlicingManager(deviceLib *deviceLib) *TimeSlicingManager {
 	}
 }
 
-// `uuids` must be full-GPU (non-MIG) UUIDs. The caller must ensure that.
-func (t *TimeSlicingManager) SetTimeSlice(uuids []string, config *configapi.TimeSlicingConfig) error {
+func (t *TimeSlicingManager) SetTimeSlice(devices UUIDProvider, config *configapi.TimeSlicingConfig) error {
+	// Ensure all devices are full devices
+	if !slices.Equal(devices.UUIDs(), devices.GpuUUIDs()) {
+		return fmt.Errorf("can only set the time-slice interval on full GPUs")
+	}
+
 	// Set the compute mode of the GPU to DEFAULT.
-	err := t.nvdevlib.setComputeMode(uuids, "DEFAULT")
+	err := t.nvdevlib.setComputeMode(devices.UUIDs(), "DEFAULT")
 	if err != nil {
 		return fmt.Errorf("error setting compute mode: %w", err)
 	}
 
 	// Set the time slice based on the config provided.
-	err = t.nvdevlib.setTimeSlice(uuids, config.Interval.Int())
+	err = t.nvdevlib.setTimeSlice(devices.UUIDs(), config.Interval.Int())
 	if err != nil {
 		return fmt.Errorf("error setting time slice: %w", err)
 	}
@@ -148,9 +122,7 @@ func (t *TimeSlicingManager) SetTimeSlice(uuids []string, config *configapi.Time
 	return nil
 }
 
-func NewMpsManager(config *Config, deviceLib *deviceLib, hostDriverRoot, templatePath string) *MpsManager {
-	controlFilesRoot := filepath.Join(config.DriverPluginPath(), MpsControlFilesDirName)
-
+func NewMpsManager(config *Config, deviceLib *deviceLib, controlFilesRoot, hostDriverRoot, templatePath string) *MpsManager {
 	return &MpsManager{
 		controlFilesRoot: controlFilesRoot,
 		hostDriverRoot:   hostDriverRoot,
@@ -224,7 +196,6 @@ func (m *MpsControlDaemon) Start(ctx context.Context, config *configapi.MpsConfi
 	klog.Infof("Starting MPS control daemon for '%v', with settings: %+v", m.id, config)
 
 	deviceUUIDs := m.devices.UUIDs()
-
 	templateData := MpsControlDaemonTemplateData{
 		NodeName:                        m.nodeName,
 		MpsControlDaemonNamespace:       m.namespace,
@@ -237,8 +208,6 @@ func (m *MpsControlDaemon) Start(ctx context.Context, config *configapi.MpsConfi
 		MpsPipeDirectory:                m.pipeDir,
 		MpsLogDirectory:                 m.logDir,
 		MpsImageName:                    m.manager.config.flags.imageName,
-		FeatureGates:                    featuregates.ToMap(),
-		MpsShmMountPath:                 setMpsShmMountPath(osFileChecker{}),
 	}
 
 	if config != nil && config.DefaultActiveThreadPercentage != nil {

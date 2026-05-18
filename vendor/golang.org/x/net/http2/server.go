@@ -164,8 +164,6 @@ type Server struct {
 
 	// NewWriteScheduler constructs a write scheduler for a connection.
 	// If nil, a default scheduler is chosen.
-	//
-	// Deprecated: User-provided write schedulers are deprecated.
 	NewWriteScheduler func() WriteScheduler
 
 	// CountError, if non-nil, is called on HTTP/2 server errors.
@@ -178,15 +176,44 @@ type Server struct {
 	// so that we don't embed a Mutex in this struct, which will make the
 	// struct non-copyable, which might break some callers.
 	state *serverInternalState
+
+	// Synchronization group used for testing.
+	// Outside of tests, this is nil.
+	group synctestGroupInterface
+}
+
+func (s *Server) markNewGoroutine() {
+	if s.group != nil {
+		s.group.Join()
+	}
+}
+
+func (s *Server) now() time.Time {
+	if s.group != nil {
+		return s.group.Now()
+	}
+	return time.Now()
+}
+
+// newTimer creates a new time.Timer, or a synthetic timer in tests.
+func (s *Server) newTimer(d time.Duration) timer {
+	if s.group != nil {
+		return s.group.NewTimer(d)
+	}
+	return timeTimer{time.NewTimer(d)}
+}
+
+// afterFunc creates a new time.AfterFunc timer, or a synthetic timer in tests.
+func (s *Server) afterFunc(d time.Duration, f func()) timer {
+	if s.group != nil {
+		return s.group.AfterFunc(d, f)
+	}
+	return timeTimer{time.AfterFunc(d, f)}
 }
 
 type serverInternalState struct {
 	mu          sync.Mutex
 	activeConns map[*serverConn]struct{}
-
-	// Pool of error channels. This is per-Server rather than global
-	// because channels can't be reused across synctest bubbles.
-	errChanPool sync.Pool
 }
 
 func (s *serverInternalState) registerConn(sc *serverConn) {
@@ -218,27 +245,6 @@ func (s *serverInternalState) startGracefulShutdown() {
 	s.mu.Unlock()
 }
 
-// Global error channel pool used for uninitialized Servers.
-// We use a per-Server pool when possible to avoid using channels across synctest bubbles.
-var errChanPool = sync.Pool{
-	New: func() any { return make(chan error, 1) },
-}
-
-func (s *serverInternalState) getErrChan() chan error {
-	if s == nil {
-		return errChanPool.Get().(chan error) // Server used without calling ConfigureServer
-	}
-	return s.errChanPool.Get().(chan error)
-}
-
-func (s *serverInternalState) putErrChan(ch chan error) {
-	if s == nil {
-		errChanPool.Put(ch) // Server used without calling ConfigureServer
-		return
-	}
-	s.errChanPool.Put(ch)
-}
-
 // ConfigureServer adds HTTP/2 support to a net/http Server.
 //
 // The configuration conf may be nil.
@@ -251,10 +257,7 @@ func ConfigureServer(s *http.Server, conf *Server) error {
 	if conf == nil {
 		conf = new(Server)
 	}
-	conf.state = &serverInternalState{
-		activeConns: make(map[*serverConn]struct{}),
-		errChanPool: sync.Pool{New: func() any { return make(chan error, 1) }},
-	}
+	conf.state = &serverInternalState{activeConns: make(map[*serverConn]struct{})}
 	if h1, h2 := s, conf; h2.IdleTimeout == 0 {
 		if h1.IdleTimeout != 0 {
 			h2.IdleTimeout = h1.IdleTimeout
@@ -420,9 +423,6 @@ func (o *ServeConnOpts) handler() http.Handler {
 //
 // The opts parameter is optional. If nil, default values are used.
 func (s *Server) ServeConn(c net.Conn, opts *ServeConnOpts) {
-	if opts == nil {
-		opts = &ServeConnOpts{}
-	}
 	s.serveConn(c, opts, nil)
 }
 
@@ -438,7 +438,7 @@ func (s *Server) serveConn(c net.Conn, opts *ServeConnOpts, newf func(*serverCon
 		conn:                        c,
 		baseCtx:                     baseCtx,
 		remoteAddrStr:               c.RemoteAddr().String(),
-		bw:                          newBufferedWriter(c, conf.WriteByteTimeout),
+		bw:                          newBufferedWriter(s.group, c, conf.WriteByteTimeout),
 		handler:                     opts.handler(),
 		streams:                     make(map[uint32]*stream),
 		readFrameCh:                 make(chan readFrameResult),
@@ -474,13 +474,10 @@ func (s *Server) serveConn(c net.Conn, opts *ServeConnOpts, newf func(*serverCon
 		sc.conn.SetWriteDeadline(time.Time{})
 	}
 
-	switch {
-	case s.NewWriteScheduler != nil:
+	if s.NewWriteScheduler != nil {
 		sc.writeSched = s.NewWriteScheduler()
-	case clientPriorityDisabled(http1srv):
+	} else {
 		sc.writeSched = newRoundRobinWriteScheduler()
-	default:
-		sc.writeSched = newPriorityWriteSchedulerRFC9218()
 	}
 
 	// These start at the RFC-specified defaults. If there is a higher
@@ -641,11 +638,11 @@ type serverConn struct {
 	pingSent                    bool
 	sentPingData                [8]byte
 	goAwayCode                  ErrCode
-	shutdownTimer               *time.Timer // nil until used
-	idleTimer                   *time.Timer // nil if unused
+	shutdownTimer               timer // nil until used
+	idleTimer                   timer // nil if unused
 	readIdleTimeout             time.Duration
 	pingTimeout                 time.Duration
-	readIdleTimer               *time.Timer // nil if unused
+	readIdleTimer               timer // nil if unused
 
 	// Owned by the writeFrameAsync goroutine:
 	headerWriteBuf bytes.Buffer
@@ -653,23 +650,6 @@ type serverConn struct {
 
 	// Used by startGracefulShutdown.
 	shutdownOnce sync.Once
-
-	// Used for RFC 9218 prioritization.
-	hasIntermediary bool // connection is done via an intermediary / proxy
-	priorityAware   bool // the client has sent priority signal, meaning that it is aware of it.
-}
-
-func (sc *serverConn) writeSchedIgnoresRFC7540() bool {
-	switch sc.writeSched.(type) {
-	case *priorityWriteSchedulerRFC9218:
-		return true
-	case *randomWriteScheduler:
-		return true
-	case *roundRobinWriteScheduler:
-		return true
-	default:
-		return false
-	}
 }
 
 func (sc *serverConn) maxHeaderListSize() uint32 {
@@ -707,12 +687,12 @@ type stream struct {
 	flow             outflow // limits writing from Handler to client
 	inflow           inflow  // what the client is allowed to POST/etc to us
 	state            streamState
-	resetQueued      bool        // RST_STREAM queued for write; set by sc.resetStream
-	gotTrailerHeader bool        // HEADER frame for trailers was seen
-	wroteHeaders     bool        // whether we wrote headers (not status 100)
-	readDeadline     *time.Timer // nil if unused
-	writeDeadline    *time.Timer // nil if unused
-	closeErr         error       // set before cw is closed
+	resetQueued      bool  // RST_STREAM queued for write; set by sc.resetStream
+	gotTrailerHeader bool  // HEADER frame for trailers was seen
+	wroteHeaders     bool  // whether we wrote headers (not status 100)
+	readDeadline     timer // nil if unused
+	writeDeadline    timer // nil if unused
+	closeErr         error // set before cw is closed
 
 	trailer    http.Header // accumulated trailers
 	reqTrailer http.Header // handler's Request.Trailer
@@ -868,6 +848,7 @@ type readFrameResult struct {
 // consumer is done with the frame.
 // It's run on its own goroutine.
 func (sc *serverConn) readFrames() {
+	sc.srv.markNewGoroutine()
 	gate := make(chan struct{})
 	gateDone := func() { gate <- struct{}{} }
 	for {
@@ -900,6 +881,7 @@ type frameWriteResult struct {
 // At most one goroutine can be running writeFrameAsync at a time per
 // serverConn.
 func (sc *serverConn) writeFrameAsync(wr FrameWriteRequest, wd *writeData) {
+	sc.srv.markNewGoroutine()
 	var err error
 	if wd == nil {
 		err = wr.write.writeFrame(sc)
@@ -960,9 +942,6 @@ func (sc *serverConn) serve(conf http2Config) {
 	if !disableExtendedConnectProtocol {
 		settings = append(settings, Setting{SettingEnableConnectProtocol, 1})
 	}
-	if sc.writeSchedIgnoresRFC7540() {
-		settings = append(settings, Setting{SettingNoRFC7540Priorities, 1})
-	}
 	sc.writeFrame(FrameWriteRequest{
 		write: settings,
 	})
@@ -986,22 +965,22 @@ func (sc *serverConn) serve(conf http2Config) {
 	sc.setConnState(http.StateIdle)
 
 	if sc.srv.IdleTimeout > 0 {
-		sc.idleTimer = time.AfterFunc(sc.srv.IdleTimeout, sc.onIdleTimer)
+		sc.idleTimer = sc.srv.afterFunc(sc.srv.IdleTimeout, sc.onIdleTimer)
 		defer sc.idleTimer.Stop()
 	}
 
 	if conf.SendPingTimeout > 0 {
 		sc.readIdleTimeout = conf.SendPingTimeout
-		sc.readIdleTimer = time.AfterFunc(conf.SendPingTimeout, sc.onReadIdleTimer)
+		sc.readIdleTimer = sc.srv.afterFunc(conf.SendPingTimeout, sc.onReadIdleTimer)
 		defer sc.readIdleTimer.Stop()
 	}
 
 	go sc.readFrames() // closed by defer sc.conn.Close above
 
-	settingsTimer := time.AfterFunc(firstSettingsTimeout, sc.onSettingsTimer)
+	settingsTimer := sc.srv.afterFunc(firstSettingsTimeout, sc.onSettingsTimer)
 	defer settingsTimer.Stop()
 
-	lastFrameTime := time.Now()
+	lastFrameTime := sc.srv.now()
 	loopNum := 0
 	for {
 		loopNum++
@@ -1015,7 +994,7 @@ func (sc *serverConn) serve(conf http2Config) {
 		case res := <-sc.wroteFrameCh:
 			sc.wroteFrame(res)
 		case res := <-sc.readFrameCh:
-			lastFrameTime = time.Now()
+			lastFrameTime = sc.srv.now()
 			// Process any written frames before reading new frames from the client since a
 			// written frame could have triggered a new stream to be started.
 			if sc.writingFrameAsync {
@@ -1098,7 +1077,7 @@ func (sc *serverConn) handlePingTimer(lastFrameReadTime time.Time) {
 	}
 
 	pingAt := lastFrameReadTime.Add(sc.readIdleTimeout)
-	now := time.Now()
+	now := sc.srv.now()
 	if pingAt.After(now) {
 		// We received frames since arming the ping timer.
 		// Reset it for the next possible timeout.
@@ -1162,10 +1141,10 @@ func (sc *serverConn) readPreface() error {
 			errc <- nil
 		}
 	}()
-	timer := time.NewTimer(prefaceTimeout) // TODO: configurable on *Server?
+	timer := sc.srv.newTimer(prefaceTimeout) // TODO: configurable on *Server?
 	defer timer.Stop()
 	select {
-	case <-timer.C:
+	case <-timer.C():
 		return errPrefaceTimeout
 	case err := <-errc:
 		if err == nil {
@@ -1177,6 +1156,10 @@ func (sc *serverConn) readPreface() error {
 	}
 }
 
+var errChanPool = sync.Pool{
+	New: func() interface{} { return make(chan error, 1) },
+}
+
 var writeDataPool = sync.Pool{
 	New: func() interface{} { return new(writeData) },
 }
@@ -1184,7 +1167,7 @@ var writeDataPool = sync.Pool{
 // writeDataFromHandler writes DATA response frames from a handler on
 // the given stream.
 func (sc *serverConn) writeDataFromHandler(stream *stream, data []byte, endStream bool) error {
-	ch := sc.srv.state.getErrChan()
+	ch := errChanPool.Get().(chan error)
 	writeArg := writeDataPool.Get().(*writeData)
 	*writeArg = writeData{stream.id, data, endStream}
 	err := sc.writeFrameFromHandler(FrameWriteRequest{
@@ -1216,7 +1199,7 @@ func (sc *serverConn) writeDataFromHandler(stream *stream, data []byte, endStrea
 			return errStreamClosed
 		}
 	}
-	sc.srv.state.putErrChan(ch)
+	errChanPool.Put(ch)
 	if frameWriteDone {
 		writeDataPool.Put(writeArg)
 	}
@@ -1530,7 +1513,7 @@ func (sc *serverConn) goAway(code ErrCode) {
 
 func (sc *serverConn) shutDownIn(d time.Duration) {
 	sc.serveG.check()
-	sc.shutdownTimer = time.AfterFunc(d, sc.onShutdownTimer)
+	sc.shutdownTimer = sc.srv.afterFunc(d, sc.onShutdownTimer)
 }
 
 func (sc *serverConn) resetStream(se StreamError) {
@@ -1648,8 +1631,6 @@ func (sc *serverConn) processFrame(f Frame) error {
 		// A client cannot push. Thus, servers MUST treat the receipt of a PUSH_PROMISE
 		// frame as a connection error (Section 5.4.1) of type PROTOCOL_ERROR.
 		return sc.countError("push_promise", ConnectionError(ErrCodeProtocol))
-	case *PriorityUpdateFrame:
-		return sc.processPriorityUpdate(f)
 	default:
 		sc.vlogf("http2: server ignoring frame: %v", f.Header())
 		return nil
@@ -1830,10 +1811,6 @@ func (sc *serverConn) processSetting(s Setting) error {
 	case SettingEnableConnectProtocol:
 		// Receipt of this parameter by a server does not
 		// have any impact
-	case SettingNoRFC7540Priorities:
-		if s.Val > 1 {
-			return ConnectionError(ErrCodeProtocol)
-		}
 	default:
 		// Unknown setting: "An endpoint that receives a SETTINGS
 		// frame with any unknown or unsupported identifier MUST
@@ -2104,33 +2081,13 @@ func (sc *serverConn) processHeaders(f *MetaHeadersFrame) error {
 	if f.StreamEnded() {
 		initialState = stateHalfClosedRemote
 	}
-
-	// We are handling two special cases here:
-	// 1. When a request is sent via an intermediary, we force priority to be
-	// u=3,i. This is essentially a round-robin behavior, and is done to ensure
-	// fairness between, for example, multiple clients using the same proxy.
-	// 2. Until a client has shown that it is aware of RFC 9218, we make its
-	// streams non-incremental by default. This is done to preserve the
-	// historical behavior of handling streams in a round-robin manner, rather
-	// than one-by-one to completion.
-	initialPriority := defaultRFC9218Priority(sc.priorityAware && !sc.hasIntermediary)
-	if _, ok := sc.writeSched.(*priorityWriteSchedulerRFC9218); ok && !sc.hasIntermediary {
-		headerPriority, priorityAware, hasIntermediary := f.rfc9218Priority(sc.priorityAware)
-		initialPriority = headerPriority
-		sc.hasIntermediary = hasIntermediary
-		if priorityAware {
-			sc.priorityAware = true
-		}
-	}
-	st := sc.newStream(id, 0, initialState, initialPriority)
+	st := sc.newStream(id, 0, initialState)
 
 	if f.HasPriority() {
 		if err := sc.checkPriority(f.StreamID, f.Priority); err != nil {
 			return err
 		}
-		if !sc.writeSchedIgnoresRFC7540() {
-			sc.writeSched.AdjustStream(st.id, f.Priority)
-		}
+		sc.writeSched.AdjustStream(st.id, f.Priority)
 	}
 
 	rw, req, err := sc.newWriterAndRequest(st, f)
@@ -2161,7 +2118,7 @@ func (sc *serverConn) processHeaders(f *MetaHeadersFrame) error {
 	// (in Go 1.8), though. That's a more sane option anyway.
 	if sc.hs.ReadTimeout > 0 {
 		sc.conn.SetReadDeadline(time.Time{})
-		st.readDeadline = time.AfterFunc(sc.hs.ReadTimeout, st.onReadTimeout)
+		st.readDeadline = sc.srv.afterFunc(sc.hs.ReadTimeout, st.onReadTimeout)
 	}
 
 	return sc.scheduleHandler(id, rw, req, handler)
@@ -2171,7 +2128,7 @@ func (sc *serverConn) upgradeRequest(req *http.Request) {
 	sc.serveG.check()
 	id := uint32(1)
 	sc.maxClientStreamID = id
-	st := sc.newStream(id, 0, stateHalfClosedRemote, defaultRFC9218Priority(sc.priorityAware && !sc.hasIntermediary))
+	st := sc.newStream(id, 0, stateHalfClosedRemote)
 	st.reqTrailer = req.Trailer
 	if st.reqTrailer != nil {
 		st.trailer = make(http.Header)
@@ -2236,32 +2193,11 @@ func (sc *serverConn) processPriority(f *PriorityFrame) error {
 	if err := sc.checkPriority(f.StreamID, f.PriorityParam); err != nil {
 		return err
 	}
-	// We need to avoid calling AdjustStream when using the RFC 9218 write
-	// scheduler. Otherwise, incremental's zero value in PriorityParam will
-	// unexpectedly make all streams non-incremental. This causes us to process
-	// streams one-by-one to completion rather than doing it in a round-robin
-	// manner (the historical behavior), which might be unexpected to users.
-	if sc.writeSchedIgnoresRFC7540() {
-		return nil
-	}
 	sc.writeSched.AdjustStream(f.StreamID, f.PriorityParam)
 	return nil
 }
 
-func (sc *serverConn) processPriorityUpdate(f *PriorityUpdateFrame) error {
-	sc.priorityAware = true
-	if _, ok := sc.writeSched.(*priorityWriteSchedulerRFC9218); !ok {
-		return nil
-	}
-	p, ok := parseRFC9218Priority(f.Priority, sc.priorityAware)
-	if !ok {
-		return sc.countError("unparsable_priority_update", streamError(f.PrioritizedStreamID, ErrCodeProtocol))
-	}
-	sc.writeSched.AdjustStream(f.PrioritizedStreamID, p)
-	return nil
-}
-
-func (sc *serverConn) newStream(id, pusherID uint32, state streamState, priority PriorityParam) *stream {
+func (sc *serverConn) newStream(id, pusherID uint32, state streamState) *stream {
 	sc.serveG.check()
 	if id == 0 {
 		panic("internal error: cannot create stream with id 0")
@@ -2280,11 +2216,11 @@ func (sc *serverConn) newStream(id, pusherID uint32, state streamState, priority
 	st.flow.add(sc.initialStreamSendWindowSize)
 	st.inflow.init(sc.initialStreamRecvWindowSize)
 	if sc.hs.WriteTimeout > 0 {
-		st.writeDeadline = time.AfterFunc(sc.hs.WriteTimeout, st.onWriteTimeout)
+		st.writeDeadline = sc.srv.afterFunc(sc.hs.WriteTimeout, st.onWriteTimeout)
 	}
 
 	sc.streams[id] = st
-	sc.writeSched.OpenStream(st.id, OpenStreamOptions{PusherID: pusherID, priority: priority})
+	sc.writeSched.OpenStream(st.id, OpenStreamOptions{PusherID: pusherID})
 	if st.isPushed() {
 		sc.curPushedStreams++
 	} else {
@@ -2469,6 +2405,7 @@ func (sc *serverConn) handlerDone() {
 
 // Run on its own goroutine.
 func (sc *serverConn) runHandler(rw *responseWriter, req *http.Request, handler func(http.ResponseWriter, *http.Request)) {
+	sc.srv.markNewGoroutine()
 	defer sc.sendServeMsg(handlerDoneMsg)
 	didPanic := true
 	defer func() {
@@ -2517,7 +2454,7 @@ func (sc *serverConn) writeHeaders(st *stream, headerData *writeResHeaders) erro
 		// waiting for this frame to be written, so an http.Flush mid-handler
 		// writes out the correct value of keys, before a handler later potentially
 		// mutates it.
-		errc = sc.srv.state.getErrChan()
+		errc = errChanPool.Get().(chan error)
 	}
 	if err := sc.writeFrameFromHandler(FrameWriteRequest{
 		write:  headerData,
@@ -2529,7 +2466,7 @@ func (sc *serverConn) writeHeaders(st *stream, headerData *writeResHeaders) erro
 	if errc != nil {
 		select {
 		case err := <-errc:
-			sc.srv.state.putErrChan(errc)
+			errChanPool.Put(errc)
 			return err
 		case <-sc.doneServing:
 			return errClientDisconnected
@@ -2636,7 +2573,7 @@ func (b *requestBody) Read(p []byte) (n int, err error) {
 	if err == io.EOF {
 		b.sawEOF = true
 	}
-	if b.conn == nil {
+	if b.conn == nil && inTests {
 		return
 	}
 	b.conn.noteBodyReadFromHandler(b.stream, n, err)
@@ -2765,7 +2702,7 @@ func (rws *responseWriterState) writeChunk(p []byte) (n int, err error) {
 		var date string
 		if _, ok := rws.snapHeader["Date"]; !ok {
 			// TODO(bradfitz): be faster here, like net/http? measure.
-			date = time.Now().UTC().Format(http.TimeFormat)
+			date = rws.conn.srv.now().UTC().Format(http.TimeFormat)
 		}
 
 		for _, v := range rws.snapHeader["Trailer"] {
@@ -2887,7 +2824,7 @@ func (rws *responseWriterState) promoteUndeclaredTrailers() {
 
 func (w *responseWriter) SetReadDeadline(deadline time.Time) error {
 	st := w.rws.stream
-	if !deadline.IsZero() && deadline.Before(time.Now()) {
+	if !deadline.IsZero() && deadline.Before(w.rws.conn.srv.now()) {
 		// If we're setting a deadline in the past, reset the stream immediately
 		// so writes after SetWriteDeadline returns will fail.
 		st.onReadTimeout()
@@ -2903,9 +2840,9 @@ func (w *responseWriter) SetReadDeadline(deadline time.Time) error {
 		if deadline.IsZero() {
 			st.readDeadline = nil
 		} else if st.readDeadline == nil {
-			st.readDeadline = time.AfterFunc(deadline.Sub(time.Now()), st.onReadTimeout)
+			st.readDeadline = sc.srv.afterFunc(deadline.Sub(sc.srv.now()), st.onReadTimeout)
 		} else {
-			st.readDeadline.Reset(deadline.Sub(time.Now()))
+			st.readDeadline.Reset(deadline.Sub(sc.srv.now()))
 		}
 	})
 	return nil
@@ -2913,7 +2850,7 @@ func (w *responseWriter) SetReadDeadline(deadline time.Time) error {
 
 func (w *responseWriter) SetWriteDeadline(deadline time.Time) error {
 	st := w.rws.stream
-	if !deadline.IsZero() && deadline.Before(time.Now()) {
+	if !deadline.IsZero() && deadline.Before(w.rws.conn.srv.now()) {
 		// If we're setting a deadline in the past, reset the stream immediately
 		// so writes after SetWriteDeadline returns will fail.
 		st.onWriteTimeout()
@@ -2929,9 +2866,9 @@ func (w *responseWriter) SetWriteDeadline(deadline time.Time) error {
 		if deadline.IsZero() {
 			st.writeDeadline = nil
 		} else if st.writeDeadline == nil {
-			st.writeDeadline = time.AfterFunc(deadline.Sub(time.Now()), st.onWriteTimeout)
+			st.writeDeadline = sc.srv.afterFunc(deadline.Sub(sc.srv.now()), st.onWriteTimeout)
 		} else {
-			st.writeDeadline.Reset(deadline.Sub(time.Now()))
+			st.writeDeadline.Reset(deadline.Sub(sc.srv.now()))
 		}
 	})
 	return nil
@@ -3210,7 +3147,7 @@ func (w *responseWriter) Push(target string, opts *http.PushOptions) error {
 		method: opts.Method,
 		url:    u,
 		header: cloneHeader(opts.Header),
-		done:   sc.srv.state.getErrChan(),
+		done:   errChanPool.Get().(chan error),
 	}
 
 	select {
@@ -3227,7 +3164,7 @@ func (w *responseWriter) Push(target string, opts *http.PushOptions) error {
 	case <-st.cw:
 		return errStreamClosed
 	case err := <-msg.done:
-		sc.srv.state.putErrChan(msg.done)
+		errChanPool.Put(msg.done)
 		return err
 	}
 }
@@ -3290,7 +3227,7 @@ func (sc *serverConn) startPush(msg *startPushRequest) {
 		// transition to "half closed (remote)" after sending the initial HEADERS, but
 		// we start in "half closed (remote)" for simplicity.
 		// See further comments at the definition of stateHalfClosedRemote.
-		promised := sc.newStream(promisedID, msg.parent.id, stateHalfClosedRemote, defaultRFC9218Priority(sc.priorityAware && !sc.hasIntermediary))
+		promised := sc.newStream(promisedID, msg.parent.id, stateHalfClosedRemote)
 		rw, req, err := sc.newWriterAndRequestNoBody(promised, httpcommon.ServerRequestParam{
 			Method:    msg.method,
 			Scheme:    msg.url.Scheme,

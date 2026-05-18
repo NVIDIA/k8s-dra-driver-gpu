@@ -1,0 +1,31 @@
+# kube-linter config for the dra-driver-nvidia-gpu chart.
+#
+# Excluded checks are inherent to what this driver is — a DRA driver that
+# manages NVIDIA GPU hardware on each node. The same realities motivated the
+# Kyverno PolicyException shipped in templates/kyverno-policy-exception.yaml.
+#
+# - privileged-container / privilege-escalation-container / run-as-non-root:
+#   The kubelet plugin needs privileged access to /dev/nvidia* and to register
+#   itself with the kubelet via /var/lib/kubelet/plugins_registry.
+# - no-read-only-root-fs:
+#   Driver components write to plugin sockets and runtime state under /.
+# - sensitive-host-mounts:
+#   Driver mounts host / (or large subtrees of it) to discover CDI hooks,
+#   NVIDIA libraries, and to expose the DRA socket back to the kubelet.
+# - liveness-port / startup-port:
+#   Probes are GRPC, and kube-linter only matches httpGet/tcpSocket ports
+#   against containerPorts.
+# - unset-cpu-requirements / unset-memory-requirements:
+#   Upstream ships no defaults for these; operators set them per-environment
+#   via the App CR. Adding defaults here would diverge from upstream needlessly.
+checks:
+  exclude:
+    - privileged-container
+    - privilege-escalation-container
+    - run-as-non-root
+    - no-read-only-root-fs
+    - sensitive-host-mounts
+    - liveness-port
+    - startup-port
+    - unset-cpu-requirements
+    - unset-memory-requirements

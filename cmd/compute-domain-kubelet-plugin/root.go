@@ -1,18 +1,18 @@
-/*
-Copyright The Kubernetes Authors
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-    https://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-*/
+/**
+# Copyright 2023 NVIDIA CORPORATION
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+**/
 
 package main
 
@@ -20,21 +20,43 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 type root string
 
+// extraSearchPaths reads a colon-separated env var and returns the entries to
+// prepend (so they take precedence) to the default search list. Useful for
+// driver bundle layouts whose binaries/libraries live outside the FHS
+// defaults, or where bundled absolute symlinks rely on a sibling host path
+// being bind-mounted into the container (see the chart's
+// `extraHostPathMounts` value).
+func extraSearchPaths(envVar string) []string {
+	v := os.Getenv(envVar)
+	if v == "" {
+		return nil
+	}
+	var out []string
+	for _, p := range strings.Split(v, ":") {
+		p = strings.TrimSpace(p)
+		if p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
 // getDriverLibraryPath returns path to `libnvidia-ml.so.1` in the driver root.
 // The folder for this file is also expected to be the location of other driver files.
 func (r root) getDriverLibraryPath() (string, error) {
-	librarySearchPaths := []string{
+	librarySearchPaths := append(extraSearchPaths("EXTRA_DRIVER_LIBRARY_PATHS"),
 		"/usr/lib64",
 		"/usr/lib/x86_64-linux-gnu",
 		"/usr/lib/aarch64-linux-gnu",
 		"/lib64",
 		"/lib/x86_64-linux-gnu",
 		"/lib/aarch64-linux-gnu",
-	}
+	)
 
 	libraryPath, err := r.findFile("libnvidia-ml.so.1", librarySearchPaths...)
 	if err != nil {
@@ -46,13 +68,12 @@ func (r root) getDriverLibraryPath() (string, error) {
 
 // getNvidiaSMIPath returns path to the `nvidia-smi` executable in the driver root.
 func (r root) getNvidiaSMIPath() (string, error) {
-	binarySearchPaths := []string{
-		"/opt/bin",
+	binarySearchPaths := append(extraSearchPaths("EXTRA_DRIVER_BINARY_PATHS"),
 		"/usr/bin",
 		"/usr/sbin",
 		"/bin",
 		"/sbin",
-	}
+	)
 
 	binaryPath, err := r.findFile("nvidia-smi", binarySearchPaths...)
 	if err != nil {

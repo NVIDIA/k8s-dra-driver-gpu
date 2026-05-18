@@ -22,10 +22,11 @@ import (
 	"strconv"
 	"strings"
 
-	dto "github.com/prometheus/client_model/go"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/prometheus/common/model"
+
+	dto "github.com/prometheus/client_model/go"
 )
 
 type encoderOption struct {
@@ -160,38 +161,38 @@ func MetricFamilyToOpenMetrics(out io.Writer, in *dto.MetricFamily, options ...E
 		n, err = w.WriteString("# HELP ")
 		written += n
 		if err != nil {
-			return written, err
+			return
 		}
 		n, err = writeName(w, compliantName)
 		written += n
 		if err != nil {
-			return written, err
+			return
 		}
 		err = w.WriteByte(' ')
 		written++
 		if err != nil {
-			return written, err
+			return
 		}
 		n, err = writeEscapedString(w, *in.Help, true)
 		written += n
 		if err != nil {
-			return written, err
+			return
 		}
 		err = w.WriteByte('\n')
 		written++
 		if err != nil {
-			return written, err
+			return
 		}
 	}
 	n, err = w.WriteString("# TYPE ")
 	written += n
 	if err != nil {
-		return written, err
+		return
 	}
 	n, err = writeName(w, compliantName)
 	written += n
 	if err != nil {
-		return written, err
+		return
 	}
 	switch metricType {
 	case dto.MetricType_COUNTER:
@@ -208,41 +209,39 @@ func MetricFamilyToOpenMetrics(out io.Writer, in *dto.MetricFamily, options ...E
 		n, err = w.WriteString(" unknown\n")
 	case dto.MetricType_HISTOGRAM:
 		n, err = w.WriteString(" histogram\n")
-	case dto.MetricType_GAUGE_HISTOGRAM:
-		n, err = w.WriteString(" gaugehistogram\n")
 	default:
 		return written, fmt.Errorf("unknown metric type %s", metricType.String())
 	}
 	written += n
 	if err != nil {
-		return written, err
+		return
 	}
 	if toOM.withUnit && in.Unit != nil {
 		n, err = w.WriteString("# UNIT ")
 		written += n
 		if err != nil {
-			return written, err
+			return
 		}
 		n, err = writeName(w, compliantName)
 		written += n
 		if err != nil {
-			return written, err
+			return
 		}
 
 		err = w.WriteByte(' ')
 		written++
 		if err != nil {
-			return written, err
+			return
 		}
 		n, err = writeEscapedString(w, *in.Unit, true)
 		written += n
 		if err != nil {
-			return written, err
+			return
 		}
 		err = w.WriteByte('\n')
 		written++
 		if err != nil {
-			return written, err
+			return
 		}
 	}
 
@@ -250,7 +249,7 @@ func MetricFamilyToOpenMetrics(out io.Writer, in *dto.MetricFamily, options ...E
 
 	// Finally the samples, one line for each.
 	if metricType == dto.MetricType_COUNTER && strings.HasSuffix(name, "_total") {
-		compliantName += "_total"
+		compliantName = compliantName + "_total"
 	}
 	for _, metric := range in.Metric {
 		switch metricType {
@@ -306,7 +305,7 @@ func MetricFamilyToOpenMetrics(out io.Writer, in *dto.MetricFamily, options ...E
 				)
 				written += n
 				if err != nil {
-					return written, err
+					return
 				}
 			}
 			n, err = writeOpenMetricsSample(
@@ -316,7 +315,7 @@ func MetricFamilyToOpenMetrics(out io.Writer, in *dto.MetricFamily, options ...E
 			)
 			written += n
 			if err != nil {
-				return written, err
+				return
 			}
 			n, err = writeOpenMetricsSample(
 				w, compliantName, "_count", metric, "", 0,
@@ -327,7 +326,7 @@ func MetricFamilyToOpenMetrics(out io.Writer, in *dto.MetricFamily, options ...E
 				createdTsBytesWritten, err = writeOpenMetricsCreated(w, compliantName, "", metric, "", 0, metric.Summary.GetCreatedTimestamp())
 				n += createdTsBytesWritten
 			}
-		case dto.MetricType_HISTOGRAM, dto.MetricType_GAUGE_HISTOGRAM:
+		case dto.MetricType_HISTOGRAM:
 			if metric.Histogram == nil {
 				return written, fmt.Errorf(
 					"expected histogram in metric %s %s", compliantName, metric,
@@ -335,12 +334,6 @@ func MetricFamilyToOpenMetrics(out io.Writer, in *dto.MetricFamily, options ...E
 			}
 			infSeen := false
 			for _, b := range metric.Histogram.Bucket {
-				if b.GetCumulativeCountFloat() > 0 {
-					return written, fmt.Errorf(
-						"OpenMetrics v1.0 does not support float histogram %s %s",
-						compliantName, metric,
-					)
-				}
 				n, err = writeOpenMetricsSample(
 					w, compliantName, "_bucket", metric,
 					model.BucketLabel, b.GetUpperBound(),
@@ -349,7 +342,7 @@ func MetricFamilyToOpenMetrics(out io.Writer, in *dto.MetricFamily, options ...E
 				)
 				written += n
 				if err != nil {
-					return written, err
+					return
 				}
 				if math.IsInf(b.GetUpperBound(), +1) {
 					infSeen = true
@@ -362,12 +355,9 @@ func MetricFamilyToOpenMetrics(out io.Writer, in *dto.MetricFamily, options ...E
 					0, metric.Histogram.GetSampleCount(), true,
 					nil,
 				)
-				// We do not check for a float sample count here
-				// because we will check for it below (and error
-				// out if needed).
 				written += n
 				if err != nil {
-					return written, err
+					return
 				}
 			}
 			n, err = writeOpenMetricsSample(
@@ -377,13 +367,7 @@ func MetricFamilyToOpenMetrics(out io.Writer, in *dto.MetricFamily, options ...E
 			)
 			written += n
 			if err != nil {
-				return written, err
-			}
-			if metric.Histogram.GetSampleCountFloat() > 0 {
-				return written, fmt.Errorf(
-					"OpenMetrics v1.0 does not support float histogram %s %s",
-					compliantName, metric,
-				)
+				return
 			}
 			n, err = writeOpenMetricsSample(
 				w, compliantName, "_count", metric, "", 0,
@@ -401,10 +385,10 @@ func MetricFamilyToOpenMetrics(out io.Writer, in *dto.MetricFamily, options ...E
 		}
 		written += n
 		if err != nil {
-			return written, err
+			return
 		}
 	}
-	return written, err
+	return
 }
 
 // FinalizeOpenMetrics writes the final `# EOF\n` line required by OpenMetrics.
@@ -493,7 +477,7 @@ func writeOpenMetricsNameAndLabelPairs(
 	if name != "" {
 		// If the name does not pass the legacy validity check, we must put the
 		// metric name inside the braces, quoted.
-		if !model.LegacyValidation.IsValidMetricName(name) {
+		if !model.IsValidLegacyMetricName(name) {
 			metricInsideBraces = true
 			err := w.WriteByte(separator)
 			written++
@@ -657,11 +641,11 @@ func writeExemplar(w enhancedWriter, e *dto.Exemplar) (int, error) {
 		if err != nil {
 			return written, err
 		}
-		err = e.Timestamp.CheckValid()
+		err = (*e).Timestamp.CheckValid()
 		if err != nil {
 			return written, err
 		}
-		ts := e.Timestamp.AsTime()
+		ts := (*e).Timestamp.AsTime()
 		// TODO(beorn7): Format this directly from components of ts to
 		// avoid overflow/underflow and precision issues of the float
 		// conversion.

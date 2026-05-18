@@ -33,8 +33,6 @@ const (
 	ModeWsl = Mode("wsl")
 	// ModeManagement configures the CDI spec generator to generate a management spec.
 	ModeManagement = Mode("management")
-	// ModeGdrcopy configures the CDI spec generator to generate a GDR Copy spec.
-	ModeGdrcopy = Mode("gdrcopy")
 	// ModeGds configures the CDI spec generator to generate a GDS spec.
 	ModeGds = Mode("gds")
 	// ModeMofed configures the CDI spec generator to generate a MOFED spec.
@@ -42,10 +40,8 @@ const (
 	// ModeCSV configures the CDI spec generator to generate a spec based on the contents of CSV
 	// mountspec files.
 	ModeCSV = Mode("csv")
-	// ModeImex configures the CDI spec generator to generate a spec for the available IMEX channels.
+	// ModeImex configures the CDI spec generated to generate a spec for the available IMEX channels.
 	ModeImex = Mode("imex")
-	// ModeNvswitch configures the CDI spec generator to generate a spec for the available nvswitch devices.
-	ModeNvswitch = Mode("nvswitch")
 )
 
 type modeConstraint interface {
@@ -64,15 +60,12 @@ func getModes() modes {
 	validModesOnce.Do(func() {
 		all := []Mode{
 			ModeAuto,
-			ModeCSV,
-			ModeGdrcopy,
-			ModeGds,
-			ModeImex,
-			ModeManagement,
-			ModeMofed,
 			ModeNvml,
-			ModeNvswitch,
 			ModeWsl,
+			ModeManagement,
+			ModeGds,
+			ModeMofed,
+			ModeCSV,
 		}
 		lookup := make(map[Mode]bool)
 
@@ -104,15 +97,15 @@ func IsValidMode[T modeConstraint](mode T) bool {
 }
 
 // resolveMode resolves the mode for CDI spec generation based on the current system.
-func (o *options) resolveMode() (rmode Mode) {
-	if o.mode != ModeAuto {
-		return o.mode
+func (l *nvcdilib) resolveMode() (rmode Mode) {
+	if l.mode != ModeAuto {
+		return l.mode
 	}
 	defer func() {
-		o.logger.Infof("Auto-detected mode as '%v'", rmode)
+		l.logger.Infof("Auto-detected mode as '%v'", rmode)
 	}()
 
-	platform := o.infolib.ResolvePlatform()
+	platform := l.infolib.ResolvePlatform()
 	switch platform {
 	case info.PlatformNVML:
 		return ModeNvml
@@ -121,6 +114,6 @@ func (o *options) resolveMode() (rmode Mode) {
 	case info.PlatformWSL:
 		return ModeWsl
 	}
-	o.logger.Warningf("Unsupported platform detected: %v; assuming %v", platform, ModeNvml)
+	l.logger.Warningf("Unsupported platform detected: %v; assuming %v", platform, ModeNvml)
 	return ModeNvml
 }
