@@ -1,0 +1,10 @@
+{
+  "extends": [
+    // Base config - https://github.com/giantswarm/renovate-presets/blob/main/default.json5
+    "github>giantswarm/renovate-presets:default.json5",
+    // Vendir bumps are managed manually via ./sync/sync.sh, not by Renovate.
+    "github>giantswarm/renovate-presets:disable-vendir.json5",
+    // Go module updates.
+    "github>giantswarm/renovate-presets:lang-go.json5",
+  ],
+}

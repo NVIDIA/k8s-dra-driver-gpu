@@ -18,7 +18,7 @@ helm upgrade -i \
 	--create-namespace \
 	--namespace nvidia-dra-driver-gpu \
 	nvidia-dra-driver-gpu \
-	../../../deployments/helm/nvidia-dra-driver-gpu \
+	../../../helm/nvidia-dra-driver-gpu \
     --set nvidiaDriverRoot="/" \
 	--set resources.gpus.enabled=false \
     --wait
