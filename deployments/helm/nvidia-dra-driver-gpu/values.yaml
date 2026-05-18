@@ -66,7 +66,10 @@ allowDefaultNamespace: false
 
 imagePullSecrets: []
 image:
-  repository: nvcr.io/nvidia/k8s-dra-driver-gpu
+  # Downstream Giant Swarm build: points at the patched image carrying the
+  # Flatcar prestart fix and EXTRA_DRIVER_*_PATHS env handling. Revert to
+  # nvcr.io/nvidia/k8s-dra-driver-gpu when upstream ships those changes.
+  repository: gsoci.azurecr.io/giantswarm/k8s-dra-driver-gpu
   pullPolicy: IfNotPresent
   # Note: an empty string is translated to the `appVersion` string from
   # the Helm chart YAML (effectively implementing the default value to be
