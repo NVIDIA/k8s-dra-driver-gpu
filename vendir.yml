@@ -19,3 +19,4 @@ directories:
       path: upstream/k8s-dra-driver-gpu/deployments/helm/dra-driver-nvidia-gpu
     ignorePaths:
     - Chart.yaml
+    - ci/**

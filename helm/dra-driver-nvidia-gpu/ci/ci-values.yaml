@@ -1,0 +1,10 @@
+# Values used only by `ct lint` (chart-testing) during CI validation.
+# Not shipped to end users — they must opt into these bypasses themselves.
+#
+# Upstream defines two safety guards in templates/validation.yaml that fail
+# the render under default values:
+#   * default namespace (templates/validation.yaml:24)
+#   * resources.gpus.enabled=true without override (templates/validation.yaml:33)
+# Bypassing both is the only way for `helm template` to render in CI.
+allowDefaultNamespace: true
+gpuResourcesEnabledOverride: true

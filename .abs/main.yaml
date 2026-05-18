@@ -1,0 +1,4 @@
+# app-build-suite config. ABS auto-discovers .abs/main.yaml at the repo root.
+# Point kube-linter at our root-level config (default discovery would look
+# inside the chart dir, which is vendir-managed).
+kubelinter-config: ./.kube-linter.yaml
